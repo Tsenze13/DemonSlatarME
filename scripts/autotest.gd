@@ -1,4 +1,5 @@
 extends Node
+const SwordLibT = preload("res://scripts/sword_lib.gd")
 # Автотест: бот проходит по всем действиям, делает снимки экрана
 # (если задан KLINOK_SHOTS) и печатает итог. Запуск: KLINOK_AUTOTEST=1.
 
@@ -89,6 +90,11 @@ func _run() -> void:
 			ok_sw = false
 			print("меч ", si, " длина ", bl)
 	check(ok_sw, "все виды оружия ставятся")
+	for sa in SwordLibT.SAYA.size():
+		p.set_look(sa, sa % SwordLibT.TINTS.size())
+		await w(0.03)
+	check(p.scabbard_node.get_child_count() > 0, "все виды ножен и цвета клинка ставятся")
+	p.set_look(0, 0)
 	p.set_sword(0)
 	p.set_drawn(false)
 	# настоящая мышь: поворот камеры и удар ЛКМ должны доходить до игры

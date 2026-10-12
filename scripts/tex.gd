@@ -20,6 +20,10 @@ static func get_tex(kind: String) -> Texture2D:
 		"paper": img = _paper()
 		"cloth": img = _speckle(11, 0.86, 0.94, 0.04)
 		"haori": img = _haori()
+		"lacquer": img = _lacquer()
+		"saya_wave": img = _saya_wave()
+		"saya_ring": img = _saya_ring()
+		"saya_diamond": img = _saya_diamond()
 		_: img = _speckle(3, 0.8, 0.95, 0.1)
 	var t := ImageTexture.create_from_image(img)
 	_cache[kind] = t
@@ -169,4 +173,55 @@ static func _haori() -> Image:
 			if y >= 30:
 				c = Color(0.06, 0.06, 0.1)
 			im.set_pixel(x, y, c)
+	return im
+
+# --- ножны -----------------------------------------------------------------
+# Лак: ровный, с редкими бликами.
+static func _lacquer() -> Image:
+	var r := RandomNumberGenerator.new()
+	r.seed = 31
+	var im := _img()
+	for y in 16:
+		for x in 16:
+			var v := 0.82 + r.randf_range(-0.03, 0.03)
+			if (x + y * 3) % 17 == 0:
+				v = 1.0
+			im.set_pixel(x, y, _g(v))
+	return im
+
+# Волны поперёк ножен.
+static func _saya_wave() -> Image:
+	var im := _img()
+	for y in 16:
+		for x in 16:
+			var v := 0.72
+			var wy := int(round(2.0 * sin(x * 0.785)))
+			if (y + wy + 16) % 8 == 0:
+				v = 1.0
+			elif (y + wy + 16) % 8 == 1:
+				v = 0.9
+			im.set_pixel(x, y, _g(v))
+	return im
+
+# Кольца-перетяжки.
+static func _saya_ring() -> Image:
+	var im := _img()
+	for y in 16:
+		for x in 16:
+			var v := 0.9
+			if y % 8 == 0 or y % 8 == 1:
+				v = 0.6
+			im.set_pixel(x, y, _g(v))
+	return im
+
+# Ромбы, как обмотка рукояти.
+static func _saya_diamond() -> Image:
+	var im := _img()
+	for y in 16:
+		for x in 16:
+			var d: int = abs((x % 8) - 4) + abs((y % 8) - 4)
+			var v := 1.0 if d < 3 else 0.6
+			if d == 3:
+				v = 0.45
+			im.set_pixel(x, y, _g(v))
 	return im

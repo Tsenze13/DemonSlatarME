@@ -136,6 +136,8 @@ var sheathed_hilt: Node3D
 var sheath_node: Node3D
 var sword_vis: Node3D
 var sword_index := 0              # пункт меню: 0..5 катаны, 6 парные, 7 хлыст, 8 / -1 — свой кубический
+var saya_style := 0               # вид ножен (SwordLib.SAYA)
+var blade_tint := 0               # цвет клинка (SwordLib.TINTS)
 var sword_mode := "katana"         # katana | dual | whip | proc
 var sword_l: Node3D
 var sword_l_vis: Node3D
@@ -598,22 +600,22 @@ func set_sword(m: int) -> void:
 	var blade_len := 0.85
 	if m >= 0 and m <= 5 and m < n:
 		sword_mode = "katana"
-		var vis := SwordLib.make(m)
+		var vis := SwordLib.make(m, _tint())
 		vis.position = Vector3(0, -0.1, 0)
 		sword_vis.add_child(vis)
 		sheathed_hilt.add_child(SwordLib.make_part(m, "handle"))
-		scabbard_node.add_child(SwordLib.make_scabbard(m))
+		scabbard_node.add_child(SwordLib.make_scabbard(m, saya_style))
 	elif m == 6 and n >= 8:
 		sword_mode = "dual"
-		var r := SwordLib.make(6)
+		var r := SwordLib.make(6, _tint())
 		r.position = Vector3(0, -0.1, 0)
 		sword_vis.add_child(r)
-		var l := SwordLib.make(7)
+		var l := SwordLib.make(7, _tint())
 		l.position = Vector3(0, -0.1, 0)
 		sword_l_vis.add_child(l)
 		# в ножнах — крест-накрест за спиной, рукояти над плечами
 		for k in 2:
-			var bs := SwordLib.make(6 + k)
+			var bs := SwordLib.make(6 + k, _tint())
 			var ang := 0.55 if k == 0 else -0.55
 			bs.transform = Transform3D(Basis(Vector3(0, 0, 1), ang) * Basis(Vector3.UP, PI * 0.5), Vector3(0.0, 0.18, -0.02))
 			back_sheath.add_child(bs)
@@ -636,8 +638,18 @@ func set_sword(m: int) -> void:
 		blade_len = 0.8
 	blade_tip.position = Vector3(0, -0.1 - blade_len, 0)
 	if whip and sword_mode == "whip":
+		whip.set_tint(_tint())
 		whip.reset()
 	set_drawn(drawn)
+
+func _tint() -> Color:
+	return SwordLib.TINTS[clampi(blade_tint, 0, SwordLib.TINTS.size() - 1)][1]
+
+# Внешний вид оружия из меню: вид ножен и цвет клинка.
+func set_look(saya: int, tint: int) -> void:
+	saya_style = saya
+	blade_tint = tint
+	set_sword(sword_index)
 
 func _build_proc_sword(parent: Node3D) -> void:
 	var steel := Color(0.82, 0.86, 0.92)

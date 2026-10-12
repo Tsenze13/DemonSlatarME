@@ -85,3 +85,8 @@ func _physics_process(dt: float) -> void:
 		if d2.length() > 0.001:
 			var up := Vector3.UP if absf(d2.normalized().dot(Vector3.UP)) < 0.95 else Vector3.FORWARD
 			mi.look_at(p1, up)
+
+func set_tint(t: Color) -> void:
+	for i in blocks.size():
+		var base: Color = col_a if i % 3 != 2 else col_b
+		blocks[i].material_override = Vox.cel_mat(Color(base.r * t.r, base.g * t.g, base.b * t.b), true, 0.35)

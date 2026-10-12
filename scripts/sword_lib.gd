@@ -119,15 +119,46 @@ static func _analyze(g: Node, flip := false) -> Dictionary:
 	return {"xform": xf, "handle": handle_len * scale, "guard_w": gw * scale,
 		"blade_w": blade_box.size[wide] * scale, "blade_t": blade_box.size[thin] * scale}
 
+# Цвета клинка (как у клинков, меняющих цвет под хозяина). Белый — как у модели.
+const TINTS := [
+	["Как у модели", Color(1, 1, 1)], ["Синий", Color(0.55, 0.75, 1.0)],
+	["Алый", Color(1.0, 0.45, 0.42)], ["Золотой", Color(1.0, 0.85, 0.42)],
+	["Зелёный", Color(0.55, 1.0, 0.6)], ["Фиолетовый", Color(0.78, 0.55, 1.0)],
+	["Чёрный", Color(0.38, 0.38, 0.45)],
+]
+
+# Виды ножен: имя, цвет, текстура, цвет металла.
+const SAYA := [
+	["Чёрный лак", Color(0.13, 0.11, 0.16), "lacquer", Color(0.85, 0.7, 0.32)],
+	["Алый лак", Color(0.62, 0.1, 0.12), "lacquer", Color(0.9, 0.75, 0.35)],
+	["Синие волны", Color(0.2, 0.32, 0.68), "saya_wave", Color(0.85, 0.88, 0.95)],
+	["Белый с золотом", Color(0.88, 0.85, 0.78), "saya_ring", Color(0.92, 0.75, 0.3)],
+	["Обмотка ромбами", Color(0.25, 0.22, 0.32), "saya_diamond", Color(0.85, 0.7, 0.32)],
+	["Тёмное дерево", Color(0.42, 0.27, 0.15), "wood", Color(0.3, 0.3, 0.33)],
+]
+
+static func _is_blade(copy: Node3D, mi: MeshInstance3D, xf: Transform3D) -> bool:
+	var bb: AABB = xf * (_rel(mi, copy) * mi.get_aabb())
+	return bb.get_center().y < -0.06
+
 # Готовый меч: узел с моделью, гарда в (0,0,0), клинок вдоль -Y.
-static func make(i: int) -> Node3D:
+static func make(i: int, tint := Color(1, 1, 1)) -> Node3D:
 	_ensure()
 	var holder := Node3D.new()
 	var copy: Node3D = _groups[i].duplicate()
 	copy.transform = _info[i].xform
 	holder.add_child(copy)
 	for mi in copy.find_children("*", "MeshInstance3D", true, false):
-		(mi as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+		var m := mi as MeshInstance3D
+		m.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+		if tint != Color(1, 1, 1) and _is_blade(copy, m, _info[i].xform):
+			var src := m.get_active_material(0)
+			if src is StandardMaterial3D:
+				var dm: StandardMaterial3D = src.duplicate()
+				dm.albedo_color = tint
+				dm.emission_enabled = true
+				dm.emission = tint * 0.25
+				m.material_override = dm
 	return holder
 
 # Части меча: "handle" — рукоять и гарда, "blade" — только клинок.
@@ -142,31 +173,30 @@ static func make_part(i: int, part: String) -> Node3D:
 			mi.visible = false
 	return holder
 
-static var _lacquer: StandardMaterial3D
+const Vox = preload("res://scripts/vox.gd")
 
-# Ножны по форме клинка: та же геометрия, толще и шире, тёмный лак, кольцо у устья.
-static func make_scabbard(i: int, col := Color(0.1, 0.08, 0.13)) -> Node3D:
-	var holder := make_part(i, "blade")
-	var copy: Node3D = holder.get_child(0)
-	if _lacquer == null:
-		_lacquer = StandardMaterial3D.new()
-		_lacquer.albedo_color = col
-		_lacquer.roughness = 0.35
+# Ножны по форме клинка: та же геометрия, толще и шире, свой цвет и пиксельный узор,
+# металлическое кольцо у устья, наконечник и шнур-сагэо.
+static func make_scabbard(i: int, style := 0) -> Node3D:
+	var st: Array = SAYA[clampi(style, 0, SAYA.size() - 1)]
+	var root := Node3D.new()
+	var body := make_part(i, "blade")
+	var copy: Node3D = body.get_child(0)
+	var mat: ShaderMaterial = Vox.cel_mat(st[1], false, 0.0, 0.022, st[2], true).duplicate()
+	mat.set_shader_parameter("tex_scale", 6.0)
+	mat.set_shader_parameter("rim", 0.45)
 	for mi in copy.find_children("*", "MeshInstance3D", true, false):
-		(mi as MeshInstance3D).material_override = _lacquer
+		(mi as MeshInstance3D).material_override = mat
+	body.scale = Vector3(2.6, 1.03, 1.3)
+	root.add_child(body)
 	var inf: Dictionary = _info[i]
-	# раздуть вокруг оси клинка: толщина ×2.6, ширина ×1.3, длина +3%
-	holder.scale = Vector3(2.6, 1.03, 1.3)
-	var ring := MeshInstance3D.new()
-	var bm := BoxMesh.new()
-	bm.size = Vector3(0.05, 0.035, inf.blade_w + 0.04) / Vector3(2.6, 1.03, 1.3)
-	ring.mesh = bm
-	var gold := StandardMaterial3D.new()
-	gold.albedo_color = Color(0.75, 0.6, 0.28)
-	ring.material_override = gold
-	ring.position = Vector3(0, -0.03, 0)
-	holder.add_child(ring)
-	return holder
+	var w: float = inf.blade_w
+	var metal: Color = st[3]
+	# кольцо устья, наконечник ножен, шнур
+	Vox.box(root, Vector3(0.06, 0.04, w + 0.05), Vector3(0, -0.03, 0), metal, true, 0.15)
+	Vox.box(root, Vector3(0.055, 0.05, w * 0.9 + 0.03), Vector3(0, -BLADE_LEN - 0.01, 0), metal, true, 0.15)
+	Vox.box(root, Vector3(0.065, 0.025, w + 0.055), Vector3(0, -0.13, 0), Color(0.75, 0.15, 0.2))
+	return root
 
 static func cleanup() -> void:
 	if _scene != null and is_instance_valid(_scene):

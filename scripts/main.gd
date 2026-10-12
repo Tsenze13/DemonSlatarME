@@ -21,7 +21,9 @@ var respawn_t := -1.0
 var menu: Control
 var vol_slider: HSlider
 var sens_slider: HSlider
-var settings := {"volume": 0.4, "sens": 1.0, "pixel": false, "sword": 0}
+var settings := {"volume": 0.4, "sens": 1.0, "pixel": false, "sword": 0, "saya": 0, "tint": 0}
+var saya_opt: OptionButton
+var tint_opt: OptionButton
 var sword_opt: OptionButton
 var pixel_check: CheckBox
 const SETTINGS_PATH := "user://settings.cfg"
@@ -226,6 +228,24 @@ func _build_menu() -> void:
 	sword_opt.add_item("Кубический (свой)")
 	sword_opt.item_selected.connect(func(idx): _set_sword(idx))
 	box.add_child(sword_opt)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 10)
+	box.add_child(row)
+	saya_opt = OptionButton.new()
+	saya_opt.add_theme_font_size_override("font_size", 16)
+	saya_opt.tooltip_text = "Ножны"
+	for st in SwordLib.SAYA:
+		saya_opt.add_item("Ножны: " + st[0])
+	saya_opt.item_selected.connect(func(idx): settings.saya = idx; _apply_look())
+	saya_opt.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(saya_opt)
+	tint_opt = OptionButton.new()
+	tint_opt.add_theme_font_size_override("font_size", 16)
+	for tn in SwordLib.TINTS:
+		tint_opt.add_item("Клинок: " + tn[0])
+	tint_opt.item_selected.connect(func(idx): settings.tint = idx; _apply_look())
+	tint_opt.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(tint_opt)
 	pixel_check = CheckBox.new()
 	pixel_check.text = "Пиксельный фильтр (крупные пиксели)"
 	pixel_check.add_theme_font_size_override("font_size", 18)
@@ -272,6 +292,10 @@ func _set_volume(v: float, show: bool) -> void:
 		hud.notify("Громкость: %d%%" % int(round(settings.volume * 100)), 1.2)
 		_save_settings()
 
+func _apply_look() -> void:
+	if G.player:
+		G.player.set_look(settings.saya, settings.tint)
+
 func _set_sword(idx: int) -> void:
 	settings.sword = idx
 	if G.player:
@@ -289,13 +313,19 @@ func _load_settings() -> void:
 		settings.sens = float(cf.get_value("main", "sens", 1.0))
 		settings.pixel = bool(cf.get_value("main", "pixel", false))
 		settings.sword = int(cf.get_value("main", "sword", 0))
+		settings.saya = int(cf.get_value("main", "saya", 0))
+		settings.tint = int(cf.get_value("main", "tint", 0))
 	_set_volume(settings.volume, false)
 	_set_sens(settings.sens)
 	vol_slider.set_value_no_signal(settings.volume)
 	sens_slider.set_value_no_signal(settings.sens)
 	pixel_check.set_pressed_no_signal(settings.pixel)
 	sword_opt.select(clampi(settings.sword if settings.sword >= 0 else 8, 0, 8))
-	if G.player and G.player.sword_index != settings.sword:
+	saya_opt.select(clampi(settings.saya, 0, SwordLib.SAYA.size() - 1))
+	tint_opt.select(clampi(settings.tint, 0, SwordLib.TINTS.size() - 1))
+	if G.player:
+		G.player.saya_style = settings.saya
+		G.player.blade_tint = settings.tint
 		G.player.set_sword(settings.sword)
 	_on_resize()
 
@@ -305,6 +335,8 @@ func _save_settings() -> void:
 	cf.set_value("main", "sens", settings.sens)
 	cf.set_value("main", "pixel", settings.pixel)
 	cf.set_value("main", "sword", settings.sword)
+	cf.set_value("main", "saya", settings.saya)
+	cf.set_value("main", "tint", settings.tint)
 	cf.save(SETTINGS_PATH)
 
 func _exit_tree() -> void:
