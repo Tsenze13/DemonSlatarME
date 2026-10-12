@@ -20,6 +20,8 @@ var push_y_max := 99.0
 var push_ellipse := Vector2.ZERO # ненулевой — ткань обтекает тело по эллипсу (rx, rz)
 var stiff := 0.0                 # 0..1: насколько ткань держит форму (меньше полощется)
 var rest_h: Array = []
+var thick := 0.04                # толщина ткани в режиме "blocks"
+var u_step := 0.25               # сколько текстуры по ширине на одну клетку
 var chain_size := Vector3(0.1, 0.1, 0.1)
 var chain_col := Color.BLACK
 var chain_taper := 0.6
@@ -42,7 +44,7 @@ func setup() -> void:
 	for c in cols:
 		rest_h.append(0.0 if c == 0 else _aw(c).distance_to(_aw(c - 1)))
 	reset()
-	if mode == "sheet":
+	if mode == "sheet" or mode == "blocks":
 		im = ImmediateMesh.new()
 		mesh = im
 	else:
@@ -151,6 +153,9 @@ func _constrain_soft(i: int, j: int, rest: float, k: float) -> void:
 
 func _draw_cloth() -> void:
 	global_transform = Transform3D.IDENTITY
+	if mode == "blocks":
+		_draw_blocks()
+		return
 	if mode == "sheet":
 		im.clear_surfaces()
 		im.surface_begin(Mesh.PRIMITIVE_TRIANGLES)
@@ -188,3 +193,48 @@ func _v(i: int, n: Vector3, u: float, v: float) -> void:
 	im.surface_set_normal(n)
 	im.surface_set_uv(Vector2(u, v))
 	im.surface_add_vertex(pos[i])
+
+# Каждая клетка ткани — толстая плитка: лицо, изнанка и четыре торца.
+func _draw_blocks() -> void:
+	im.clear_surfaces()
+	im.surface_begin(Mesh.PRIMITIVE_TRIANGLES)
+	var h := thick * 0.5
+	for c in cols - 1:
+		for r in rows - 1:
+			var a := pos[_idx(c, r)]
+			var b := pos[_idx(c + 1, r)]
+			var cc := pos[_idx(c, r + 1)]
+			var d := pos[_idx(c + 1, r + 1)]
+			var n := (b - a).cross(cc - a)
+			if n.length() < 0.000001:
+				continue
+			n = n.normalized() * h
+			var u0 := c * u_step
+			var u1 := (c + 1) * u_step
+			var v0 := float(r) / (rows - 1)
+			var v1 := float(r + 1) / (rows - 1)
+			var fa := a + n
+			var fb := b + n
+			var fc := cc + n
+			var fd := d + n
+			var ba := a - n
+			var bb := b - n
+			var bc := cc - n
+			var bd := d - n
+			var white := Color(1, 1, 1)
+			var side := Color(0.55, 0.55, 0.6)
+			_quad(fa, fb, fc, fd, n, u0, u1, v0, v1, white)
+			_quad(bb, ba, bd, bc, -n, u1, u0, v0, v1, Color(0.8, 0.8, 0.85))
+			_quad(ba, fa, bc, fc, (a - b).normalized(), u0, u0, v0, v1, side)
+			_quad(fb, bb, fd, bd, (b - a).normalized(), u1, u1, v0, v1, side)
+			if r == rows - 2:
+				_quad(fc, fd, bc, bd, (cc - a).normalized(), u0, u1, v1, v1, side)
+	im.surface_end()
+
+func _quad(p0: Vector3, p1: Vector3, p2: Vector3, p3: Vector3, n: Vector3, u0: float, u1: float, v0: float, v1: float, col: Color) -> void:
+	var nn := n.normalized()
+	for t in [[p0, u0, v0], [p1, u1, v0], [p2, u0, v1], [p1, u1, v0], [p3, u1, v1], [p2, u0, v1]]:
+		im.surface_set_normal(nn)
+		im.surface_set_color(col)
+		im.surface_set_uv(Vector2(t[1], t[2]))
+		im.surface_add_vertex(t[0])

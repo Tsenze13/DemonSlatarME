@@ -30,25 +30,25 @@ func build(h: float, w: float, k: String, foliage_col: Color) -> void:
 	cshape.position = Vector3(0, h * 0.5, 0)
 	add_child(cshape)
 	var stump_col := col_trunk if k == "tree" else Color(0.42, 0.6, 0.25)
-	Vox.box(self, Vector3(w, cut_h, w), Vector3(0, cut_h * 0.5, 0), stump_col)
+	Vox.box(self, Vector3(w, cut_h, w), Vector3(0, cut_h * 0.5, 0), stump_col, true, 0.0, "bark")
 	top = Node3D.new()
 	top.position = Vector3(0, cut_h, 0)
 	add_child(top)
 	var th := h - cut_h
 	if k == "tree":
-		Vox.box(top, Vector3(w, th, w), Vector3(0, th * 0.5, 0), col_trunk)
+		Vox.box(top, Vector3(w, th, w), Vector3(0, th * 0.5, 0), col_trunk, true, 0.0, "bark", true)
 		# крона из нескольких блоков
 		var base := th * 0.55
 		var fc := foliage_col
-		Vox.box(top, Vector3(3.4, 1.6, 3.4), Vector3(0, base + 0.6, 0), fc.darkened(0.2))
-		Vox.box(top, Vector3(2.6, 1.4, 2.6), Vector3(0.3, base + 1.9, -0.2), fc)
-		Vox.box(top, Vector3(1.6, 1.1, 1.6), Vector3(-0.2, base + 3.0, 0.2), fc.lightened(0.12))
-		Vox.box(top, Vector3(1.4, 0.9, 1.2), Vector3(1.4, base + 1.0, 0.9), fc.darkened(0.08))
-		Vox.box(top, Vector3(1.2, 0.8, 1.4), Vector3(-1.3, base + 1.3, -0.8), fc.darkened(0.12))
+		Vox.box(top, Vector3(3.4, 1.6, 3.4), Vector3(0, base + 0.6, 0), fc.darkened(0.2), true, 0.0, "leaves", true)
+		Vox.box(top, Vector3(2.6, 1.4, 2.6), Vector3(0.3, base + 1.9, -0.2), fc, true, 0.0, "leaves", true)
+		Vox.box(top, Vector3(1.6, 1.1, 1.6), Vector3(-0.2, base + 3.0, 0.2), fc.lightened(0.12), true, 0.0, "leaves", true)
+		Vox.box(top, Vector3(1.4, 0.9, 1.2), Vector3(1.4, base + 1.0, 0.9), fc.darkened(0.08), true, 0.0, "leaves", true)
+		Vox.box(top, Vector3(1.2, 0.8, 1.4), Vector3(-1.3, base + 1.3, -0.8), fc.darkened(0.12), true, 0.0, "leaves", true)
 	else:
 		# бамбук: зелёный ствол с узлами и листьями наверху
 		var c := Color(0.42, 0.62, 0.25)
-		Vox.box(top, Vector3(w, th, w), Vector3(0, th * 0.5, 0), c)
+		Vox.box(top, Vector3(w, th, w), Vector3(0, th * 0.5, 0), c, true, 0.0, "bark", true)
 		var y := 0.9
 		while y < th:
 			Vox.box(top, Vector3(w * 1.25, 0.08, w * 1.25), Vector3(0, y, 0), c.darkened(0.3), false)

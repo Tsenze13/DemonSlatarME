@@ -20,7 +20,8 @@ var respawn_t := -1.0
 var menu: Control
 var vol_slider: HSlider
 var sens_slider: HSlider
-var settings := {"volume": 0.4, "sens": 1.0}
+var settings := {"volume": 0.4, "sens": 1.0, "pixel": false}
+var pixel_check: CheckBox
 const SETTINGS_PATH := "user://settings.cfg"
 var spawn_points := [Vector3(0, 0.5, -9), Vector3(-8, 0.5, 6), Vector3(10, 0.5, -4), Vector3(4, 0.5, 10)]
 
@@ -97,8 +98,11 @@ func _ready() -> void:
 
 func _on_resize() -> void:
 	var h := float(get_viewport().get_visible_rect().size.y)
-	var shrink := maxi(1, int(round(h / BASE_H)))
+	var shrink := maxi(1, int(round(h / BASE_H))) if settings.pixel else 1
 	container.stretch_shrink = shrink
+	vp.msaa_3d = Viewport.MSAA_DISABLED if settings.pixel else Viewport.MSAA_4X
+	if G.post_mat:
+		G.post_mat.set_shader_parameter("pixel_mode", settings.pixel)
 	if hud:
 		hud.px_scale = float(shrink)
 
@@ -207,6 +211,11 @@ func _build_menu() -> void:
 	box.add_child(t)
 	vol_slider = _slider(box, "Громкость", 0.0, 1.0, 0.05, func(v): _set_volume(v, false))
 	sens_slider = _slider(box, "Чувствительность мыши", 0.2, 3.0, 0.05, func(v): _set_sens(v))
+	pixel_check = CheckBox.new()
+	pixel_check.text = "Пиксельный фильтр (крупные пиксели)"
+	pixel_check.add_theme_font_size_override("font_size", 18)
+	pixel_check.toggled.connect(func(on): settings.pixel = on; _on_resize())
+	box.add_child(pixel_check)
 	var b1 := Button.new()
 	b1.text = "Продолжить"
 	b1.add_theme_font_size_override("font_size", 22)
@@ -258,15 +267,19 @@ func _load_settings() -> void:
 	if cf.load(SETTINGS_PATH) == OK:
 		settings.volume = float(cf.get_value("main", "volume", 0.4))
 		settings.sens = float(cf.get_value("main", "sens", 1.0))
+		settings.pixel = bool(cf.get_value("main", "pixel", false))
 	_set_volume(settings.volume, false)
 	_set_sens(settings.sens)
 	vol_slider.set_value_no_signal(settings.volume)
 	sens_slider.set_value_no_signal(settings.sens)
+	pixel_check.set_pressed_no_signal(settings.pixel)
+	_on_resize()
 
 func _save_settings() -> void:
 	var cf := ConfigFile.new()
 	cf.set_value("main", "volume", settings.volume)
 	cf.set_value("main", "sens", settings.sens)
+	cf.set_value("main", "pixel", settings.pixel)
 	cf.save(SETTINGS_PATH)
 
 func _notification(what: int) -> void:

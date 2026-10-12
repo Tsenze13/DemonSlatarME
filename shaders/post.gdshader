@@ -12,6 +12,7 @@ uniform vec3 tint = vec3(1.0);
 uniform float flash = 0.0;
 uniform vec3 flash_col = vec3(1.0);
 uniform float hurt = 0.0;
+uniform bool pixel_mode = false;
 
 float bayer4(vec2 p) {
 	int x = int(mod(p.x, 4.0));
@@ -28,8 +29,10 @@ void fragment() {
 	vec3 c = texture(screen_tex, uv).rgb * tint;
 
 	// постеризация с дизерингом
-	float levels = 20.0;
-	c = floor(c * levels + 0.5 + bayer4(FRAGCOORD.xy) * 0.9) / levels;
+	if (pixel_mode) {
+		float levels = 20.0;
+		c = floor(c * levels + 0.5 + bayer4(FRAGCOORD.xy) * 0.9) / levels;
+	}
 
 	vec2 d = uv - 0.5;
 	d.x *= 16.0 / 9.0;

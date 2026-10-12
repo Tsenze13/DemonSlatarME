@@ -6,8 +6,11 @@ static var _outline: Shader
 static var _cache := {}
 static var _unshaded := {}
 
-static func cel_mat(col: Color, outline := true, emission := 0.0, ow := 0.022) -> ShaderMaterial:
-	var key := "%s|%s|%.2f|%.3f" % [col.to_html(), outline, emission, ow]
+const Tex = preload("res://scripts/tex.gd")
+
+# tex: вид пиксельной текстуры ("" — без неё), tex_local — текстура едет вместе с объектом.
+static func cel_mat(col: Color, outline := true, emission := 0.0, ow := 0.022, tex := "", tex_local := false) -> ShaderMaterial:
+	var key := "%s|%s|%.2f|%.3f|%s|%s" % [col.to_html(), outline, emission, ow, tex, tex_local]
 	if _cache.has(key):
 		return _cache[key]
 	if _cel == null:
@@ -17,6 +20,10 @@ static func cel_mat(col: Color, outline := true, emission := 0.0, ow := 0.022) -
 	m.shader = _cel
 	m.set_shader_parameter("albedo", col)
 	m.set_shader_parameter("emission", emission)
+	if tex != "":
+		m.set_shader_parameter("tex", Tex.get_tex(tex))
+		m.set_shader_parameter("use_tex", true)
+		m.set_shader_parameter("tex_local", tex_local)
 	if outline:
 		var o := ShaderMaterial.new()
 		o.shader = _outline
@@ -39,12 +46,12 @@ static func flat_mat(col: Color, alpha := false) -> StandardMaterial3D:
 	_unshaded[key] = m
 	return m
 
-static func box(parent: Node, size: Vector3, pos: Vector3, col: Color, outline := true, emission := 0.0) -> MeshInstance3D:
+static func box(parent: Node, size: Vector3, pos: Vector3, col: Color, outline := true, emission := 0.0, tex := "", tex_local := false) -> MeshInstance3D:
 	var mi := MeshInstance3D.new()
 	var bm := BoxMesh.new()
 	bm.size = size
 	mi.mesh = bm
-	mi.material_override = cel_mat(col, outline, emission)
+	mi.material_override = cel_mat(col, outline, emission, 0.022, tex, tex_local)
 	mi.position = pos
 	parent.add_child(mi)
 	return mi
@@ -58,7 +65,7 @@ static func pivot(parent: Node, pos: Vector3, nm := "") -> Node3D:
 	return n
 
 # Статичный блок с коллизией (для мира).
-static func solid(parent: Node, size: Vector3, pos: Vector3, col: Color, outline := true, layer := 1) -> StaticBody3D:
+static func solid(parent: Node, size: Vector3, pos: Vector3, col: Color, outline := true, layer := 1, tex := "") -> StaticBody3D:
 	var sb := StaticBody3D.new()
 	sb.collision_layer = layer
 	sb.collision_mask = 0
@@ -68,7 +75,7 @@ static func solid(parent: Node, size: Vector3, pos: Vector3, col: Color, outline
 	sh.size = size
 	cs.shape = sh
 	sb.add_child(cs)
-	box(sb, size, Vector3.ZERO, col, outline)
+	box(sb, size, Vector3.ZERO, col, outline, 0.0, tex)
 	parent.add_child(sb)
 	return sb
 

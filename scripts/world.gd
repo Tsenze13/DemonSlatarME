@@ -112,7 +112,7 @@ func _ground() -> void:
 	var pm := PlaneMesh.new()
 	pm.size = Vector2(500, 500)
 	mi.mesh = pm
-	mi.material_override = Vox.cel_mat(Color(0.16, 0.34, 0.15), false)
+	mi.material_override = Vox.cel_mat(Color(0.2, 0.42, 0.17), false, 0.0, 0.022, "grass")
 	sb.add_child(mi)
 	add_child(sb)
 	# невидимые стены по краю карты
@@ -126,9 +126,9 @@ func _ground() -> void:
 		w.position = s * 110 + Vector3.UP * 30
 		add_child(w)
 	# вытоптанная земля на поляне и тропинки
-	Vox.box(self, Vector3(22, 0.04, 22), Vector3(0, 0.02, 0), Color(0.33, 0.28, 0.2), false)
-	Vox.box(self, Vector3(4, 0.04, 40), Vector3(0, 0.02, -30), Color(0.33, 0.28, 0.2), false)
-	Vox.box(self, Vector3(34, 0.04, 4), Vector3(26, 0.02, 0), Color(0.33, 0.28, 0.2), false)
+	Vox.box(self, Vector3(22, 0.04, 22), Vector3(0, 0.02, 0), Color(0.4, 0.33, 0.23), false, 0.0, "dirt")
+	Vox.box(self, Vector3(4, 0.04, 40), Vector3(0, 0.02, -30), Color(0.4, 0.33, 0.23), false, 0.0, "dirt")
+	Vox.box(self, Vector3(34, 0.04, 4), Vector3(26, 0.02, 0), Color(0.4, 0.33, 0.23), false, 0.0, "dirt")
 
 func _grass() -> void:
 	var st := SurfaceTool.new()
@@ -207,11 +207,11 @@ func _house(c: Vector3, rot: float, w: float, d: float) -> void:
 	var wood := Color(0.5, 0.34, 0.2)
 	var paper := Color(0.9, 0.86, 0.74)
 	# пол-веранда
-	Vox.solid(h, Vector3(w + 1.6, 0.5, d + 1.6), Vector3(0, 0.25, 0), Color(0.42, 0.3, 0.2))
+	Vox.solid(h, Vector3(w + 1.6, 0.5, d + 1.6), Vector3(0, 0.25, 0), Color(0.42, 0.3, 0.2), true, 1, "wood")
 	# угловые столбы
 	for sx in [-1, 1]:
 		for sz in [-1, 1]:
-			Vox.solid(h, Vector3(0.35, wall_h, 0.35), Vector3(sx * w * 0.5, 0.5 + wall_h * 0.5, sz * d * 0.5), wood)
+			Vox.solid(h, Vector3(0.35, wall_h, 0.35), Vector3(sx * w * 0.5, 0.5 + wall_h * 0.5, sz * d * 0.5), wood, true, 1, "bark")
 	# стены из разрушаемых панелей (сёдзи)
 	var panel_w := 2.0
 	for side in 4:
@@ -236,9 +236,9 @@ func _house(c: Vector3, rot: float, w: float, d: float) -> void:
 			_panel(h, pos, size, paper, wood)
 	# крыша
 	var roof := Color(0.22, 0.2, 0.26)
-	Vox.solid(h, Vector3(w + 2.6, 0.4, d + 2.6), Vector3(0, 0.5 + wall_h + 0.2, 0), roof)
-	Vox.solid(h, Vector3(w + 1.4, 0.6, d + 0.6), Vector3(0, 0.5 + wall_h + 0.7, 0), roof.lightened(0.05))
-	Vox.solid(h, Vector3(w * 0.5, 0.5, d * 0.25), Vector3(0, 0.5 + wall_h + 1.2, 0), roof.darkened(0.1))
+	Vox.solid(h, Vector3(w + 2.6, 0.4, d + 2.6), Vector3(0, 0.5 + wall_h + 0.2, 0), roof, true, 1, "roof")
+	Vox.solid(h, Vector3(w + 1.4, 0.6, d + 0.6), Vector3(0, 0.5 + wall_h + 0.7, 0), roof.lightened(0.05), true, 1, "roof")
+	Vox.solid(h, Vector3(w * 0.5, 0.5, d * 0.25), Vector3(0, 0.5 + wall_h + 1.2, 0), roof.darkened(0.1), true, 1, "roof")
 
 func _panel(parent: Node3D, pos: Vector3, size: Vector3, paper: Color, wood: Color) -> void:
 	var b = StaticBody3D.new()
@@ -252,7 +252,7 @@ func _panel(parent: Node3D, pos: Vector3, size: Vector3, paper: Color, wood: Col
 	cs.shape = sh
 	cs.position = Vector3(0, size.y * 0.5, 0)
 	b.add_child(cs)
-	Vox.box(b, size, Vector3(0, size.y * 0.5, 0), paper)
+	Vox.box(b, size, Vector3(0, size.y * 0.5, 0), paper, true, 0.0, "paper")
 	# деревянная решётка
 	var thin := Vector3(size.x * 1.02, 0.07, size.z * 1.05) if size.x > size.z else Vector3(size.x * 1.05, 0.07, size.z * 1.02)
 	for k in 3:
@@ -274,11 +274,11 @@ func _stone_wall() -> void:
 	var stone := Color(0.5, 0.5, 0.55)
 	for i in 10:
 		var x := -40.0 + i * 8.0
-		Vox.solid(self, Vector3(8.0, 5.0, 1.4), Vector3(x + 4.0, 2.5, 48), stone.lightened(rng.randf_range(-0.06, 0.06)))
-		Vox.solid(self, Vector3(8.2, 0.5, 1.8), Vector3(x + 4.0, 5.2, 48), Color(0.3, 0.28, 0.32))
+		Vox.solid(self, Vector3(8.0, 5.0, 1.4), Vector3(x + 4.0, 2.5, 48), stone.lightened(rng.randf_range(-0.06, 0.06)), true, 1, "stone")
+		Vox.solid(self, Vector3(8.2, 0.5, 1.8), Vector3(x + 4.0, 5.2, 48), Color(0.3, 0.28, 0.32), true, 1, "roof")
 	# стенки поменьше на поляне
-	Vox.solid(self, Vector3(1.2, 4.0, 10.0), Vector3(-13, 2.0, -6), stone)
-	Vox.solid(self, Vector3(9.0, 3.5, 1.2), Vector3(9, 1.75, 14), stone.darkened(0.08))
+	Vox.solid(self, Vector3(1.2, 4.0, 10.0), Vector3(-13, 2.0, -6), stone, true, 1, "stone")
+	Vox.solid(self, Vector3(9.0, 3.5, 1.2), Vector3(9, 1.75, 14), stone.darkened(0.08), true, 1, "stone")
 
 func _shrine() -> void:
 	# ворота-тории на тропинке
@@ -302,10 +302,10 @@ func _lantern(p: Vector3) -> void:
 	cs.position = Vector3(0, 0.95, 0)
 	b.add_child(cs)
 	var st := Color(0.55, 0.55, 0.58)
-	Vox.box(b, Vector3(0.8, 0.25, 0.8), Vector3(0, 0.12, 0), st)
-	Vox.box(b, Vector3(0.3, 0.8, 0.3), Vector3(0, 0.65, 0), st)
+	Vox.box(b, Vector3(0.8, 0.25, 0.8), Vector3(0, 0.12, 0), st, true, 0.0, "stone")
+	Vox.box(b, Vector3(0.3, 0.8, 0.3), Vector3(0, 0.65, 0), st, true, 0.0, "stone")
 	Vox.box(b, Vector3(0.6, 0.5, 0.6), Vector3(0, 1.3, 0), Color(1.0, 0.75, 0.35), true, 1.6)
-	Vox.box(b, Vector3(0.95, 0.2, 0.95), Vector3(0, 1.65, 0), st.darkened(0.2))
+	Vox.box(b, Vector3(0.95, 0.2, 0.95), Vector3(0, 1.65, 0), st.darkened(0.2), true, 0.0, "stone")
 	Vox.box(b, Vector3(0.3, 0.2, 0.3), Vector3(0, 1.85, 0), st.darkened(0.2))
 	var l := OmniLight3D.new()
 	l.light_color = Color(1.0, 0.65, 0.3)
@@ -339,9 +339,9 @@ func _fence(a: Vector3, b: Vector3) -> void:
 		cs.position = Vector3(0, 0.6, 0)
 		f.add_child(cs)
 		var wood := Color(0.55, 0.4, 0.25)
-		Vox.box(f, Vector3(0.18, 1.3, 0.18), Vector3(0, 0.65, -0.9), wood)
-		Vox.box(f, Vector3(0.1, 0.15, 2.0), Vector3(0, 1.0, 0), wood.lightened(0.08))
-		Vox.box(f, Vector3(0.1, 0.15, 2.0), Vector3(0, 0.55, 0), wood.lightened(0.08))
+		Vox.box(f, Vector3(0.18, 1.3, 0.18), Vector3(0, 0.65, -0.9), wood, true, 0.0, "bark")
+		Vox.box(f, Vector3(0.1, 0.15, 2.0), Vector3(0, 1.0, 0), wood.lightened(0.08), true, 0.0, "wood")
+		Vox.box(f, Vector3(0.1, 0.15, 2.0), Vector3(0, 0.55, 0), wood.lightened(0.08), true, 0.0, "wood")
 		f.brad = 1.0
 		f.col = wood
 		f.pieces = 5
@@ -360,7 +360,7 @@ func _props() -> void:
 		var a := rng.randf() * TAU
 		var r := rng.randf_range(14, 50)
 		var s := rng.randf_range(0.8, 2.2)
-		Vox.solid(self, Vector3(s * 1.3, s, s * 1.1), Vector3(cos(a) * r, s * 0.4, sin(a) * r), Color(0.45, 0.45, 0.48))
+		Vox.solid(self, Vector3(s * 1.3, s, s * 1.1), Vector3(cos(a) * r, s * 0.4, sin(a) * r), Color(0.5, 0.5, 0.53), true, 1, "stone")
 	# ящики и бочки в деревне
 	for p in [Vector3(19, 0, -9), Vector3(20, 0, -9), Vector3(30, 0, -21), Vector3(31, 0, -22)]:
 		var b = StaticBody3D.new()
@@ -373,7 +373,7 @@ func _props() -> void:
 		cs.shape = sh
 		cs.position = Vector3(0, 0.45, 0)
 		b.add_child(cs)
-		Vox.box(b, Vector3(0.9, 0.9, 0.9), Vector3(0, 0.45, 0), Color(0.6, 0.45, 0.28))
+		Vox.box(b, Vector3(0.9, 0.9, 0.9), Vector3(0, 0.45, 0), Color(0.6, 0.45, 0.28), true, 0.0, "wood")
 		b.brad = 0.7
 		b.col = Color(0.6, 0.45, 0.28)
 		b.pieces = 6
