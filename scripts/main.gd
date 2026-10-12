@@ -219,8 +219,10 @@ func _build_menu() -> void:
 	box.add_child(sl)
 	sword_opt = OptionButton.new()
 	sword_opt.add_theme_font_size_override("font_size", 18)
-	for nm in SwordLib.NAMES:
-		sword_opt.add_item(nm)
+	for k in 6:
+		sword_opt.add_item(SwordLib.NAMES[k])
+	sword_opt.add_item("Парные клинки (два меча)")
+	sword_opt.add_item("Гибкий клинок (хлыст)")
 	sword_opt.add_item("Кубический (свой)")
 	sword_opt.item_selected.connect(func(idx): _set_sword(idx))
 	box.add_child(sword_opt)
@@ -271,10 +273,9 @@ func _set_volume(v: float, show: bool) -> void:
 		_save_settings()
 
 func _set_sword(idx: int) -> void:
-	var i := idx if idx < SwordLib.NAMES.size() else -1
-	settings.sword = i
+	settings.sword = idx
 	if G.player:
-		G.player.set_sword(i)
+		G.player.set_sword(idx)
 
 func _set_sens(v: float) -> void:
 	settings.sens = v
@@ -293,7 +294,7 @@ func _load_settings() -> void:
 	vol_slider.set_value_no_signal(settings.volume)
 	sens_slider.set_value_no_signal(settings.sens)
 	pixel_check.set_pressed_no_signal(settings.pixel)
-	sword_opt.select(settings.sword if settings.sword >= 0 else SwordLib.NAMES.size())
+	sword_opt.select(clampi(settings.sword if settings.sword >= 0 else 8, 0, 8))
 	if G.player and G.player.sword_index != settings.sword:
 		G.player.set_sword(settings.sword)
 	_on_resize()
@@ -305,6 +306,9 @@ func _save_settings() -> void:
 	cf.set_value("main", "pixel", settings.pixel)
 	cf.set_value("main", "sword", settings.sword)
 	cf.save(SETTINGS_PATH)
+
+func _exit_tree() -> void:
+	SwordLib.cleanup()
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_APPLICATION_FOCUS_OUT and not G.paused and not G.autotest:

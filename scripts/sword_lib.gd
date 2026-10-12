@@ -129,3 +129,48 @@ static func make(i: int) -> Node3D:
 	for mi in copy.find_children("*", "MeshInstance3D", true, false):
 		(mi as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 	return holder
+
+# Части меча: "handle" — рукоять и гарда, "blade" — только клинок.
+static func make_part(i: int, part: String) -> Node3D:
+	var holder := make(i)
+	var copy: Node3D = holder.get_child(0)
+	var xf: Transform3D = _info[i].xform
+	for mi in copy.find_children("*", "MeshInstance3D", true, false):
+		var bb: AABB = xf * (_rel(mi, copy) * (mi as MeshInstance3D).get_aabb())
+		var is_blade: bool = bb.get_center().y < -0.06
+		if (part == "handle" and is_blade) or (part == "blade" and not is_blade):
+			mi.visible = false
+	return holder
+
+static var _lacquer: StandardMaterial3D
+
+# Ножны по форме клинка: та же геометрия, толще и шире, тёмный лак, кольцо у устья.
+static func make_scabbard(i: int, col := Color(0.1, 0.08, 0.13)) -> Node3D:
+	var holder := make_part(i, "blade")
+	var copy: Node3D = holder.get_child(0)
+	if _lacquer == null:
+		_lacquer = StandardMaterial3D.new()
+		_lacquer.albedo_color = col
+		_lacquer.roughness = 0.35
+	for mi in copy.find_children("*", "MeshInstance3D", true, false):
+		(mi as MeshInstance3D).material_override = _lacquer
+	var inf: Dictionary = _info[i]
+	# раздуть вокруг оси клинка: толщина ×2.6, ширина ×1.3, длина +3%
+	holder.scale = Vector3(2.6, 1.03, 1.3)
+	var ring := MeshInstance3D.new()
+	var bm := BoxMesh.new()
+	bm.size = Vector3(0.05, 0.035, inf.blade_w + 0.04) / Vector3(2.6, 1.03, 1.3)
+	ring.mesh = bm
+	var gold := StandardMaterial3D.new()
+	gold.albedo_color = Color(0.75, 0.6, 0.28)
+	ring.material_override = gold
+	ring.position = Vector3(0, -0.03, 0)
+	holder.add_child(ring)
+	return holder
+
+static func cleanup() -> void:
+	if _scene != null and is_instance_valid(_scene):
+		_scene.free()
+	_scene = null
+	_groups.clear()
+	_info.clear()
