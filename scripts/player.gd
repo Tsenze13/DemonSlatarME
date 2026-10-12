@@ -484,7 +484,7 @@ func _physics_process(dt: float) -> void:
 		var striking: bool = state == "attack" and state_t >= atk.hit0 - 0.06 and state_t <= atk.hit1 + 0.12
 		whip.extend = move_toward(whip.extend, 1.0 if striking else 0.0, dt * (14.0 if striking else 3.0))
 		trail.push(blade_base.global_position, whip.tip())
-	elif not (thrown and thrown.visible):
+	else:
 		trail.push(blade_base.global_position, blade_tip.global_position)
 	if sword_mode == "dual":
 		var ds := _dual_side()
@@ -495,8 +495,6 @@ func _physics_process(dt: float) -> void:
 			if state != "attack" or atk_name != "chain":
 				thrown.visible = false
 				sword_vis.visible = true
-			else:
-				trail.push(thrown.global_transform * Vector3(0, -0.05, 0), thrown.global_transform * Vector3(0, -0.85, 0))
 		_update_chain()
 
 func _separate_from_enemies() -> void:
@@ -1286,7 +1284,9 @@ func _throw_update(t: float) -> void:
 	var axis := atk_dir.cross(Vector3.UP).normalized()
 	var spin: float = (t - a.hit0) * 26.0
 	thrown.global_transform = Transform3D(Basis(axis, spin) * Basis(Vector3.UP, facing), p)
-	trail.emitting = true
+	# мазок клинка в полёте не рисуем: при вращении он растягивается на полэкрана
+	trail.emitting = false
+	trail_l.emitting = false
 
 func _throw_hits() -> void:
 	var a := atk
@@ -1838,8 +1838,9 @@ func _animate(dt: float) -> void:
 const DUAL_SIDE := {"l1": "r", "l2": "l", "l3": "r", "l4": "both", "air": "r", "dslash": "l",
 	"heavy": "both", "f1": "both", "f2": "both", "counter": "both", "ripple": "l", "iai": "both", "chain": "r"}
 # Стойки (система торса): рука, направление клинка.
-const DUAL_R_H := Vector3(-0.3, 0.07, 0.26)
-const DUAL_R_D := Vector3(-0.3, -0.3, 1.0)
+# парные: кулак у пояса, клинок вверх и вперёд, как меч в руке; лезвие смотрит вперёд
+const DUAL_R_H := Vector3(-0.29, 0.0, 0.3)
+const DUAL_R_D := Vector3(-0.12, 0.8, 0.6)
 const WHIP_H := Vector3(-0.31, 0.04, 0.24)
 const WHIP_D := Vector3(-0.15, -0.8, 0.55)
 

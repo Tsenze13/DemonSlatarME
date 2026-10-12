@@ -126,6 +126,11 @@ func _run() -> void:
 		var far: float = p.thrown.global_position.distance_to(tp0) if p.thrown.visible else 0.0
 		check(p.atk_name == "chain" and far > 3.5, "бросок клинка на цепи (%.1f м)" % far)
 		check(p.chain.pa.distance_to(p.chain.pb) > 3.0, "цепь тянется за брошенным клинком")
+		var nl := 0
+		for lk in p.chain.links:
+			if lk.visible:
+				nl += 1
+		check(nl > 45, "длинная цепь — больше звеньев, а не растянутые (%d)" % nl)
 		await w(0.6)
 		check(not p.thrown.visible and p.sword_vis.visible, "клинок вернулся в руку")
 		G.cam_rig.dist = 2.6

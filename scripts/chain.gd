@@ -15,20 +15,23 @@ var links: Array = []
 var prev_dt := 1.0 / 60.0
 var seg := 0.1
 
+const LINK := 0.07                # длина звена — постоянная, цепь не растягивается
+const MAX_LINKS := 120
+
 func setup() -> void:
 	top_level = true
 	pos.resize(n)
 	prev.resize(n)
 	var dark := Vox.cel_mat(Color(0.42, 0.42, 0.48), true, 0.0, 0.012)
 	var light := Vox.cel_mat(Color(0.7, 0.7, 0.76), true, 0.1, 0.012)
-	for i in n - 1:
+	var bm := BoxMesh.new()
+	bm.size = Vector3(0.014, 0.034, LINK * 1.2)
+	for i in MAX_LINKS:
 		var mi := MeshInstance3D.new()
-		var bm := BoxMesh.new()
-		bm.size = Vector3(0.014, 0.034, 1.0)
 		mi.mesh = bm
 		mi.material_override = dark if i % 2 == 0 else light
 		mi.top_level = true
-		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+		mi.visible = false
 		add_child(mi)
 		links.append(mi)
 	reset()
@@ -82,20 +85,31 @@ func _physics_process(dt: float) -> void:
 				pos[i].y = 0.03
 	pos[0] = pa
 	pos[n - 1] = pb
-	# звенья: соседние повёрнуты на 90° — получается цепь, а не лента
+	_render()
+
+# Звенья одинакового размера раскладываются вдоль ломаной цепи:
+# длинная цепь — больше звеньев, а не растянутые звенья.
+func _render() -> void:
+	var used := 0
+	var carry := 0.0
 	for i in n - 1:
-		var mi: MeshInstance3D = links[i]
 		var p0 := pos[i]
-		var p1 := pos[i + 1]
-		var d2 := p1 - p0
-		var l2 := d2.length()
-		if l2 < 0.001:
+		var d := pos[i + 1] - p0
+		var l := d.length()
+		if l < 0.0001:
 			continue
-		var z := -d2 / l2
+		var z := -d / l
 		var up := Vector3.UP if absf(z.dot(Vector3.UP)) < 0.95 else Vector3.FORWARD
 		var x := up.cross(z).normalized()
-		var y := z.cross(x)
-		var b := Basis(x, y, z)
-		if i % 2 == 1:
-			b = b * Basis(Vector3.BACK, PI * 0.5)
-		mi.global_transform = Transform3D(b * Basis.from_scale(Vector3(1, 1, l2 * 1.25)), (p0 + p1) * 0.5)
+		var b := Basis(x, z.cross(x), z)
+		var s := carry
+		while s < l and used < MAX_LINKS:
+			var mi: MeshInstance3D = links[used]
+			var bb := b if used % 2 == 0 else b * Basis(Vector3.BACK, PI * 0.5)
+			mi.global_transform = Transform3D(bb, p0 + d * ((s + LINK * 0.5) / l))
+			mi.visible = true
+			used += 1
+			s += LINK
+		carry = s - l
+	for i in range(used, MAX_LINKS):
+		links[i].visible = false
