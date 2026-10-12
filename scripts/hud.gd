@@ -190,23 +190,11 @@ func _draw() -> void:
 			draw_line(sp + Vector2(0, -k), sp + Vector2(0, -k * 0.4), col, 3)
 			draw_line(sp + Vector2(0, k), sp + Vector2(0, k * 0.4), col, 3)
 
-	# --- комбо и ранг стиля ---
-	if style > 1.0 or combo > 1:
-		var rk := _rank()
-		var rx := s.x - 40 * u
-		var ry := s.y * 0.34
+	# --- счётчик ударов ---
+	if combo > 1:
 		var pulse := 1.0 + clampf(1.0 - style_idle * 4.0, 0.0, 1.0) * 0.15
-		_txt(Vector2(rx, ry), rk[1], int(84 * u * pulse), rk[3], HORIZONTAL_ALIGNMENT_RIGHT, 0, 14)
-		_txt(Vector2(rx, ry + 30 * u), rk[2], int(18 * u), rk[3], HORIZONTAL_ALIGNMENT_RIGHT, 0)
-		var nxt := 320.0
-		for x in RANKS:
-			if x[0] > style:
-				nxt = x[0]
-				break
-		var cur: float = rk[0]
-		_bar(Rect2(rx - 160 * u, ry + 42 * u, 160 * u, 5 * u), (style - cur) / maxf(1.0, nxt - cur), rk[3])
-		if combo > 1:
-			_txt(Vector2(rx, ry + 80 * u), "%d ударов" % combo, int(22 * u), Color(1, 1, 1), HORIZONTAL_ALIGNMENT_RIGHT, 0)
+		_txt(Vector2(s.x - 40 * u, s.y * 0.38), "%d" % combo, int(48 * u * pulse), Color(1, 1, 1), HORIZONTAL_ALIGNMENT_RIGHT, 0, 12)
+		_txt(Vector2(s.x - 40 * u, s.y * 0.38 + 26 * u), "ударов подряд", int(15 * u), Color(0.85, 0.9, 1.0), HORIZONTAL_ALIGNMENT_RIGHT, 0)
 
 	# --- титр формы (как в аниме) ---
 	if title_t > 0.0:
@@ -257,4 +245,4 @@ func _draw() -> void:
 		draw_rect(Rect2(Vector2.ZERO, s), Color(0, 0, 0.05, 0.45))
 		_txt(Vector2(s.x * 0.5, s.y * 0.4), "ПАУЗА", int(64 * u), Color(1, 1, 1), HORIZONTAL_ALIGNMENT_CENTER, 0, 14)
 		_txt(Vector2(s.x * 0.5, s.y * 0.4 + 46 * u), "Esc — продолжить   F10 — выйти", int(20 * u), Color(0.85, 0.9, 1.0), HORIZONTAL_ALIGNMENT_CENTER, 0)
-	_txt(Vector2(s.x - 16 * u, s.y - 14 * u), "Клинок и Демон · прототип 0.1", int(12 * u), Color(0.7, 0.75, 0.85, 0.6), HORIZONTAL_ALIGNMENT_RIGHT, 0)
+	_txt(Vector2(s.x - 16 * u, s.y - 14 * u), "Клинок и Демон · прототип 0.2", int(12 * u), Color(0.7, 0.75, 0.85, 0.6), HORIZONTAL_ALIGNMENT_RIGHT, 0)

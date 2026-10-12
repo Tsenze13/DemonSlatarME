@@ -48,6 +48,22 @@ func approach(d: Node, max_t := 4.0) -> void:
 func _run() -> void:
 	var p: Node = G.player
 	await w(1.2)
+	# крупные планы героя
+	G.cam_rig.dist = 2.6
+	G.cam_rig.pitch = -0.12
+	for v in [["00_front", PI], ["00_side", PI * 0.62], ["00_back", 0.15]]:
+		G.cam_rig.yaw = v[1]
+		await w(0.35)
+		await shot(v[0])
+	G.cam_rig.yaw = PI * 0.5
+	p.auto_move = Vector2(-1, 0)
+	await w(0.9)
+	await shot("00_run_side")
+	p.auto_move = Vector2.ZERO
+	G.cam_rig.dist = 5.2
+	G.cam_rig.pitch = -0.3
+	p.global_position = Vector3(0, 0.5, 8)
+	await w(0.5)
 	await shot("01_start")
 	# бег
 	G.cam_rig.yaw = 0.0

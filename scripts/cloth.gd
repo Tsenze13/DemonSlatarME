@@ -6,7 +6,7 @@ extends MeshInstance3D
 const Vox = preload("res://scripts/vox.gd")
 
 var attach: Node3D               # к чему пришито (торс / голова)
-var anchors: Array = []          # локальные точки крепления в attach
+var anchors: Array = []          # точки крепления: Vector3 в attach или [узел, Vector3]
 var cols := 1
 var rows := 4
 var seg := 0.15
@@ -17,6 +17,9 @@ var wind := 1.0
 var push_plane_z := 0.0          # не пускать ткань внутрь тела: z в системе attach
 var push_dir := -1.0             # -1: ткань должна быть позади (z <= plane), +1: впереди
 var push_y_max := 99.0
+var push_ellipse := Vector2.ZERO # ненулевой — ткань обтекает тело по эллипсу (rx, rz)
+var stiff := 0.0                 # 0..1: насколько ткань держит форму (меньше полощется)
+var rest_h: Array = []
 var chain_size := Vector3(0.1, 0.1, 0.1)
 var chain_col := Color.BLACK
 var chain_taper := 0.6
@@ -35,6 +38,9 @@ func setup() -> void:
 	prev = PackedVector3Array()
 	pos.resize(cols * rows)
 	prev.resize(cols * rows)
+	rest_h.clear()
+	for c in cols:
+		rest_h.append(0.0 if c == 0 else _aw(c).distance_to(_aw(c - 1)))
 	reset()
 	if mode == "sheet":
 		im = ImmediateMesh.new()
@@ -54,9 +60,15 @@ func setup() -> void:
 func _idx(c: int, r: int) -> int:
 	return r * cols + c
 
+func _aw(c: int) -> Vector3:
+	var a = anchors[c]
+	if a is Array:
+		return a[0].to_global(a[1])
+	return attach.to_global(a)
+
 func reset() -> void:
 	for c in cols:
-		var a: Vector3 = attach.to_global(anchors[c])
+		var a: Vector3 = _aw(c)
 		var down := -attach.global_transform.basis.y.normalized()
 		for r in rows:
 			var p := a + down * seg * r
@@ -64,12 +76,12 @@ func reset() -> void:
 			prev[_idx(c, r)] = p
 
 func _physics_process(dt: float) -> void:
-	if dt <= 0.0 or attach == null:
+	if dt <= 0.0 or attach == null or pos.size() == 0:
 		return
 	t += dt
 	dt = minf(dt, 1.0 / 30.0)
 	# сбросить при телепорте
-	var a0: Vector3 = attach.to_global(anchors[0])
+	var a0: Vector3 = _aw(0)
 	if a0.distance_to(pos[0]) > 2.0:
 		reset()
 	var ratio := dt / prev_dt
@@ -85,19 +97,33 @@ func _physics_process(dt: float) -> void:
 	var inv := attach.global_transform.affine_inverse()
 	for it in 5:
 		for c in cols:
-			pos[_idx(c, 0)] = attach.to_global(anchors[c])
+			pos[_idx(c, 0)] = _aw(c)
 		for c in cols:
 			for r in range(1, rows):
 				_constrain(_idx(c, r - 1), _idx(c, r), seg, r - 1 == 0)
+				if stiff > 0.0 and r >= 2:
+					_constrain_soft(_idx(c, r - 2), _idx(c, r), seg * 2.0, stiff)
 				if c > 0:
-					var rest: float = (anchors[c] - anchors[c - 1]).length()
-					_constrain(_idx(c - 1, r), _idx(c, r), rest, false)
+					_constrain(_idx(c - 1, r), _idx(c, r), rest_h[c], false)
 		# не пускать ткань внутрь тела
 		for c in cols:
 			for r in range(1, rows):
 				var i := _idx(c, r)
 				var lp: Vector3 = inv * pos[i]
-				if lp.y < push_y_max and (lp.z - push_plane_z) * push_dir < 0.0:
+				if lp.y >= push_y_max:
+					continue
+				if push_ellipse != Vector2.ZERO:
+					var q := Vector2(lp.x / push_ellipse.x, lp.z / push_ellipse.y)
+					var ql := q.length()
+					if ql < 1.0:
+						if ql < 0.001:
+							q = Vector2(0, -1)
+							ql = 1.0
+						q = q / ql
+						lp.x = q.x * push_ellipse.x
+						lp.z = q.y * push_ellipse.y
+						pos[i] = attach.global_transform * lp
+				elif (lp.z - push_plane_z) * push_dir < 0.0:
 					lp.z = push_plane_z
 					pos[i] = attach.global_transform * lp
 	_draw_cloth()
@@ -113,6 +139,15 @@ func _constrain(i: int, j: int, rest: float, i_pinned: bool) -> void:
 	else:
 		pos[i] += d * diff * 0.5
 		pos[j] -= d * diff * 0.5
+
+func _constrain_soft(i: int, j: int, rest: float, k: float) -> void:
+	var d := pos[j] - pos[i]
+	var l := d.length()
+	if l < 0.0001 or l > rest:
+		return
+	var diff := (l - rest) / l * k
+	pos[i] += d * diff * 0.5
+	pos[j] -= d * diff * 0.5
 
 func _draw_cloth() -> void:
 	global_transform = Transform3D.IDENTITY

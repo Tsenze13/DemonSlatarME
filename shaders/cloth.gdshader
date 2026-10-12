@@ -2,7 +2,7 @@
 shader_type spatial;
 render_mode cull_disabled, specular_disabled;
 
-uniform vec4 base : source_color = vec4(0.09, 0.15, 0.34, 1.0);
+uniform vec4 base : source_color = vec4(0.16, 0.27, 0.55, 1.0);
 uniform vec4 pattern : source_color = vec4(0.85, 0.9, 0.95, 1.0);
 uniform vec4 trim : source_color = vec4(0.08, 0.08, 0.12, 1.0);
 

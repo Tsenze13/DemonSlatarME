@@ -17,6 +17,8 @@ const DASH_SPEED := 34.0
 const DASH_TIME := 0.17
 const WALLRUN_TIME := 1.2
 const FLASH_DIST := 10.0
+const HIP_Y := 0.92
+const SWORD_TILT := Vector3(-28, 0, 0)   # клинок вперёд от кулака, а не продолжение руки
 
 # --- атаки ---
 # arm0/arm1 — поворот правой руки (градусы) в начале и конце взмаха,
@@ -87,7 +89,6 @@ var rest := {}       # текущие повороты (сглаживание)
 var blade_base: Node3D
 var blade_tip: Node3D
 var trail
-var haori_back
 var cloths: Array = []
 
 var atk := {}
@@ -154,71 +155,104 @@ func _build_model() -> void:
 	var steel := Color(0.82, 0.86, 0.92)
 	var edge := Color(0.3, 0.62, 1.0)
 
-	var hips := Vox.pivot(model, Vector3(0, 0.95, 0), "hips")
-	Vox.box(hips, Vector3(0.36, 0.24, 0.24), Vector3(0, 0, 0), uni)
-	var torso := Vox.pivot(hips, Vector3(0, 0.1, 0), "torso")
-	Vox.box(torso, Vector3(0.42, 0.5, 0.26), Vector3(0, 0.27, 0), uni)
-	Vox.box(torso, Vector3(0.44, 0.1, 0.28), Vector3(0, 0.03, 0), belt)
-	Vox.box(torso, Vector3(0.12, 0.3, 0.02), Vector3(0, 0.36, 0.135), Color(0.85, 0.85, 0.82), false)  # ворот рубашки
-	var head := Vox.pivot(torso, Vector3(0, 0.55, 0), "head")
-	Vox.box(head, Vector3(0.12, 0.08, 0.12), Vector3(0, 0.02, 0), skin)
-	Vox.box(head, Vector3(0.3, 0.3, 0.3), Vector3(0, 0.2, 0), skin)
-	Vox.box(head, Vector3(0.05, 0.07, 0.02), Vector3(-0.07, 0.21, 0.152), Color(0.1, 0.05, 0.08), false)
-	Vox.box(head, Vector3(0.05, 0.07, 0.02), Vector3(0.07, 0.21, 0.152), Color(0.1, 0.05, 0.08), false)
-	Vox.box(head, Vector3(0.025, 0.04, 0.021), Vector3(-0.06, 0.23, 0.155), Color(0.5, 0.85, 1.0), false, 0.6)
-	Vox.box(head, Vector3(0.025, 0.04, 0.021), Vector3(0.08, 0.23, 0.155), Color(0.5, 0.85, 1.0), false, 0.6)
-	# волосы: шапка, чёлка, затылок
-	Vox.box(head, Vector3(0.36, 0.13, 0.36), Vector3(0, 0.36, -0.01), hair)
-	Vox.box(head, Vector3(0.34, 0.08, 0.08), Vector3(0, 0.31, 0.14), hair)
-	Vox.box(head, Vector3(0.08, 0.14, 0.06), Vector3(-0.12, 0.25, 0.15), hair)
-	Vox.box(head, Vector3(0.06, 0.1, 0.06), Vector3(0.1, 0.27, 0.16), hair_tip)
-	Vox.box(head, Vector3(0.36, 0.28, 0.1), Vector3(0, 0.22, -0.15), hair)
-	Vox.box(head, Vector3(0.06, 0.24, 0.3), Vector3(-0.17, 0.22, -0.01), hair)
-	Vox.box(head, Vector3(0.06, 0.24, 0.3), Vector3(0.17, 0.22, -0.01), hair)
-	var tail_anchor := Vox.pivot(head, Vector3(0, 0.3, -0.2), "tail")
+	var haori := Color(0.16, 0.27, 0.55)
+	# пропорции ~7 голов: рост ~1,8 м с волосами, длинные ноги, узкие плечи
+	var hips := Vox.pivot(model, Vector3(0, HIP_Y, 0), "hips")
+	Vox.box(hips, Vector3(0.32, 0.2, 0.2), Vector3(0, 0, 0), uni)
+	var torso := Vox.pivot(hips, Vector3(0, 0.06, 0), "torso")
+	Vox.box(torso, Vector3(0.34, 0.5, 0.2), Vector3(0, 0.26, 0), uni)
+	Vox.box(torso, Vector3(0.35, 0.08, 0.21), Vector3(0, 0.03, 0), belt)
+	Vox.box(torso, Vector3(0.1, 0.24, 0.02), Vector3(0, 0.36, 0.105), Color(0.85, 0.85, 0.82), false)  # ворот
+	var head := Vox.pivot(torso, Vector3(0, 0.52, 0), "head")
+	Vox.box(head, Vector3(0.09, 0.08, 0.09), Vector3(0, 0.02, 0), skin)
+	Vox.box(head, Vector3(0.22, 0.25, 0.23), Vector3(0, 0.17, 0), skin)
+	Vox.box(head, Vector3(0.12, 0.06, 0.12), Vector3(0, 0.06, 0.04), skin)   # подбородок уже
+	Vox.box(head, Vector3(0.04, 0.055, 0.02), Vector3(-0.055, 0.17, 0.116), Color(0.1, 0.05, 0.08), false)
+	Vox.box(head, Vector3(0.04, 0.055, 0.02), Vector3(0.055, 0.17, 0.116), Color(0.1, 0.05, 0.08), false)
+	Vox.box(head, Vector3(0.02, 0.03, 0.021), Vector3(-0.05, 0.185, 0.119), Color(0.5, 0.85, 1.0), false, 0.6)
+	Vox.box(head, Vector3(0.02, 0.03, 0.021), Vector3(0.06, 0.185, 0.119), Color(0.5, 0.85, 1.0), false, 0.6)
+	# волосы: шапка, чёлка прядями, виски, затылок
+	Vox.box(head, Vector3(0.26, 0.09, 0.26), Vector3(0, 0.32, -0.01), hair)
+	Vox.box(head, Vector3(0.24, 0.05, 0.05), Vector3(0, 0.28, 0.11), hair)
+	Vox.box(head, Vector3(0.05, 0.11, 0.04), Vector3(-0.08, 0.23, 0.12), hair)
+	Vox.box(head, Vector3(0.05, 0.08, 0.04), Vector3(0.02, 0.245, 0.125), hair)
+	Vox.box(head, Vector3(0.04, 0.07, 0.04), Vector3(0.09, 0.24, 0.12), hair_tip)
+	Vox.box(head, Vector3(0.26, 0.22, 0.07), Vector3(0, 0.19, -0.12), hair)
+	Vox.box(head, Vector3(0.04, 0.2, 0.2), Vector3(-0.125, 0.19, -0.01), hair)
+	Vox.box(head, Vector3(0.04, 0.2, 0.2), Vector3(0.125, 0.19, -0.01), hair)
+	var tail_anchor := Vox.pivot(head, Vector3(0, 0.26, -0.15), "tail")
 
-	# правая рука (сторона -X) с клинком
-	var arm_r := Vox.pivot(torso, Vector3(-0.27, 0.46, 0), "arm_r")
-	Vox.box(arm_r, Vector3(0.14, 0.3, 0.14), Vector3(0, -0.14, 0), uni)
-	var fore_r := Vox.pivot(arm_r, Vector3(0, -0.29, 0), "fore_r")
-	Vox.box(fore_r, Vector3(0.13, 0.26, 0.13), Vector3(0, -0.12, 0), uni)
-	Vox.box(fore_r, Vector3(0.11, 0.1, 0.11), Vector3(0, -0.29, 0), skin)
-	var sword := Vox.pivot(fore_r, Vector3(0, -0.3, 0.0), "sword")
-	Vox.box(sword, Vector3(0.05, 0.22, 0.05), Vector3(0, 0.04, 0), Color(0.15, 0.12, 0.2))
-	Vox.box(sword, Vector3(0.17, 0.035, 0.17), Vector3(0, -0.09, 0), Color(0.75, 0.62, 0.3))
-	Vox.box(sword, Vector3(0.06, 1.0, 0.02), Vector3(0, -0.6, 0), steel, true, 0.25)
-	Vox.box(sword, Vector3(0.025, 0.98, 0.024), Vector3(-0.022, -0.6, 0), edge, false, 1.4)
-	blade_base = Vox.pivot(sword, Vector3(0, -0.15, 0))
-	blade_tip = Vox.pivot(sword, Vector3(0, -1.12, 0))
-
-	var arm_l := Vox.pivot(torso, Vector3(0.27, 0.46, 0), "arm_l")
-	Vox.box(arm_l, Vector3(0.14, 0.3, 0.14), Vector3(0, -0.14, 0), uni)
-	var fore_l := Vox.pivot(arm_l, Vector3(0, -0.29, 0), "fore_l")
-	Vox.box(fore_l, Vector3(0.13, 0.26, 0.13), Vector3(0, -0.12, 0), uni)
-	Vox.box(fore_l, Vector3(0.11, 0.1, 0.11), Vector3(0, -0.29, 0), skin)
+	# руки: верх руки закрыт широким рукавом хаори
+	var arms := {}
+	for side in [-1.0, 1.0]:
+		var nm := "r" if side < 0 else "l"
+		var arm := Vox.pivot(torso, Vector3(0.22 * side, 0.45, 0), "arm_" + nm)
+		Vox.box(arm, Vector3(0.1, 0.28, 0.1), Vector3(0, -0.13, 0), uni)
+		Vox.box(arm, Vector3(0.17, 0.2, 0.17), Vector3(0, -0.08, 0), haori)
+		var fore := Vox.pivot(arm, Vector3(0, -0.27, 0), "fore_" + nm)
+		Vox.box(fore, Vector3(0.09, 0.25, 0.09), Vector3(0, -0.12, 0), uni)
+		Vox.box(fore, Vector3(0.08, 0.08, 0.09), Vector3(0, -0.27, 0), skin)
+		arms[nm] = [arm, fore]
+	var fore_r: Node3D = arms.r[1]
+	# катана: рукоять 0,25 м, клинок 0,8 м с лёгким изгибом
+	var sword := Vox.pivot(fore_r, Vector3(0, -0.28, 0.0), "sword")
+	Vox.box(sword, Vector3(0.035, 0.25, 0.035), Vector3(0, 0.03, 0), Color(0.15, 0.12, 0.2))
+	Vox.box(sword, Vector3(0.04, 0.03, 0.04), Vector3(0, 0.16, 0), Color(0.75, 0.62, 0.3), false)
+	Vox.box(sword, Vector3(0.1, 0.022, 0.08), Vector3(0, -0.1, 0), Color(0.75, 0.62, 0.3))
+	var b1 := Vox.pivot(sword, Vector3(0, -0.11, 0))
+	Vox.box(b1, Vector3(0.026, 0.42, 0.012), Vector3(0, -0.21, 0), steel, true, 0.25)
+	Vox.box(b1, Vector3(0.012, 0.42, 0.014), Vector3(0, -0.21, 0.012), edge, false, 1.4)
+	var b2 := Vox.pivot(b1, Vector3(0, -0.42, 0))
+	b2.rotation_degrees = Vector3(6, 0, 0)
+	Vox.box(b2, Vector3(0.024, 0.38, 0.012), Vector3(0, -0.19, 0), steel, true, 0.25)
+	Vox.box(b2, Vector3(0.012, 0.38, 0.014), Vector3(0, -0.19, 0.012), edge, false, 1.4)
+	var tip := Vox.box(b2, Vector3(0.018, 0.05, 0.012), Vector3(0, -0.4, 0.006), steel, false, 0.25)
+	tip.rotation_degrees = Vector3(20, 0, 0)
+	blade_base = Vox.pivot(sword, Vector3(0, -0.13, 0))
+	blade_tip = Vox.pivot(b2, Vector3(0, -0.4, 0))
 
 	# ножны на левом бедре
-	var sheath := Vox.pivot(hips, Vector3(0.22, 0.0, 0.05))
-	sheath.rotation_degrees = Vector3(-70, 0, 0)
-	Vox.box(sheath, Vector3(0.07, 1.0, 0.05), Vector3(0, -0.35, 0), Color(0.12, 0.1, 0.16))
+	var sheath := Vox.pivot(hips, Vector3(0.19, 0.0, 0.06))
+	sheath.rotation_degrees = Vector3(-72, 0, 0)
+	Vox.box(sheath, Vector3(0.045, 0.82, 0.035), Vector3(0, -0.36, 0), Color(0.12, 0.1, 0.16))
 
 	for side in [-1.0, 1.0]:
 		var nm := "r" if side < 0 else "l"
-		var leg := Vox.pivot(hips, Vector3(0.1 * side, -0.06, 0), "leg_" + nm)
-		Vox.box(leg, Vector3(0.17, 0.42, 0.18), Vector3(0, -0.2, 0), uni)
-		var shin := Vox.pivot(leg, Vector3(0, -0.4, 0), "shin_" + nm)
-		Vox.box(shin, Vector3(0.14, 0.24, 0.15), Vector3(0, -0.1, 0), uni)
-		Vox.box(shin, Vector3(0.14, 0.18, 0.15), Vector3(0, -0.3, 0), belt)   # обмотки
-		Vox.box(shin, Vector3(0.14, 0.07, 0.24), Vector3(0, -0.43, 0.04), Color(0.2, 0.15, 0.12))
+		var leg := Vox.pivot(hips, Vector3(0.085 * side, -0.06, 0), "leg_" + nm)
+		Vox.box(leg, Vector3(0.14, 0.42, 0.15), Vector3(0, -0.2, 0), uni)
+		var shin := Vox.pivot(leg, Vector3(0, -0.42, 0), "shin_" + nm)
+		Vox.box(shin, Vector3(0.12, 0.24, 0.13), Vector3(0, -0.1, 0), uni)
+		Vox.box(shin, Vector3(0.115, 0.16, 0.125), Vector3(0, -0.3, 0), belt)   # обмотки
+		Vox.box(shin, Vector3(0.11, 0.06, 0.21), Vector3(0, -0.42, 0.04), Color(0.2, 0.15, 0.12))
 
 	for n in ["hips", "torso", "head", "arm_r", "fore_r", "arm_l", "fore_l", "leg_r", "shin_r", "leg_l", "shin_l", "sword"]:
 		J[n] = model.find_child(n, true, false)
 		rest[n] = Vector3.ZERO
 
-	# хаори: спина и две полы спереди
-	haori_back = _make_cloth(torso, [Vector3(-0.27, 0.5, -0.15), Vector3(-0.13, 0.52, -0.16), Vector3(0, 0.53, -0.16), Vector3(0.13, 0.52, -0.16), Vector3(0.27, 0.5, -0.15)], 7, 0.15, -0.14, -1.0)
-	_make_cloth(torso, [Vector3(-0.27, 0.5, 0.0), Vector3(-0.24, 0.48, 0.14), Vector3(-0.12, 0.45, 0.15)], 7, 0.15, 0.14, 1.0)
-	_make_cloth(torso, [Vector3(0.12, 0.45, 0.15), Vector3(0.24, 0.48, 0.14), Vector3(0.27, 0.5, 0.0)], 7, 0.15, 0.14, 1.0)
+	# хаори: одна ткань, обёрнутая вокруг корпуса и открытая спереди
+	var ring := []
+	for i in 11:
+		var a := lerpf(-1.15, 1.15, float(i) / 10.0) * PI * 0.5 + PI * 0.5
+		# a: от передней левой полы через спину к передней правой
+		var x := cos(a) * 0.2
+		var z := -sin(a) * 0.13
+		if i == 0 or i == 10:
+			z = 0.115
+		ring.append(Vector3(x, 0.47 - absf(cos(a)) * 0.03 - (0.06 if i == 0 or i == 10 else 0.0), z))
+	var body = _make_cloth(torso, ring, 7, 0.12)
+	body.push_ellipse = Vector2(0.205, 0.13)
+	body.stiff = 0.6
+	body.wind = 0.35
+	body.gravity = 16.0
+	body.drag = 0.07
+	# рукава: мешок ткани под предплечьем
+	for nm in ["r", "l"]:
+		var arm: Node3D = arms[nm][0]
+		var fore: Node3D = arms[nm][1]
+		var sl = _make_cloth(torso, [[arm, Vector3(0, -0.1, -0.06)], [arm, Vector3(0, -0.2, -0.07)], [fore, Vector3(0, -0.02, -0.07)], [fore, Vector3(0, -0.12, -0.07)]], 3, 0.1)
+		sl.stiff = 0.5
+		sl.wind = 0.3
+		sl.gravity = 14.0
 	# хвост волос и лента
 	var tail = MeshInstance3D.new()
 	tail.set_script(Cloth)
@@ -226,9 +260,9 @@ func _build_model() -> void:
 	tail.anchors = [Vector3.ZERO]
 	tail.cols = 1
 	tail.rows = 5
-	tail.seg = 0.13
+	tail.seg = 0.1
 	tail.mode = "chain"
-	tail.chain_size = Vector3(0.12, 0.1, 0.1)
+	tail.chain_size = Vector3(0.09, 0.08, 0.08)
 	tail.chain_col = hair
 	tail.gravity = 9.0
 	model.add_child(tail)
@@ -237,12 +271,12 @@ func _build_model() -> void:
 	var ribbon = MeshInstance3D.new()
 	ribbon.set_script(Cloth)
 	ribbon.attach = tail_anchor
-	ribbon.anchors = [Vector3(0.06, 0.0, 0.02)]
+	ribbon.anchors = [Vector3(0.05, 0.0, 0.02)]
 	ribbon.cols = 1
 	ribbon.rows = 4
-	ribbon.seg = 0.12
+	ribbon.seg = 0.1
 	ribbon.mode = "chain"
-	ribbon.chain_size = Vector3(0.09, 0.03, 0.1)
+	ribbon.chain_size = Vector3(0.07, 0.025, 0.08)
 	ribbon.chain_col = Color(0.85, 0.15, 0.2)
 	ribbon.chain_taper = 0.9
 	ribbon.gravity = 6.0
@@ -251,7 +285,7 @@ func _build_model() -> void:
 	ribbon.setup()
 	cloths.append(ribbon)
 
-func _make_cloth(attach: Node3D, anchors: Array, rows: int, seg: float, plane_z: float, pdir: float):
+func _make_cloth(attach: Node3D, anchors: Array, rows: int, seg: float):
 	var c = MeshInstance3D.new()
 	c.set_script(Cloth)
 	c.attach = attach
@@ -260,15 +294,13 @@ func _make_cloth(attach: Node3D, anchors: Array, rows: int, seg: float, plane_z:
 	c.rows = rows
 	c.seg = seg
 	c.mode = "sheet"
-	c.push_plane_z = plane_z
-	c.push_dir = pdir
 	c.push_y_max = 0.6
 	var m := ShaderMaterial.new()
 	m.shader = load("res://shaders/cloth.gdshader")
 	c.material_override = m
 	model.add_child(c)
-	c.setup()
 	cloths.append(c)
+	c.call_deferred("setup")
 	return c
 
 # =====================================================================
@@ -1170,7 +1202,7 @@ func _animate(dt: float) -> void:
 	var p := {}
 	for k in J:
 		p[k] = Vector3.ZERO
-	var hips_y := 0.95
+	var hips_y := HIP_Y
 	var lean := 0.0
 	var roll := 0.0
 	var hv := Vector3(velocity.x, 0, velocity.z)
@@ -1195,7 +1227,7 @@ func _animate(dt: float) -> void:
 			p.leg_l = Vector3(s * 55 * k, 0, 0)
 			p.shin_r = Vector3(maxf(0.0, c) * 80 * k + 10, 0, 0)
 			p.shin_l = Vector3(maxf(0.0, -c) * 80 * k + 10, 0, 0)
-			hips_y = 0.95 - absf(c) * 0.06 * k - 0.05 * k
+			hips_y = HIP_Y - absf(c) * 0.06 * k - 0.05 * k
 			if sp > 9.0:
 				# быстрый бег: корпус вперёд, руки и клинок назад
 				lean = 30.0 * minf(1.0, (sp - 9.0) / 5.0)
@@ -1226,7 +1258,7 @@ func _animate(dt: float) -> void:
 			p.shin_r = Vector3(20, 0, 0)
 			p.shin_l = Vector3(12, 0, 0)
 			p.torso = Vector3(br, -15, 0)
-			hips_y = 0.9
+			hips_y = HIP_Y - 0.04
 	if state == "wallrun":
 		run_phase += dt * 16.0
 		var s2 := sin(run_phase)
@@ -1272,7 +1304,7 @@ func _animate(dt: float) -> void:
 		p.leg_l = Vector3(25, 0, 10)
 		p.shin_r = Vector3(30, 0, 0)
 		p.shin_l = Vector3(20, 0, 0)
-		hips_y = 0.86
+		hips_y = HIP_Y - 0.08
 		if state == "breathe":
 			p.torso = Vector3(sin(G.real_time * 5.0) * 4.0, 0, 0)
 			p.head = Vector3(-10, 0, 0)
@@ -1313,7 +1345,7 @@ func _animate(dt: float) -> void:
 		p.leg_l = Vector3(30, 0, 10)
 		p.shin_r = Vector3(35, 0, 0)
 		p.shin_l = Vector3(25, 0, 0)
-		hips_y = 0.84
+		hips_y = HIP_Y - 0.1
 		lean = 12.0
 		snap = true
 		if a.has("spin"):
@@ -1333,7 +1365,7 @@ func _animate(dt: float) -> void:
 		var cur: Vector3 = rest[k]
 		cur = cur.lerp(p[k], rate)
 		rest[k] = cur
-		J[k].rotation_degrees = cur
+		J[k].rotation_degrees = cur + (SWORD_TILT if k == "sword" else Vector3.ZERO)
 	J.hips.position.y = lerpf(J.hips.position.y, hips_y, rate)
 	var flip := 0.0
 	if flip_t > 0.0:

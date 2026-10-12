@@ -10,7 +10,7 @@ const Fx = preload("res://scripts/fx.gd")
 const Hud = preload("res://scripts/hud.gd")
 const Sfx = preload("res://scripts/sfx.gd")
 
-const BASE_H := 360.0   # высота «пиксельного» кадра
+const BASE_H := 540.0   # высота «пиксельного» кадра (1080p → в 2 раза крупнее)
 
 var container: SubViewportContainer
 var vp: SubViewport
