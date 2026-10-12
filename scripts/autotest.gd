@@ -95,6 +95,49 @@ func _run() -> void:
 		await w(0.03)
 	check(p.scabbard_node.get_child_count() > 0, "все виды ножен и цвета клинка ставятся")
 	p.set_look(0, 0)
+	# парные клинки: цепь, бинты за спиной, размотка при выхвате, намотка обратно, бросок на цепи
+	if SwordLibT.count() >= 8:
+		p.set_sword(6)
+		p.set_drawn(false)
+		G.cam_rig.dist = 2.6
+		G.cam_rig.pitch = -0.12
+		G.cam_rig.yaw = 0.35
+		await w(0.5)
+		await shot("00d_dual_back")
+		check(p.bandage.visible_bands() >= 20, "парные за спиной в бинтах (%d витков)" % p.bandage.visible_bands())
+		check(p.chain.visible and p.chain.pos[0].distance_to(p.chain.pa) < 0.01, "цепь между навершиями")
+		p.press("draw")
+		await w(0.1)
+		await shot("00d_unwrap")
+		check(p.bandage.strips.size() > 0, "бинты разматываются и спадают")
+		await w(0.45)
+		check(p.drawn and p.bandage.visible_bands() == 0, "парные в руках, бинтов нет")
+		G.cam_rig.yaw = PI * 0.8
+		await w(0.4)
+		check(p.bandage.strips.size() == 0, "упавшие бинты исчезли")
+		await shot("00d_dual_stance")
+		check(p.chain.sag() > 0.08, "цепь провисает между руками (%.2f)" % p.chain.sag())
+		G.cam_rig.dist = 4.5
+		G.cam_rig.yaw = PI * 0.5
+		var tp0: Vector3 = p.global_position
+		p.press("heavy")
+		await w(0.28)
+		await shot("00d_throw")
+		var far: float = p.thrown.global_position.distance_to(tp0) if p.thrown.visible else 0.0
+		check(p.atk_name == "chain" and far > 3.5, "бросок клинка на цепи (%.1f м)" % far)
+		check(p.chain.pa.distance_to(p.chain.pb) > 3.0, "цепь тянется за брошенным клинком")
+		await w(0.6)
+		check(not p.thrown.visible and p.sword_vis.visible, "клинок вернулся в руку")
+		G.cam_rig.dist = 2.6
+		G.cam_rig.yaw = 0.35
+		p.press("draw")
+		await w(0.32)
+		await shot("00d_wrap")
+		await w(0.5)
+		check(not p.drawn and p.bandage.is_wrapped(), "на спине бинты намотались обратно")
+		await shot("00d_wrapped")
+		G.cam_rig.dist = 5.2
+		G.cam_rig.pitch = -0.3
 	p.set_sword(0)
 	p.set_drawn(false)
 	# настоящая мышь: поворот камеры и удар ЛКМ должны доходить до игры

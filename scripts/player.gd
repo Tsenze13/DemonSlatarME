@@ -9,6 +9,8 @@ const Cloth = preload("res://scripts/cloth.gd")
 const Tex = preload("res://scripts/tex.gd")
 const SwordLib = preload("res://scripts/sword_lib.gd")
 const Whip = preload("res://scripts/whip.gd")
+const Chain = preload("res://scripts/chain.gd")
+const Bandage = preload("res://scripts/bandage.gd")
 
 # --- движение ---
 const RUN_SPEED := 13.5
@@ -79,6 +81,11 @@ const ATK := {
 		"power": 2, "stagger": 0.7, "hitstop": 0.1, "shake": 0.3, "next": "l3",
 		"arm0": Vector3(-10, 75, 25), "arm1": Vector3(-88, -125, 0), "fore0": -30, "fore1": 0, "tw0": 55, "tw1": -55,
 		"fx": "slash", "roll": -4, "rev": true, "impact_light": true},
+	# парные клинки: бросок правого клинка на цепи — летит, вращаясь, и возвращается
+	"chain": {"dur": 0.74, "hit0": 0.13, "hit1": 0.52, "dmg": 11, "range": 7.0, "arc": 50, "lunge": 0.0,
+		"power": 2, "stagger": 0.45, "hitstop": 0.04, "shake": 0.18, "next": "",
+		"arm0": Vector3(-165, -35, 0), "arm1": Vector3(-80, 15, 0), "fore0": -70, "fore1": 0, "tw0": -40, "tw1": 25,
+		"fx": "chain", "multi": 0.1, "throw": 6.5, "knock": 4.0, "wr": 0.0},
 	"ripple": {"dur": 0.45, "hit0": 0.08, "hit1": 0.18, "dmg": 10, "range": 4.8, "arc": 120, "lunge": 14.0,
 		"power": 1, "stagger": 0.4, "hitstop": 0.06, "shake": 0.15, "next": "",
 		"arm0": Vector3(-30, 60, 0), "arm1": Vector3(-90, -60, 0), "fore0": 0, "fore1": 0, "tw0": 30, "tw1": -30,
@@ -159,6 +166,17 @@ var draw_from_drawn := false
 var auto_sprint := false
 var sprint_fx_t := 0.0
 var landing_vel := 0.0
+# парные клинки: цепь между навершиями, бинты за спиной, бросок на цепи
+var chain
+var bandage
+var back_swords: Array = []
+var pommel_r := 0.25
+var pommel_l := 0.25
+var thrown: Node3D
+var throw_from := Vector3.ZERO
+var throw_to := Vector3.ZERO
+var throw_init := false
+var ik_pole_up := false
 
 func _ready() -> void:
 	collision_layer = 2
@@ -186,6 +204,17 @@ func _ready() -> void:
 	whip.anchor = whip_anchor
 	add_child(whip)
 	whip.setup()
+	chain = Node3D.new()
+	chain.set_script(Chain)
+	add_child(chain)
+	chain.setup()
+	bandage = Node3D.new()
+	bandage.set_script(Bandage)
+	add_child(bandage)
+	thrown = Node3D.new()
+	thrown.top_level = true
+	thrown.visible = false
+	add_child(thrown)
 	set_sword(sword_index)
 	global_position = spawn_pos
 	facing = PI
@@ -455,13 +484,20 @@ func _physics_process(dt: float) -> void:
 		var striking: bool = state == "attack" and state_t >= atk.hit0 - 0.06 and state_t <= atk.hit1 + 0.12
 		whip.extend = move_toward(whip.extend, 1.0 if striking else 0.0, dt * (14.0 if striking else 3.0))
 		trail.push(blade_base.global_position, whip.tip())
-	else:
+	elif not (thrown and thrown.visible):
 		trail.push(blade_base.global_position, blade_tip.global_position)
 	if sword_mode == "dual":
 		var ds := _dual_side()
 		trail_l.emitting = trail.emitting and ds != "r"
 		trail.emitting = trail.emitting and ds != "l"
 		trail_l.push(sword_l.global_transform * Vector3(0, -0.13, 0), sword_l.global_transform * Vector3(0, -0.95, 0))
+		if thrown.visible:
+			if state != "attack" or atk_name != "chain":
+				thrown.visible = false
+				sword_vis.visible = true
+			else:
+				trail.push(thrown.global_transform * Vector3(0, -0.05, 0), thrown.global_transform * Vector3(0, -0.85, 0))
+		_update_chain()
 
 func _separate_from_enemies() -> void:
 	for e in G.enemies:
@@ -576,7 +612,10 @@ func _common_actions(inp: Vector3) -> bool:
 			_start_attack("l1")
 		return true
 	if pressed("heavy"):
-		_start_attack("heavy" if drawn else "iai")
+		if not drawn:
+			_start_attack("iai")
+		else:
+			_start_attack("chain" if sword_mode == "dual" else "heavy")
 		return true
 	if pressed("parry"):
 		if not drawn:
@@ -597,7 +636,10 @@ func set_sword(m: int) -> void:
 	sword_index = m
 	if sword_vis == null:
 		return
-	for holder in [sword_vis, sword_l_vis, sheathed_hilt, scabbard_node, back_sheath]:
+	back_swords.clear()
+	if bandage:
+		bandage.build([], [])
+	for holder in [sword_vis, sword_l_vis, sheathed_hilt, scabbard_node, back_sheath, thrown]:
 		for c in holder.get_children():
 			c.queue_free()
 	var n := SwordLib.count()
@@ -617,12 +659,20 @@ func set_sword(m: int) -> void:
 		var l := SwordLib.make(7, _tint())
 		l.position = Vector3(0, -0.1, 0)
 		sword_l_vis.add_child(l)
-		# в ножнах — крест-накрест за спиной, рукояти над плечами
+		thrown.add_child(SwordLib.make(6, _tint()))
+		pommel_r = SwordLib.info(6).handle
+		pommel_l = SwordLib.info(7).handle
+		# за спиной — крест-накрест в бинтах, рукояти над плечами
+		var dims := []
 		for k in 2:
 			var bs := SwordLib.make(6 + k, _tint())
-			var ang := 0.55 if k == 0 else -0.55
-			bs.transform = Transform3D(Basis(Vector3(0, 0, 1), ang) * Basis(Vector3.UP, PI * 0.5), Vector3(0.0, 0.18, -0.02))
+			bs.transform = Transform3D(_back_basis(k), _back_pos(k))
 			back_sheath.add_child(bs)
+			back_swords.append(bs)
+			var inf := SwordLib.info(6 + k)
+			dims.append([inf.blade_w, inf.blade_t])
+		bandage.build(back_swords, dims)
+		bandage.set_full(not drawn)
 	elif m == 7 and n >= 9:
 		sword_mode = "whip"
 		var h := SwordLib.make_part(8, "handle")
@@ -646,6 +696,14 @@ func set_sword(m: int) -> void:
 		whip.set_tint(_tint())
 		whip.reset()
 	set_drawn(drawn)
+
+# Клинки за спиной (система back_sheath): k=0 — правый (рукоять над правым плечом).
+func _back_basis(k: int) -> Basis:
+	var ang := 0.55 if k == 0 else -0.55
+	return Basis(Vector3(0, 0, 1), ang) * Basis(Vector3.UP, PI * 0.5)
+
+func _back_pos(k: int) -> Vector3:
+	return Vector3(-0.13 if k == 0 else 0.13, 0.03, -0.03 if k == 0 else -0.08)
 
 func _tint() -> Color:
 	return SwordLib.TINTS[clampi(blade_tint, 0, SwordLib.TINTS.size() - 1)][1]
@@ -671,14 +729,33 @@ func _build_proc_sword(parent: Node3D) -> void:
 	Vox.box(b2, Vector3(0.016, 0.38, 0.012), Vector3(0, -0.19, -0.013), edge, false, 1.4)
 
 func set_drawn(on: bool) -> void:
+	var was := drawn
 	drawn = on
 	if J.is_empty():
 		return
+	if sword_mode == "dual" and bandage:
+		if on:
+			bandage.unwrap_now()           # остатки бинтов — лентами вниз
+		elif was:
+			bandage.wrap()                 # клинки на спине — бинты наматываются
+		else:
+			bandage.set_full(true)
+	if thrown:
+		thrown.visible = false
+		sword_vis.visible = true
 	J.sword.visible = on
 	sword_l.visible = on and sword_mode == "dual"
 	sheathed_hilt.visible = not on
 	back_sheath.visible = not on and sword_mode == "dual"
 	scabbard_node.visible = sword_mode in ["katana", "proc"]
+	if chain:
+		var cv: bool = sword_mode == "dual"
+		if cv and not chain.visible:
+			chain.visible = true
+			_update_chain()
+			chain.reset()
+		chain.visible = cv
+		chain.length = 1.3 if on else 0.75
 	if whip:
 		whip.visible = on and sword_mode == "whip"
 		if whip.visible:
@@ -691,6 +768,8 @@ func _st_draw(dt: float) -> void:
 	_gravity(dt)
 	var slow := sword_mode in ["katana", "proc"]
 	var swap_t := (0.16 if not drawn else 0.4) if slow else (0.12 if not drawn else 0.2)
+	if sword_mode == "dual":
+		swap_t = 0.17 if not drawn else 0.2
 	if not draw_swapped and state_t >= swap_t:
 		draw_swapped = true
 		if drawn:
@@ -700,7 +779,8 @@ func _st_draw(dt: float) -> void:
 			set_drawn(true)
 			G.sfx.play("draw", -2.0)
 			G.fx.burst(blade_tip.global_position, Color(0.9, 0.97, 1.0), 6, 3.0, 0.06, 0.25, 0.0)
-	if state_t > (0.52 if slow else 0.3):
+	var end_t := 0.52 if slow else (0.4 if sword_mode == "dual" else 0.3)
+	if state_t > end_t:
 		_set_state("move")
 
 func _set_state(s: String) -> void:
@@ -709,6 +789,9 @@ func _set_state(s: String) -> void:
 	if s == "draw":
 		draw_swapped = false
 		draw_from_drawn = drawn
+		if sword_mode == "dual" and not drawn:
+			bandage.unwrap()               # руки к рукоятям — бинты разматываются
+			G.sfx.play("whoosh", -9.0, 1.5)
 
 # ---------------------------------------------------------------------
 func _try_kickoff(inp: Vector3) -> bool:
@@ -1027,6 +1110,16 @@ func _start_attack(nm: String) -> void:
 		invuln_t = 0.2
 		sonic_boom(atk_dir)
 		G.fx.afterimage(model, Color(0.85, 0.95, 1.0), 0.35)
+	if nm == "chain":
+		# бросок на цепи: до демона (сквозь него) или на полную длину
+		var dist: float = atk.throw
+		var tg2 := _aim_target(atk.throw + 2.0)
+		if tg2:
+			var to3: Vector3 = tg2.global_position - global_position
+			to3.y = 0
+			dist = clampf(to3.length() + 0.6, 2.5, atk.throw)
+		throw_to = global_position + atk_dir * dist + Vector3.UP * 1.15
+		throw_init = false
 	if atk.has("jump"):
 		velocity.y = atk.jump
 	elif atk.get("air", false):
@@ -1069,13 +1162,18 @@ func _st_attack(dt: float, inp: Vector3) -> void:
 		_gravity(dt)
 	# окно удара
 	trail.emitting = t >= a.hit0 - 0.05 and t <= a.hit1 + 0.06
+	if atk_name == "chain":
+		_throw_update(t)
 	if t >= a.hit0 and t <= a.hit1:
 		if a.has("multi"):
 			multi_t -= dt
 			if multi_t <= 0.0:
 				multi_t = a.multi
 				hit_set.clear()
-				_attack_fx_tick()
+				if atk_name == "chain":
+					G.sfx.play("whoosh", -9.0, 1.4)
+				else:
+					_attack_fx_tick()
 		if not hit_set.has("_fx"):
 			hit_set["_fx"] = true
 			_attack_fx()
@@ -1147,6 +1245,8 @@ func _attack_fx() -> void:
 			G.add_shake(0.4)
 		"whirl":
 			pass
+		"chain":
+			G.sfx.play("clang", -12.0, 1.6)
 
 func _attack_fx_tick() -> void:
 	# Водоворот: волна вокруг тела на каждом обороте
@@ -1156,8 +1256,81 @@ func _attack_fx_tick() -> void:
 	G.fx.droplets(o, Vector3.UP, 5)
 	G.sfx.play("whoosh", -8.0, 1.2)
 
+# ---------------------------------------------------------------------
+# Бросок на цепи: правый клинок летит к цели, крутясь, и возвращается в руку.
+func _throw_k(t: float) -> float:
+	var a := atk
+	var mid: float = (a.hit0 + a.hit1) * 0.5
+	if t < a.hit0 or t > a.hit1:
+		return 0.0
+	if t < mid:
+		return Vox.ease_out((t - a.hit0) / (mid - a.hit0))
+	return 1.0 - Vox.ease_in_out((t - mid) / (a.hit1 - mid))
+
+func _throw_update(t: float) -> void:
+	var a := atk
+	var flying: bool = t >= a.hit0 and t <= a.hit1
+	thrown.visible = flying and sword_mode == "dual"
+	sword_vis.visible = not thrown.visible
+	if not thrown.visible:
+		return
+	var hand: Vector3 = J.sword.global_transform * Vector3(0, -0.1, 0)
+	if not throw_init:
+		throw_init = true
+		throw_from = hand
+	var k := _throw_k(t)
+	# туда — по прямой с небольшой дугой, обратно — в текущее положение руки
+	var mid: float = (a.hit0 + a.hit1) * 0.5
+	var from := throw_from if t < mid else hand
+	var p := from.lerp(throw_to, k) + Vector3.UP * sin(k * PI) * 0.35
+	var axis := atk_dir.cross(Vector3.UP).normalized()
+	var spin: float = (t - a.hit0) * 26.0
+	thrown.global_transform = Transform3D(Basis(axis, spin) * Basis(Vector3.UP, facing), p)
+	trail.emitting = true
+
+func _throw_hits() -> void:
+	var a := atk
+	if not thrown.visible:
+		return
+	var c := thrown.global_transform * Vector3(0, -0.45, 0)
+	for e in G.enemies:
+		if not is_instance_valid(e) or e.is_dead() or hit_set.has(e.get_instance_id()):
+			continue
+		var to: Vector3 = e.global_position + Vector3.UP * 1.1 - c
+		if Vector3(to.x, 0, to.z).length() > e.radius + 1.0 or absf(to.y) > 1.8:
+			continue
+		hit_set[e.get_instance_id()] = true
+		var dir := Vector3(to.x, 0, to.z).normalized() if Vector3(to.x, 0, to.z).length() > 0.1 else atk_dir
+		var res: Dictionary = e.take_hit(a.dmg, dir, a)
+		_on_hit(e, res, dir)
+	for b in get_tree().get_nodes_in_group("breakable"):
+		if not is_instance_valid(b) or hit_set.has(b.get_instance_id()):
+			continue
+		var to2: Vector3 = b.center() - c
+		if Vector3(to2.x, 0, to2.z).length() > b.brad + 0.7:
+			continue
+		hit_set[b.get_instance_id()] = true
+		if b.slash_hit(global_position, atk_dir, a.power):
+			G.hitstop(0.03)
+
+func _update_chain() -> void:
+	if chain == null or sword_mode != "dual":
+		return
+	if drawn:
+		chain.pa = sword_l.global_transform * Vector3(0, -0.1 + pommel_l, 0)
+		if thrown.visible:
+			chain.pb = thrown.global_transform * Vector3(0, pommel_r, 0)
+		else:
+			chain.pb = J.sword.global_transform * Vector3(0, -0.1 + pommel_r, 0)
+	elif back_swords.size() == 2:
+		chain.pb = back_swords[0].global_transform * Vector3(0, pommel_r, 0)
+		chain.pa = back_swords[1].global_transform * Vector3(0, pommel_l, 0)
+
 func _check_hits() -> void:
 	var a := atk
+	if atk_name == "chain":
+		_throw_hits()
+		return
 	var range_: float = a.range * (1.9 if sword_mode == "whip" else 1.0)
 	var half := deg_to_rad(a.arc) * 0.5
 	for e in G.enemies:
@@ -1573,6 +1746,11 @@ func _animate(dt: float) -> void:
 		p.fore_r = Vector3(-60, 0, 0)
 		p.torso = Vector3(5, 25 * kd, 0)
 		p.arm_l = Vector3(15, -25, 18)
+		if sword_mode == "dual":
+			# руки за спину: корпус чуть вперёд, плечи раскрыты
+			p.torso = Vector3(10 * kd, 0, 0)
+			p.head = Vector3(8 * kd, 0, 0)
+			p.arm_l = Vector3(-25, -70, -30) * kd
 		snap = true
 	if state == "hurt":
 		lean = -25.0
@@ -1658,7 +1836,7 @@ func _animate(dt: float) -> void:
 # Двуручный хват катаны: руки сами тянутся к рукояти (обратная кинематика).
 # Парные клинки: какой рукой идёт удар (r — правой, l — левой, both — обеими).
 const DUAL_SIDE := {"l1": "r", "l2": "l", "l3": "r", "l4": "both", "air": "r", "dslash": "l",
-	"heavy": "both", "f1": "both", "f2": "both", "counter": "both", "ripple": "l", "iai": "both"}
+	"heavy": "both", "f1": "both", "f2": "both", "counter": "both", "ripple": "l", "iai": "both", "chain": "r"}
 # Стойки (система торса): рука, направление клинка.
 const DUAL_R_H := Vector3(-0.3, 0.07, 0.26)
 const DUAL_R_D := Vector3(-0.3, -0.3, 1.0)
@@ -1716,6 +1894,9 @@ func _apply_ik(dt: float, sp: float) -> void:
 	var inv := torso.global_transform.affine_inverse()
 	if state == "draw" and katana:
 		_draw_ik(inv)
+		return
+	if state == "draw" and sword_mode == "dual":
+		_dual_draw_ik()
 		return
 	if grip_w > 0.001:
 		_hold("r", H, D, grip_w, J.sword)
@@ -1781,6 +1962,43 @@ func _draw_ik(inv: Transform3D) -> void:
 	# левая рука держит ножны у устья
 	_ik_arm("l", mouth + Vector3(0, 0.02, 0.02), 1.0)
 
+# Парные: руки за плечи к рукоятям на спине (бинты в это время спадают),
+# клинки из-за спины — в стойку. Обратно — наоборот.
+func _dual_draw_ik() -> void:
+	var t := state_t
+	for k in 2:
+		var side := "r" if k == 0 else "l"
+		var blade: Node3D = J.sword if k == 0 else sword_l
+		var bb: Basis = back_sheath.basis * _back_basis(k)
+		var grip: Vector3 = back_sheath.position + _back_pos(k) + bb * Vector3(0, 0.1, 0)
+		var H := DUAL_R_H if k == 0 else Vector3(-DUAL_R_H.x, DUAL_R_H.y, DUAL_R_H.z)
+		var D := DUAL_R_D if k == 0 else Vector3(-DUAL_R_D.x, DUAL_R_D.y, DUAL_R_D.z)
+		var sb := _blade_basis(D.normalized())
+		var hand := grip
+		var b := bb
+		var w := 1.0
+		if not draw_from_drawn:
+			if t < 0.17:
+				w = Vox.ease_out(t / 0.13)
+			else:
+				var kk := Vox.ease_in_out((t - 0.17) / 0.2)
+				# клинки идут по дуге над плечами
+				hand = grip.lerp(H, kk) + Vector3(0, sin(kk * PI) * 0.12, 0)
+				b = Basis(bb.get_rotation_quaternion().slerp(sb.get_rotation_quaternion(), kk))
+		else:
+			if t < 0.2:
+				var kk2 := Vox.ease_in_out(t / 0.18)
+				hand = H.lerp(grip, kk2) + Vector3(0, sin(kk2 * PI) * 0.12, 0)
+				b = Basis(sb.get_rotation_quaternion().slerp(bb.get_rotation_quaternion(), kk2))
+			else:
+				w = 1.0 - Vox.ease_in_out((t - 0.22) / 0.16)
+		ik_pole_up = hand.y > 0.35
+		_ik_arm(side, hand, w)
+		ik_pole_up = false
+		if drawn:
+			var ft: Basis = J["arm_" + side].basis * J["fore_" + side].basis
+			blade.basis = (ft.inverse() * b).orthonormalized()
+
 # Базис ножен: клинок вдоль -Y = dir (назад-вниз), лезвие (-Z) смотрит вверх.
 func _wear_basis(dir: Vector3) -> Basis:
 	var d := dir.normalized()
@@ -1821,6 +2039,8 @@ func _ik_arm(side: String, T: Vector3, w: float) -> void:
 	var dir := v.normalized() if v.length() > 0.001 else Vector3.DOWN
 	var sx := -1.0 if side == "r" else 1.0
 	var pole := Vector3(0.7 * sx, -0.6, -0.4)
+	if ik_pole_up:
+		pole = Vector3(0.8 * sx, 0.5, 0.3)    # рука за плечо: локоть вверх и в сторону
 	var pn := pole - dir * pole.dot(dir)
 	if pn.length() < 0.01:
 		pn = Vector3(0, -1, 0)
