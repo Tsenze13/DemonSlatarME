@@ -28,6 +28,10 @@ static func info(i: int) -> Dictionary:
 static func _ensure() -> void:
 	if _scene != null:
 		return
+	if not ResourceLoader.exists(PATH):
+		# модели нет (например, проект взят из git без assets/swords) — будет свой кубический меч
+		_scene = Node3D.new()
+		return
 	var ps: PackedScene = load(PATH)
 	_scene = ps.instantiate()
 	var bone := _scene.find_child("bone_277", true, false)
