@@ -11,7 +11,7 @@ const NAMES := [
 	"Синий клинок", "Бирюзовый клинок", "Волнистый клинок", "Огненный клинок", "Зелёный клинок",
 	"Тонкий клинок", "Широкий клинок (левый)", "Широкий клинок (правый)", "Гибкий клинок",
 ]
-const FLIP := [8]   # у гибкого клинка автоматика путает рукоять и лезвие
+const FLIP := []   # если автоматика перепутает рукоять и клинок — номер сюда
 
 static var _scene: Node3D
 static var _groups: Array = []
@@ -70,9 +70,14 @@ static func _analyze(g: Node, flip := false) -> Dictionary:
 	var gw := 0.0
 	for b in boxes:
 		var w := 0.0
+		var thin_side := 99.0
 		for k in 3:
 			if k != axis:
 				w = maxf(w, b.size[k])
+				thin_side = minf(thin_side, b.size[k])
+		# плоские картинки (свёрнутый клинок хлыста) гардой не считаем
+		if thin_side < 0.01:
+			continue
 		if w > gw:
 			gw = w
 			guard = b

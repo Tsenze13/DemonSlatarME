@@ -148,6 +148,8 @@ var whip_anchor: Node3D
 var trail_l
 var grip_w := 0.0                  # вес двуручного хвата (IK обеих рук + положение меча)
 var left_w := 0.0                  # вес левой руки на рукояти
+var grip_r_w := 0.0
+var grip_l_w := 0.0
 var sprinting := false
 var draw_swapped := false
 var iai_dist := 8.0               # длина рывка при выхвате-ударе
@@ -456,7 +458,9 @@ func _physics_process(dt: float) -> void:
 	else:
 		trail.push(blade_base.global_position, blade_tip.global_position)
 	if sword_mode == "dual":
-		trail_l.emitting = trail.emitting
+		var ds := _dual_side()
+		trail_l.emitting = trail.emitting and ds != "r"
+		trail.emitting = trail.emitting and ds != "l"
 		trail_l.push(sword_l.global_transform * Vector3(0, -0.13, 0), sword_l.global_transform * Vector3(0, -0.95, 0))
 
 func _separate_from_enemies() -> void:
@@ -625,9 +629,10 @@ func set_sword(m: int) -> void:
 		h.position = Vector3(0, -0.1, 0)
 		sword_vis.add_child(h)
 		# в ножнах — свёрнутый клинок висит на бедре
-		var coil := SwordLib.make(8)
-		coil.basis = sheath_node.basis.inverse() * Basis.from_euler(Vector3(0.25, 0, 0))
-		coil.position = sheath_node.basis.inverse() * Vector3(0.05, 0.15, -0.1)
+		var coil := SwordLib.make(8, _tint())
+		# в системе бёдер: клинок вниз, свёрнутая лента вдоль бедра
+		var hip_xf := Transform3D(Basis.from_euler(Vector3(0.12, 0, -0.08)), Vector3(0.27, 0.12, 0.0))
+		coil.transform = (sheath_node.transform * Transform3D(Basis.IDENTITY, sheathed_hilt.position)).affine_inverse() * hip_xf
 		sheathed_hilt.add_child(coil)
 		blade_len = 0.3
 	else:
@@ -1621,17 +1626,13 @@ func _animate(dt: float) -> void:
 			p.leg_l = Vector3(-20, 0, 0)
 			p.shin_l = Vector3(60, 0, 0)
 
-	if sword_mode == "dual" and drawn and state not in ["dash", "flash", "wallrun", "draw", "dead"]:
-		var ar: Vector3 = p.arm_r
-		p.arm_l = Vector3(ar.x, -ar.y, -ar.z)
-		p.fore_l = p.fore_r
-		if state != "attack":
-			# стойка с двумя клинками: руки в стороны, клинки вперёд
-			if not (is_on_floor() and sp > 9.0):
-				p.arm_r = Vector3(-35, -25, -30)
-				p.arm_l = Vector3(-35, 25, 30)
-				p.fore_r = Vector3(-35, 0, 0)
-				p.fore_l = Vector3(-35, 0, 0)
+	if sword_mode == "dual" and drawn and state == "attack":
+		# удар левой — зеркало правой позы; правая в это время держит стойку (IK)
+		var side := _dual_side()
+		if side == "l" or side == "both":
+			var ar: Vector3 = p.arm_r
+			p.arm_l = Vector3(ar.x, -ar.y, -ar.z)
+			p.fore_l = p.fore_r
 	# применение
 	var rate := 1.0 - exp(-(40.0 if snap else 16.0) * dt)
 	for k in J:
@@ -1655,6 +1656,20 @@ func _animate(dt: float) -> void:
 
 # ---------------------------------------------------------------------
 # Двуручный хват катаны: руки сами тянутся к рукояти (обратная кинематика).
+# Парные клинки: какой рукой идёт удар (r — правой, l — левой, both — обеими).
+const DUAL_SIDE := {"l1": "r", "l2": "l", "l3": "r", "l4": "both", "air": "r", "dslash": "l",
+	"heavy": "both", "f1": "both", "f2": "both", "counter": "both", "ripple": "l", "iai": "both"}
+# Стойки (система торса): рука, направление клинка.
+const DUAL_R_H := Vector3(-0.3, 0.07, 0.26)
+const DUAL_R_D := Vector3(-0.3, -0.3, 1.0)
+const WHIP_H := Vector3(-0.31, 0.04, 0.24)
+const WHIP_D := Vector3(-0.15, -0.8, 0.55)
+
+func _dual_side() -> String:
+	if state == "attack":
+		return DUAL_SIDE.get(atk_name, "both")
+	return ""
+
 const UPPER := 0.27
 const LOWER := 0.29
 const CHUDAN_H := Vector3(-0.04, 0.12, 0.3)      # правая рука перед животом (в системе торса)
@@ -1664,10 +1679,13 @@ const LOW_D := Vector3(0, -0.25, 1.0)
 
 func _apply_ik(dt: float, sp: float) -> void:
 	var katana := sword_mode in ["katana", "proc"]
+	var idle_ok: bool = drawn and ((state == "move" and is_on_floor() and sp < 9.0) or state in ["breathe", "stance"])
 	var gw := 0.0
 	var lw := 0.0
 	var H := CHUDAN_H
 	var D := CHUDAN_D.normalized()
+	var rw := 0.0     # правая рука в стойке (парные / хлыст)
+	var lgw := 0.0    # левая рука в стойке (парные)
 	if katana and drawn:
 		if state == "move" and is_on_floor() and sp < 9.0:
 			gw = 1.0
@@ -1679,22 +1697,48 @@ func _apply_ik(dt: float, sp: float) -> void:
 			lw = 1.0
 		if state == "attack" and atk_name == "f2":
 			lw = 0.0
+	elif sword_mode == "dual" and drawn:
+		var side := _dual_side()
+		if idle_ok or state == "parry":
+			rw = 1.0
+			lgw = 1.0
+		elif side == "r":
+			lgw = 1.0
+		elif side == "l":
+			rw = 1.0
+	elif sword_mode == "whip" and drawn and idle_ok:
+		rw = 1.0
 	grip_w = move_toward(grip_w, gw, dt * 7.0)
 	left_w = move_toward(left_w, lw, dt * 9.0)
+	grip_r_w = move_toward(grip_r_w, rw, dt * 9.0)
+	grip_l_w = move_toward(grip_l_w, lgw, dt * 9.0)
 	var torso: Node3D = J.torso
 	var inv := torso.global_transform.affine_inverse()
 	if state == "draw" and katana:
 		_draw_ik(inv)
 		return
 	if grip_w > 0.001:
-		_ik_arm("r", H, grip_w)
-		var want := _blade_basis(D)
-		var ft: Basis = J.arm_r.basis * J.fore_r.basis
-		var loc := (ft.inverse() * want).orthonormalized()
-		J.sword.basis = Basis(J.sword.basis.get_rotation_quaternion().slerp(loc.get_rotation_quaternion(), grip_w))
+		_hold("r", H, D, grip_w, J.sword)
 	if left_w > 0.001:
 		var tl: Vector3 = inv * (J.sword.global_transform * Vector3(0, 0.15, 0))
 		_ik_arm("l", tl, left_w)
+	if sword_mode == "dual":
+		if grip_r_w > 0.001:
+			_hold("r", DUAL_R_H, DUAL_R_D.normalized(), grip_r_w, J.sword)
+		if grip_l_w > 0.001:
+			var lh := Vector3(-DUAL_R_H.x, DUAL_R_H.y, DUAL_R_H.z)
+			var ld := Vector3(-DUAL_R_D.x, DUAL_R_D.y, DUAL_R_D.z).normalized()
+			_hold("l", lh, ld, grip_l_w, sword_l)
+	elif sword_mode == "whip" and grip_r_w > 0.001:
+		_hold("r", WHIP_H, WHIP_D.normalized(), grip_r_w, J.sword)
+
+# Рука в точке H (система торса), клинок в её кулаке смотрит по D, лезвие вниз.
+func _hold(side: String, H: Vector3, D: Vector3, w: float, blade: Node3D) -> void:
+	_ik_arm(side, H, w)
+	var want := _blade_basis(D)
+	var ft: Basis = J["arm_" + side].basis * J["fore_" + side].basis
+	var loc := (ft.inverse() * want).orthonormalized()
+	blade.basis = Basis(blade.basis.get_rotation_quaternion().slerp(loc.get_rotation_quaternion(), w))
 
 # Видимый выхват: рука к рукояти на бедре, клинок выезжает вдоль ножен, потом в стойку.
 func _draw_ik(inv: Transform3D) -> void:

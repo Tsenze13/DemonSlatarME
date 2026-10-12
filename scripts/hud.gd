@@ -243,4 +243,4 @@ func _draw() -> void:
 		for l in lines:
 			_txt(Vector2(hx, hy), l, int(15 * u), Color(0.88, 0.92, 1.0))
 			hy += 24 * u
-	_txt(Vector2(s.x - 16 * u, s.y - 14 * u), "Клинок и Демон · прототип 0.9", int(12 * u), Color(0.7, 0.75, 0.85, 0.6), HORIZONTAL_ALIGNMENT_RIGHT, 0)
+	_txt(Vector2(s.x - 16 * u, s.y - 14 * u), "Клинок и Демон · прототип 0.10", int(12 * u), Color(0.7, 0.75, 0.85, 0.6), HORIZONTAL_ALIGNMENT_RIGHT, 0)
