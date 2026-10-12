@@ -27,6 +27,9 @@ func _ready() -> void:
 	sounds["water"] = _make(0.6, _water)
 	sounds["crack"] = _make(0.4, _crack)
 	sounds["hurt"] = _make(0.25, _hurt)
+	sounds["sonic"] = _make(0.9, _sonic)
+	sounds["draw"] = _make(0.5, _draw)
+	sounds["sheathe"] = _make(0.35, _sheathe)
 
 func play(nm: String, vol_db := 0.0, pitch := 1.0, rnd := 0.08) -> void:
 	if not sounds.has(nm):
@@ -136,3 +139,23 @@ func _crack(t: float, d: float, st: Dictionary) -> float:
 func _hurt(t: float, d: float, st: Dictionary) -> float:
 	st["ph"] += TAU * (220.0 - t * 400.0) / RATE
 	return (sin(st["ph"]) * 0.5 + randf_range(-1, 1) * 0.3) * exp(-t * 12.0)
+
+# Звуковой барьер: резкий хлопок + низкий гул + свист воздуха.
+func _sonic(t: float, d: float, st: Dictionary) -> float:
+	var crack := randf_range(-1, 1) * exp(-t * 90.0) * 1.6
+	st["ph"] += TAU * (55.0 * exp(-t * 2.0) + 30.0) / RATE
+	var boom := sin(st["ph"]) * exp(-t * 4.0) * 0.9
+	var air := _lp(st, "lp", randf_range(-1, 1), 0.05 + 0.2 * exp(-t * 6.0)) * minf(t / 0.03, 1.0) * exp(-t * 3.5) * 1.6
+	return crack + boom + air
+
+# Выхват меча: металлический «шинг» по ножнам.
+func _draw(t: float, d: float, st: Dictionary) -> float:
+	var scrape := _lp(st, "lp", randf_range(-1, 1), 0.5) * minf(t / 0.02, 1.0) * exp(-t * 9.0) * 0.6
+	st["ph"] += TAU * (3200.0 + 900.0 * exp(-t * 8.0)) / RATE
+	var ring := (sin(st["ph"]) * 0.35 + sin(st["ph"] * 1.37) * 0.2) * exp(-t * 5.0) * smoothstep(0.03, 0.08, t)
+	return scrape + ring
+
+func _sheathe(t: float, d: float, st: Dictionary) -> float:
+	var scrape := _lp(st, "lp", randf_range(-1, 1), 0.35) * exp(-t * 10.0) * 0.7
+	var click := randf_range(-1, 1) * exp(-maxf(0.0, t - 0.22) * 80.0) * (1.0 if t > 0.22 else 0.0)
+	return scrape + click

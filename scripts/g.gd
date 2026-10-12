@@ -41,7 +41,7 @@ func _setup_input() -> void:
 		"parry": [KEY_Q], "breathe": [KEY_R], "form1": [KEY_1],
 		"form2": [KEY_2], "form3": [KEY_3], "lock": [KEY_TAB],
 		"daynight": [KEY_N], "pause": [KEY_ESCAPE], "help": [KEY_F1],
-		"light": [KEY_J], "heavy": [KEY_K],
+		"light": [KEY_J], "heavy": [KEY_K], "draw": [KEY_F],
 	}
 	var mouse := {"light": MOUSE_BUTTON_LEFT, "heavy": MOUSE_BUTTON_RIGHT, "lock": MOUSE_BUTTON_MIDDLE}
 	var pad := {
@@ -50,7 +50,7 @@ func _setup_input() -> void:
 		"flash": JOY_BUTTON_RIGHT_SHOULDER, "lock": JOY_BUTTON_RIGHT_STICK,
 		"breathe": JOY_BUTTON_LEFT_STICK, "form1": JOY_BUTTON_DPAD_LEFT,
 		"form2": JOY_BUTTON_DPAD_UP, "form3": JOY_BUTTON_DPAD_RIGHT,
-		"pause": JOY_BUTTON_START,
+		"pause": JOY_BUTTON_START, "draw": JOY_BUTTON_BACK,
 	}
 	for a in keys:
 		if not InputMap.has_action(a):

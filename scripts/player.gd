@@ -10,6 +10,8 @@ const Tex = preload("res://scripts/tex.gd")
 
 # --- движение ---
 const RUN_SPEED := 13.5
+const SPRINT_SPEED := 24.0        # бег на дыхании (держать Shift после рывка)
+const SPRINT_COST := 6.0          # дыхания в секунду
 const ACCEL := 70.0
 const AIR_ACCEL := 30.0
 const JUMP_V := 11.5
@@ -19,6 +21,8 @@ const DASH_TIME := 0.17
 const WALLRUN_TIME := 1.2
 const FLASH_DIST := 10.0
 const HIP_Y := 0.92
+const IDLE_ARM := Vector3(-18, -12, -8)
+const IDLE_FORE := -50.0
 const SWORD_TILT := Vector3(-28, 0, 0)   # клинок вперёд от кулака, а не продолжение руки
 
 # --- атаки ---
@@ -36,7 +40,7 @@ const ATK := {
 	"l3": {"dur": 0.4, "hit0": 0.1, "hit1": 0.19, "dmg": 10, "range": 3.2, "arc": 120, "lunge": 9.0,
 		"power": 1, "stagger": 0.35, "hitstop": 0.065, "shake": 0.16, "next": "l4",
 		"arm0": Vector3(-175, -45, 0), "arm1": Vector3(-15, 35, 0), "fore0": -10, "fore1": 0, "tw0": -25, "tw1": 25,
-		"fx": "slash", "roll": 65},
+		"fx": "slash", "roll": 65, "wr": 0.0},
 	"l4": {"dur": 0.55, "hit0": 0.12, "hit1": 0.3, "dmg": 15, "range": 3.6, "arc": 360, "lunge": 11.0,
 		"power": 2, "stagger": 0.6, "hitstop": 0.09, "shake": 0.3, "next": "",
 		"arm0": Vector3(-90, -100, 0), "arm1": Vector3(-90, 100, 0), "fore0": 0, "fore1": 0, "tw0": -30, "tw1": 30,
@@ -44,7 +48,7 @@ const ATK := {
 	"air": {"dur": 0.38, "hit0": 0.08, "hit1": 0.17, "dmg": 10, "range": 3.3, "arc": 130, "lunge": 4.0,
 		"power": 1, "stagger": 0.35, "hitstop": 0.06, "shake": 0.15, "next": "air",
 		"arm0": Vector3(-200, 0, 0), "arm1": Vector3(-15, 0, 0), "fore0": 0, "fore1": 0, "tw0": 0, "tw1": 0,
-		"fx": "slash", "roll": 90, "air": true},
+		"fx": "slash", "roll": 90, "air": true, "wr": 0.0},
 	"dslash": {"dur": 0.42, "hit0": 0.05, "hit1": 0.16, "dmg": 16, "range": 3.6, "arc": 160, "lunge": 26.0,
 		"power": 2, "stagger": 0.5, "hitstop": 0.08, "shake": 0.25, "next": "l3",
 		"arm0": Vector3(-60, 120, 0), "arm1": Vector3(-90, -120, 0), "fore0": -10, "fore1": 0, "tw0": 50, "tw1": -50,
@@ -52,7 +56,7 @@ const ATK := {
 	"heavy": {"dur": 0.78, "hit0": 0.4, "hit1": 0.5, "dmg": 24, "range": 3.7, "arc": 150, "lunge": 7.0,
 		"power": 2, "stagger": 0.8, "hitstop": 0.11, "shake": 0.45, "next": "",
 		"arm0": Vector3(-200, 0, 0), "arm1": Vector3(-10, 0, 0), "fore0": -20, "fore1": 0, "tw0": -10, "tw1": 5,
-		"fx": "heavy", "roll": 90, "knock": 7.0, "guard": true},
+		"fx": "heavy", "roll": 90, "knock": 7.0, "guard": true, "wr": 0.0},
 	# Прилив, первая форма — Веерный срез: рывок и широкая волна
 	"f1": {"dur": 0.66, "hit0": 0.16, "hit1": 0.34, "dmg": 30, "range": 5.6, "arc": 220, "lunge": 24.0,
 		"power": 2, "stagger": 1.0, "hitstop": 0.12, "shake": 0.5, "next": "",
@@ -68,6 +72,11 @@ const ATK := {
 		"power": 2, "stagger": 1.2, "hitstop": 0.12, "shake": 0.5, "next": "",
 		"arm0": Vector3(-80, 120, 0), "arm1": Vector3(-90, -120, 0), "fore0": 0, "fore1": 0, "tw0": 60, "tw1": -60,
 		"fx": "wave_big", "impact": true, "knock": 8.0, "rev": true},
+	# удар из ножен: выхват и срез одним движением
+	"iai": {"dur": 0.42, "hit0": 0.06, "hit1": 0.13, "dmg": 22, "range": 3.6, "arc": 170, "lunge": 16.0,
+		"power": 2, "stagger": 0.7, "hitstop": 0.1, "shake": 0.3, "next": "l3",
+		"arm0": Vector3(-10, 75, 25), "arm1": Vector3(-88, -125, 0), "fore0": -30, "fore1": 0, "tw0": 55, "tw1": -55,
+		"fx": "slash", "roll": -4, "rev": true, "impact_light": true},
 	"ripple": {"dur": 0.45, "hit0": 0.08, "hit1": 0.18, "dmg": 10, "range": 4.8, "arc": 120, "lunge": 14.0,
 		"power": 1, "stagger": 0.4, "hitstop": 0.06, "shake": 0.15, "next": "",
 		"arm0": Vector3(-30, 60, 0), "arm1": Vector3(-90, -60, 0), "fore0": 0, "fore1": 0, "tw0": 30, "tw1": -30,
@@ -120,6 +129,12 @@ var breathe_fx_t := 0.0
 var msg_cb: Callable
 var last_speed := 0.0
 var hits_total := 0
+var drawn := false              # клинок в руке или в ножнах
+var sheathed_hilt: Node3D
+var sprinting := false
+var draw_swapped := false
+var auto_sprint := false
+var sprint_fx_t := 0.0
 var landing_vel := 0.0
 
 func _ready() -> void:
@@ -141,6 +156,7 @@ func _ready() -> void:
 	trail.set_colors(Color(0.95, 0.98, 1.0), Color(0.25, 0.6, 1.0))
 	global_position = spawn_pos
 	facing = PI
+	set_drawn(false)
 
 # =====================================================================
 # МОДЕЛЬ
@@ -211,13 +227,13 @@ func _build_model() -> void:
 	Vox.box(sword, Vector3(0.11, 0.025, 0.09), Vector3(0, -0.1, 0), Color(0.75, 0.62, 0.3))
 	var b1 := Vox.pivot(sword, Vector3(0, -0.11, 0))
 	Vox.box(b1, Vector3(0.03, 0.42, 0.014), Vector3(0, -0.21, 0), steel, true, 0.25)
-	Vox.box(b1, Vector3(0.014, 0.42, 0.016), Vector3(0, -0.21, 0.013), edge, false, 1.4)
+	Vox.box(b1, Vector3(0.014, 0.42, 0.016), Vector3(0, -0.21, -0.013), edge, false, 1.4)
 	var b2 := Vox.pivot(b1, Vector3(0, -0.42, 0))
-	b2.rotation_degrees = Vector3(6, 0, 0)
+	b2.rotation_degrees = Vector3(-6, 0, 0)   # изгиб к обуху
 	Vox.box(b2, Vector3(0.028, 0.38, 0.014), Vector3(0, -0.19, 0), steel, true, 0.25)
-	Vox.box(b2, Vector3(0.014, 0.38, 0.016), Vector3(0, -0.19, 0.013), edge, false, 1.4)
-	var tip := Vox.box(b2, Vector3(0.02, 0.05, 0.014), Vector3(0, -0.4, 0.006), steel, false, 0.25)
-	tip.rotation_degrees = Vector3(20, 0, 0)
+	Vox.box(b2, Vector3(0.014, 0.38, 0.016), Vector3(0, -0.19, -0.013), edge, false, 1.4)
+	var tip := Vox.box(b2, Vector3(0.02, 0.05, 0.014), Vector3(0, -0.4, -0.006), steel, false, 0.25)
+	tip.rotation_degrees = Vector3(-20, 0, 0)
 	blade_base = Vox.pivot(sword, Vector3(0, -0.13, 0))
 	blade_tip = Vox.pivot(b2, Vector3(0, -0.4, 0))
 
@@ -225,6 +241,9 @@ func _build_model() -> void:
 	var sheath := Vox.pivot(hips, Vector3(0.24, 0.0, 0.08))
 	sheath.rotation_degrees = Vector3(-72, 0, 0)
 	Vox.box(sheath, Vector3(0.05, 0.82, 0.04), Vector3(0, -0.36, 0), Color(0.12, 0.1, 0.16))
+	sheathed_hilt = Vox.pivot(sheath, Vector3(0, 0.0, 0))
+	Vox.box(sheathed_hilt, Vector3(0.11, 0.025, 0.09), Vector3(0, 0.02, 0), Color(0.75, 0.62, 0.3))
+	Vox.box(sheathed_hilt, Vector3(0.04, 0.25, 0.04), Vector3(0, 0.16, 0), Color(0.15, 0.12, 0.2))
 
 	for side in [-1.0, 1.0]:
 		var nm := "r" if side < 0 else "l"
@@ -319,7 +338,7 @@ func _make_cloth(attach: Node3D, anchors: Array, rows: int, seg: float):
 # =====================================================================
 # ВВОД
 # =====================================================================
-const BUF_ACTIONS := ["jump", "dash", "flash", "light", "heavy", "parry", "form1", "form2", "form3", "lock"]
+const BUF_ACTIONS := ["jump", "dash", "flash", "light", "heavy", "parry", "form1", "form2", "form3", "lock", "draw"]
 
 # Вызывается из main.gd: события мыши не доходят до пиксельного SubViewport сами.
 func handle_input(e: InputEvent) -> void:
@@ -372,7 +391,7 @@ func _physics_process(dt: float) -> void:
 	dash_charges = minf(2.0, dash_charges + dt * 0.9)
 	for k in cd:
 		cd[k] = maxf(0.0, cd[k] - dt)
-	if state != "breathe" and state != "dead":
+	if state != "breathe" and state != "dead" and not sprinting:
 		breath = minf(max_breath, breath + dt * 5.0)
 	if lock_target and (not is_instance_valid(lock_target) or lock_target.is_dead()):
 		lock_target = null
@@ -395,6 +414,7 @@ func _physics_process(dt: float) -> void:
 		"hurt": _st_hurt(dt)
 		"finisher": _st_finisher(dt)
 		"flash": _st_flash(dt)
+		"draw": _st_draw(dt)
 		"dead": _st_dead(dt)
 	landing_vel = velocity.y
 	move_and_slide()
@@ -430,9 +450,10 @@ func _face(dir: Vector3, dt: float, rate := 16.0) -> void:
 func _hmove(target: Vector3, acc: float, dt: float) -> void:
 	var hv := Vector3(velocity.x, 0, velocity.z)
 	var sp := hv.length()
-	if sp > RUN_SPEED + 0.5 and target.length() > 0.1:
+	var want := target.length()
+	if sp > maxf(RUN_SPEED, want) + 0.5 and want > 0.1:
 		# сохраняем разгон после рывков и прыжков: скорость падает плавно
-		var keep := maxf(RUN_SPEED, sp - (14.0 if is_on_floor() else 3.0) * dt)
+		var keep := maxf(want, sp - (14.0 if is_on_floor() else 3.0) * dt)
 		hv = hv.move_toward(target.normalized() * sp, acc * 1.5 * dt).limit_length(keep)
 	else:
 		hv = hv.move_toward(target, acc * dt)
@@ -444,7 +465,14 @@ func _st_move(dt: float, inp: Vector3) -> void:
 	var on_floor := is_on_floor()
 	if on_floor:
 		air_jumps = 1
-	_hmove(inp * RUN_SPEED, ACCEL if on_floor else AIR_ACCEL, dt)
+	if sprinting:
+		var held := Input.is_action_pressed("dash") or auto_sprint
+		if not held or inp.length() < 0.2 or breath <= 0.0:
+			sprinting = false
+		else:
+			breath = maxf(0.0, breath - SPRINT_COST * dt)
+	var spd := SPRINT_SPEED if sprinting else RUN_SPEED
+	_hmove(inp * spd, (ACCEL * 1.3 if sprinting else ACCEL) if on_floor else AIR_ACCEL, dt)
 	_gravity(dt)
 	if lock_target and inp.length() < 0.1:
 		_face(lock_target.global_position - global_position, dt, 8.0)
@@ -483,6 +511,9 @@ func _st_move(dt: float, inp: Vector3) -> void:
 		_set_state("breathe")
 
 func _common_actions(inp: Vector3) -> bool:
+	if pressed("draw"):
+		_set_state("draw")
+		return true
 	if pressed("dash"):
 		if dash_charges >= 1.0:
 			_start_dash(inp)
@@ -498,6 +529,8 @@ func _common_actions(inp: Vector3) -> bool:
 			_start_attack("counter")
 		elif flash_window > 0.0:
 			_start_attack("dslash")
+		elif not drawn:
+			_start_attack("iai")
 		elif not is_on_floor():
 			_start_attack("air")
 		elif combo_queued != "" and G.real_time - last_atk_end < 0.45:
@@ -506,9 +539,12 @@ func _common_actions(inp: Vector3) -> bool:
 			_start_attack("l1")
 		return true
 	if pressed("heavy"):
-		_start_attack("heavy")
+		_start_attack("heavy" if drawn else "iai")
 		return true
 	if pressed("parry"):
+		if not drawn:
+			set_drawn(true)
+			G.sfx.play("draw", -4.0)
 		_set_state("parry")
 		G.sfx.play("whoosh", -10.0, 1.6)
 		return true
@@ -519,9 +555,34 @@ func _common_actions(inp: Vector3) -> bool:
 			return true
 	return false
 
+func set_drawn(on: bool) -> void:
+	drawn = on
+	J.sword.visible = on
+	sheathed_hilt.visible = not on
+
+func _st_draw(dt: float) -> void:
+	# достать или убрать клинок: рука тянется к ножнам на левом бедре
+	velocity.x = move_toward(velocity.x, 0, 40 * dt)
+	velocity.z = move_toward(velocity.z, 0, 40 * dt)
+	_gravity(dt)
+	var swap_t := 0.12 if not drawn else 0.2
+	if not draw_swapped and state_t >= swap_t:
+		draw_swapped = true
+		if drawn:
+			set_drawn(false)
+			G.sfx.play("sheathe", -4.0)
+		else:
+			set_drawn(true)
+			G.sfx.play("draw", -2.0)
+			G.fx.burst(blade_tip.global_position, Color(0.9, 0.97, 1.0), 6, 3.0, 0.06, 0.25, 0.0)
+	if state_t > 0.3:
+		_set_state("move")
+
 func _set_state(s: String) -> void:
 	state = s
 	state_t = 0.0
+	if s == "draw":
+		draw_swapped = false
 
 # ---------------------------------------------------------------------
 func _try_kickoff(inp: Vector3) -> bool:
@@ -668,9 +729,20 @@ func _start_dash(inp: Vector3) -> void:
 	_set_state("dash")
 	invuln_t = DASH_TIME + 0.03
 	dash_from = global_position
-	G.sfx.play("dash", -4.0)
-	G.speedlines = maxf(G.speedlines, 0.7)
+	sonic_boom(dash_dir)
 	G.fx.afterimage(model, Color(0.4, 0.7, 1.0))
+
+# Звуковой барьер: хлопок, кольцо пара поперёк движения, пыль.
+func sonic_boom(dir: Vector3) -> void:
+	G.sfx.play("sonic", -2.0)
+	G.sfx.play("dash", -6.0)
+	G.speedlines = maxf(G.speedlines, 0.9)
+	G.add_shake(0.12)
+	var c := global_position + Vector3.UP * 0.9
+	G.fx.ring(c, 0.35, Color(0.85, 0.92, 1.0), Color.WHITE, 0.35, 5.0, 0.18, dir)
+	G.fx.ring(c - dir * 0.4, 0.25, Color(0.85, 0.92, 1.0), Color.WHITE, 0.25, 3.5, 0.12, dir)
+	if is_on_floor():
+		G.fx.dust(global_position, 10)
 
 func _st_dash(dt: float, inp: Vector3) -> void:
 	velocity = dash_dir * DASH_SPEED
@@ -683,6 +755,9 @@ func _st_dash(dt: float, inp: Vector3) -> void:
 		velocity = dash_dir * RUN_SPEED * 1.6
 		_set_state("move")
 		flash_window = 0.25
+		# держишь Shift — переходишь в бег на дыхании
+		if (Input.is_action_pressed("dash") or auto_sprint) and breath > 5.0:
+			sprinting = true
 	if state_t > 0.06 and pressed("light"):
 		_set_state("move")
 		_start_attack("dslash")
@@ -724,7 +799,7 @@ func _start_flash() -> void:
 	G.fx.afterimage(model, Color(0.85, 0.95, 1.0), 0.35)
 	_set_state("flash")
 	invuln_t = 0.2
-	G.sfx.play("dash", -2.0, 0.7)
+	sonic_boom(dir)
 	G.speedlines = 1.0
 
 func _st_flash(_dt: float) -> void:
@@ -752,6 +827,9 @@ func _try_form(i: int) -> void:
 			return
 		breath -= 15.0
 		cd["f3"] = 3.0
+		if not drawn:
+			set_drawn(true)
+			G.sfx.play("draw", -3.0)
 		_set_state("stance")
 		G.sfx.play("water", -6.0, 1.3)
 		G.fx.ring(global_position + Vector3.UP * 0.05, 0.6, Color(0.3, 0.6, 1.0), Color(0.9, 0.97, 1.0), 0.6, 3.0, 0.2)
@@ -791,6 +869,12 @@ func _aim_target(max_d := 7.0) -> Node:
 	return best
 
 func _start_attack(nm: String) -> void:
+	if not drawn:
+		set_drawn(true)
+		G.sfx.play("draw", -3.0)
+		if nm == "iai":
+			G.impact(0.05, 1)
+	sprinting = false
 	atk = ATK[nm]
 	atk_name = nm
 	_set_state("attack")
@@ -1140,6 +1224,7 @@ func _finisher_candidate() -> Node:
 	return null
 
 func _start_finisher(e: Node) -> void:
+	set_drawn(true)
 	fin_target = e
 	fin_stage = 0
 	_set_state("finisher")
@@ -1205,6 +1290,12 @@ func _effects(dt: float) -> void:
 	last_speed = sp
 	if sp > RUN_SPEED + 3.0:
 		G.speedlines = maxf(G.speedlines, clampf((sp - RUN_SPEED) / 20.0, 0.0, 0.6))
+	if sprinting and state == "move":
+		G.speedlines = maxf(G.speedlines, 0.55)
+		sprint_fx_t -= dt
+		if sprint_fx_t <= 0.0:
+			sprint_fx_t = 0.07
+			G.fx.afterimage(model, Color(0.5, 0.75, 1.0), 0.16)
 	dust_t -= dt
 	if is_on_floor() and sp > 9.0 and dust_t <= 0.0 and state == "move":
 		dust_t = 0.11
@@ -1225,13 +1316,19 @@ func _animate(dt: float) -> void:
 	var snap := false
 	var model_spin := 0.0
 
-	# базовая стойка с клинком
-	p.arm_r = Vector3(-35, -15, -10)
-	p.fore_r = Vector3(-65, 0, 0)
+	# базовая стойка с клинком: кулаки у живота, клинок вперёд и чуть вверх, лезвие вниз
+	p.arm_r = IDLE_ARM
+	p.fore_r = Vector3(IDLE_FORE, 0, 0)
 	p.arm_l = Vector3(-30, 20, 15)
 	p.fore_l = Vector3(-50, 0, 0)
 	p.sword = Vector3(0, 0, 0)
 
+	if not drawn:
+		# клинок в ножнах: левая рука придерживает ножны, правая свободна
+		p.arm_r = Vector3(-10, 0, -8)
+		p.fore_r = Vector3(-25, 0, 0)
+		p.arm_l = Vector3(15, -25, 18)
+		p.fore_l = Vector3(-45, 0, 0)
 	if state in ["move", "breathe", "parry", "stance", "hurt", "dead"] or (state == "attack" and false):
 		if is_on_floor() and sp > 0.8:
 			run_phase += dt * (6.0 + sp * 0.62)
@@ -1253,6 +1350,10 @@ func _animate(dt: float) -> void:
 				p.arm_l = Vector3(70, 0, 15)
 				p.fore_l = Vector3(-20, 0, 0)
 				p.head = Vector3(-25, 0, 0)
+				if sprinting:
+					lean = 42.0
+					p.arm_r = Vector3(85, 0, -20)
+					p.arm_l = Vector3(85, 0, 20)
 			else:
 				p.arm_l = Vector3(s * 40, 0, 10)
 				p.torso = Vector3(8, s * 8, 0)
@@ -1323,6 +1424,14 @@ func _animate(dt: float) -> void:
 		if state == "breathe":
 			p.torso = Vector3(sin(G.real_time * 5.0) * 4.0, 0, 0)
 			p.head = Vector3(-10, 0, 0)
+	if state == "draw":
+		# рука к рукояти на левом бедре
+		var kd := Vox.ease_out(state_t / 0.12)
+		p.arm_r = Vector3(-25, 70, 30) * kd
+		p.fore_r = Vector3(-60, 0, 0)
+		p.torso = Vector3(5, 25 * kd, 0)
+		p.arm_l = Vector3(15, -25, 18)
+		snap = true
 	if state == "hurt":
 		lean = -25.0
 		p.arm_r = Vector3(-20, 0, -40)
@@ -1349,12 +1458,15 @@ func _animate(dt: float) -> void:
 		else:
 			var k5 := clampf((t - a.hit1) / maxf(0.01, a.dur - a.hit1), 0.0, 1.0)
 			k5 = Vox.ease_in_out((k5 - 0.4) / 0.6) if k5 > 0.4 else 0.0
-			arm = a.arm1.lerp(Vector3(-35, -15, -10), k5)
-			fore = lerpf(a.fore1, -65.0, k5)
+			arm = a.arm1.lerp(IDLE_ARM, k5)
+			fore = lerpf(a.fore1, IDLE_FORE, k5)
 			tw = lerpf(a.tw1, 0.0, k5)
 		p.arm_r = arm
 		p.fore_r = Vector3(fore, 0, 0)
 		p.torso = Vector3(10, tw, 0)
+		# кисть: лезвие смотрит по ходу удара (горизонтальные — вбок, вертикальные — вниз)
+		var wr: float = a.get("wr", 90.0 if a.get("rev", false) else -90.0)
+		p.sword = Vector3(0, wr * clampf(t / maxf(0.01, a.hit0), 0.0, 1.0), 0)
 		p.arm_l = Vector3(-40, 40, 30)
 		p.leg_r = Vector3(-35, 0, -10)
 		p.leg_l = Vector3(30, 0, 10)

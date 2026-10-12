@@ -48,7 +48,13 @@ func approach(d: Node, max_t := 4.0) -> void:
 
 func _run() -> void:
 	var p: Node = G.player
-	await w(1.2)
+	await w(0.3)
+	# демона пока в сторону, чтобы не мешал проверять движение
+	var d_park := demon()
+	var d_home: Vector3 = d_park.global_position
+	d_park.global_position = Vector3(80, 0.5, -80)
+	d_park.state = "idle"
+	await w(0.9)
 	# крупные планы героя
 	G.cam_rig.dist = 2.6
 	G.cam_rig.pitch = -0.12
@@ -66,6 +72,7 @@ func _run() -> void:
 	p.global_position = Vector3(0, 0.5, 8)
 	await w(0.5)
 	await shot("01_start")
+	check(not p.drawn, "в начале клинок в ножнах")
 	# настоящая мышь: поворот камеры и удар ЛКМ должны доходить до игры
 	var y0: float = G.cam_rig.yaw
 	var mm := InputEventMouseMotion.new()
@@ -83,7 +90,21 @@ func _run() -> void:
 	mb2.pressed = false
 	Input.parse_input_event(mb2)
 	check(p.state == "attack" or p.atk_name == "l1", "ЛКМ бьёт")
+	check(p.atk_name == "iai" and p.drawn, "первый удар — из ножен, клинок достан")
 	await w(0.5)
+	p.press("draw")
+	await w(0.45)
+	check(not p.drawn, "F убирает клинок в ножны")
+	p.press("draw")
+	await w(0.45)
+	check(p.drawn, "F достаёт клинок")
+	G.cam_rig.dist = 2.6
+	G.cam_rig.pitch = -0.12
+	G.cam_rig.yaw = PI * 0.75
+	await w(0.4)
+	await shot("02c_grip")
+	G.cam_rig.dist = 5.2
+	G.cam_rig.pitch = -0.3
 	G.cam_rig.yaw = 0.0
 	# бег (вбок, не на демона)
 	G.cam_rig.yaw = 0.0
@@ -97,10 +118,30 @@ func _run() -> void:
 	await w(0.08)
 	check(p.state == "dash", "рывок")
 	await shot("03_dash")
+	# бег на дыхании: держим Shift после рывка
+	p.breath = 100.0
+	p.auto_sprint = true
+	p.press("dash")
+	await w(0.7)
+	check(p.sprinting and p.last_speed > 20.0, "быстрый бег (%.1f м/с)" % p.last_speed)
+	check(p.breath < 98.0, "бег тратит дыхание")
+	await shot("03b_sprint")
+	p.auto_sprint = false
+	# хаори не задирается выше плеч
+	var torso: Node3D = p.J.torso
+	var hi := -99.0
+	for c in p.cloths:
+		if c.mode == "blocks" and c.cols > 5:
+			for q in c.pos:
+				hi = maxf(hi, (torso.global_transform.affine_inverse() * q).y)
+	check(hi < 0.5, "хаори не выше плеч (%.2f)" % hi)
 	p.auto_move = Vector2.ZERO
 	await w(0.6)
 	var d := demon()
 	check(d != null, "демон есть")
+	d.global_position = d_home
+	d.noticed = false
+	d.state = "idle"
 	await w(1.2)
 	await approach(d)
 	p.press("lock")
@@ -115,6 +156,17 @@ func _run() -> void:
 			await shot("04_combo4")
 	await w(0.5)
 	check(p.hits_total > hits0, "удары комбо попадают (%d)" % (p.hits_total - hits0))
+	check(d.wounds.size() > 0, "на демоне видны порезы (%d)" % d.wounds.size())
+	# регенерация после паузы
+	var hp_before: float = d.hp
+	var dpos: Vector3 = d.global_position
+	d.global_position = Vector3(70, 0.5, 70)
+	d.state = "idle"
+	d.hp = d.max_hp * 0.5
+	hp_before = d.hp
+	await w(4.0)
+	check(d.hp > hp_before + 40.0, "демон регенерирует после паузы (+%.0f)" % (d.hp - hp_before))
+	d.global_position = dpos
 	await approach(d)
 	p.press("heavy")
 	await w(0.42)

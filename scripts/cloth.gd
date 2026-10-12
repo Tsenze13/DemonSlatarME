@@ -20,6 +20,7 @@ var push_y_max := 99.0
 var push_ellipse := Vector2.ZERO # ненулевой — ткань обтекает тело по эллипсу (rx, rz)
 var stiff := 0.0                 # 0..1: насколько ткань держит форму (меньше полощется)
 var rest_h: Array = []
+var max_lift := 0.3              # ткань не задирается выше уровня крепления (на голову не залетает)
 var thick := 0.04                # толщина ткани в режиме "blocks"
 var u_step := 0.25               # сколько текстуры по ширине на одну клетку
 var chain_size := Vector3(0.1, 0.1, 0.1)
@@ -107,11 +108,16 @@ func _physics_process(dt: float) -> void:
 					_constrain_soft(_idx(c, r - 2), _idx(c, r), seg * 2.0, stiff)
 				if c > 0:
 					_constrain(_idx(c - 1, r), _idx(c, r), rest_h[c], false)
-		# не пускать ткань внутрь тела
+		# не пускать ткань внутрь тела и не давать ей задраться к голове
 		for c in cols:
+			var anchor_y: float = (inv * _aw(c)).y
 			for r in range(1, rows):
 				var i := _idx(c, r)
 				var lp: Vector3 = inv * pos[i]
+				var top_y := anchor_y - seg * r * max_lift
+				if lp.y > top_y:
+					lp.y = top_y
+					pos[i] = attach.global_transform * lp
 				if lp.y >= push_y_max:
 					continue
 				if push_ellipse != Vector2.ZERO:

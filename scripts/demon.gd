@@ -40,6 +40,7 @@ var hit_this_swing := false
 var run_phase := 0.0
 var exposed_time := 3.5
 var regen_count := 0
+var wounds: Array = []     # порезы: {n, life}
 
 func _ready() -> void:
 	collision_layer = 4
@@ -186,8 +187,13 @@ func _physics_process(dt: float) -> void:
 			arm_regrow[s] -= dt
 			if arm_regrow[s] <= 0.0:
 				_regrow_arm(s)
-	if since_hit > 2.5 and state != "exposed" and hp < max_hp:
-		hp = minf(max_hp, hp + 4.0 * dt)
+	# регенерация: пока бьют — нет, после паузы ~2 с разгоняется до 35 ед/с
+	if since_hit > 2.0 and state != "exposed" and hp < max_hp:
+		var rate := lerpf(8.0, 35.0, clampf((since_hit - 2.0) / 2.0, 0.0, 1.0))
+		hp = minf(max_hp, hp + rate * dt)
+		if randf() < dt * 6.0:
+			G.fx.burst(global_position + Vector3(randf_range(-0.4, 0.4), randf_range(0.8, 2.6), randf_range(-0.4, 0.4)), Color(0.75, 0.1, 0.2), 1, 1.0, 0.07, 0.5, -1.0)
+	_update_wounds(dt)
 	var to := p.global_position - global_position
 	to.y = 0
 	var dist := to.length()
@@ -426,6 +432,7 @@ func take_hit(dmg: float, dir: Vector3, atk: Dictionary) -> Dictionary:
 		G.fx.sparks(res.point, dir, Color(1, 0.4, 0.3), 6)
 		return res
 	hp -= dmg
+	_add_wound(res.point, dir, atk)
 	var knock: float = atk.get("knock", 2.5)
 	velocity += dir * knock
 	velocity.y = maxf(velocity.y, 1.0 if atk.power < 2 else 3.0)
@@ -442,6 +449,52 @@ func take_hit(dmg: float, dir: Vector3, atk: Dictionary) -> Dictionary:
 		hp = 0.0
 		_expose()
 	return res
+
+# Порез на теле: тёмно-красная полоса на ближайшей части тела, по линии удара.
+func _add_wound(p: Vector3, dir: Vector3, atk: Dictionary) -> void:
+	var best: MeshInstance3D = null
+	var bd := 99.0
+	for m in meshes:
+		if not is_instance_valid(m) or not m.is_visible_in_tree() or not (m.mesh is BoxMesh):
+			continue
+		if m.mesh.size.x < 0.1 and m.mesh.size.z < 0.1:
+			continue   # когти, зубы
+		var d: float = m.global_position.distance_to(p + Vector3(randf_range(-0.3, 0.3), randf_range(-0.6, 0.3), 0))
+		if d < bd:
+			bd = d
+			best = m
+	if best == null:
+		return
+	var sz: Vector3 = best.mesh.size
+	var w := MeshInstance3D.new()
+	var bm := BoxMesh.new()
+	var length := clampf(maxf(sz.x, sz.z) * 1.15, 0.15, 0.6)
+	bm.size = Vector3(length, 0.035 if atk.power < 2 else 0.06, maxf(sz.x, sz.z) * 1.08)
+	w.mesh = bm
+	w.material_override = Vox.cel_mat(Color(0.55, 0.0, 0.08), false, 0.6)
+	w.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	best.add_child(w)
+	w.position = Vector3(0, randf_range(-sz.y * 0.35, sz.y * 0.35), 0)
+	w.rotation_degrees = Vector3(0, randf_range(-30, 30), float(atk.get("roll", 0.0)) + randf_range(-15, 15))
+	wounds.append({"n": w, "s": 1.0})
+	if wounds.size() > 14:
+		var old: Dictionary = wounds.pop_front()
+		if is_instance_valid(old.n):
+			old.n.queue_free()
+
+func _update_wounds(dt: float) -> void:
+	# порезы затягиваются вместе с регенерацией
+	if since_hit < 2.0:
+		return
+	for i in range(wounds.size() - 1, -1, -1):
+		var w: Dictionary = wounds[i]
+		w.s -= dt * 0.5
+		if not is_instance_valid(w.n) or w.s <= 0.0:
+			if is_instance_valid(w.n):
+				w.n.queue_free()
+			wounds.remove_at(i)
+			continue
+		w.n.scale = Vector3(1.0, w.s, w.s)
 
 func stagger(t: float) -> void:
 	if state in ["exposed", "dead", "locked"]:
