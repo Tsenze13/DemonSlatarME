@@ -1,0 +1,249 @@
+extends Node
+# Автотест: бот проходит по всем действиям, делает снимки экрана
+# (если задан KLINOK_SHOTS) и печатает итог. Запуск: KLINOK_AUTOTEST=1.
+
+var shots_dir := ""
+var log_lines: Array = []
+var fails: Array = []
+
+func _ready() -> void:
+	process_mode = Node.PROCESS_MODE_ALWAYS
+	shots_dir = OS.get_environment("KLINOK_SHOTS")
+	_run()
+
+func w(t: float) -> void:
+	await get_tree().create_timer(t, true, false, true).timeout
+
+func shot(nm: String) -> void:
+	if shots_dir == "":
+		return
+	await RenderingServer.frame_post_draw
+	var img := get_viewport().get_texture().get_image()
+	img.save_png(shots_dir + "/" + nm + ".png")
+
+func check(ok: bool, what: String) -> void:
+	if ok:
+		log_lines.append("OK   " + what)
+	else:
+		log_lines.append("FAIL " + what)
+		fails.append(what)
+
+func demon() -> Node:
+	for e in G.enemies:
+		if is_instance_valid(e) and not e.is_dead():
+			return e
+	return null
+
+func approach(d: Node, max_t := 4.0) -> void:
+	var p: Node = G.player
+	var t := 0.0
+	while t < max_t and is_instance_valid(d) and p.global_position.distance_to(d.global_position) > 3.0:
+		var to: Vector3 = d.global_position - p.global_position
+		G.cam_rig.yaw = atan2(-to.x, -to.z)
+		p.auto_move = Vector2(0, -1)
+		await w(0.05)
+		t += 0.05
+	p.auto_move = Vector2.ZERO
+
+func _run() -> void:
+	var p: Node = G.player
+	await w(1.2)
+	await shot("01_start")
+	# бег
+	G.cam_rig.yaw = 0.0
+	p.auto_move = Vector2(0, -1)
+	await w(1.0)
+	check(p.last_speed > 10.0, "бег быстрый (%.1f м/с)" % p.last_speed)
+	await shot("02_run")
+	p.press("dash")
+	await w(0.08)
+	check(p.state == "dash", "рывок")
+	await shot("03_dash")
+	p.auto_move = Vector2.ZERO
+	await w(0.6)
+	var d := demon()
+	check(d != null, "демон есть")
+	await w(1.2)
+	await approach(d)
+	p.press("lock")
+	await w(0.1)
+	check(p.lock_target != null, "захват цели")
+	# комбо
+	for i in 4:
+		p.press("light")
+		await w(0.27 if i < 3 else 0.2)
+		if i == 3:
+			await shot("04_combo4")
+	await w(0.5)
+	check(G.hud.combo > 0 or G.hud.style > 0, "комбо засчитано (%d)" % G.hud.combo)
+	await approach(d)
+	p.press("heavy")
+	await w(0.42)
+	await shot("05_heavy")
+	await w(0.6)
+	p.breath = 100.0
+	await approach(d)
+	p.press("form1")
+	await w(0.24)
+	await shot("06_form1")
+	await w(0.25)
+	await shot("06b_form1_after")
+	await w(0.6)
+	p.breath = 100.0
+	await approach(d)
+	p.press("form2")
+	await w(0.45)
+	await shot("07_form2")
+	await w(1.0)
+	p.breath = 100.0
+	p.press("form3")
+	await w(0.3)
+	await shot("08_form3")
+	await w(1.2)
+	# парирование: ждём замах демона
+	var parried := false
+	var tt := 0.0
+	while tt < 8.0 and not parried:
+		d = demon()
+		if d == null:
+			break
+		p.hp = p.max_hp
+		if d.state == "windup" and d.state_t > d.windup_time() - 0.14:
+			p.press("parry")
+			await w(0.3)
+			if d.state == "stagger":
+				parried = true
+				await shot("09_parry")
+		else:
+			if p.global_position.distance_to(d.global_position) > 3.2:
+				await approach(d, 1.0)
+			await w(0.03)
+			tt += 0.03
+	check(parried, "парирование сработало")
+	await w(0.5)
+	# дыхание (демона отодвинем, чтобы не мешал)
+	d = demon()
+	if d:
+		d.global_position = Vector3(60, 0.5, 60)
+		d.state = "idle"
+	p.hp = p.max_hp
+	await w(0.3)
+	p.auto_breathe = true
+	p.breath = 20.0
+	await w(1.0)
+	check(p.breath > 40.0, "дыхание восстанавливается (%.0f)" % p.breath)
+	await shot("10_breathe")
+	p.auto_breathe = false
+	await w(0.3)
+	# добивание
+	d = demon()
+	if d:
+		d.global_position = p.global_position + Vector3(0, 0.3, -3.0)
+		await w(0.2)
+		await approach(d)
+		d.hp = 1.0
+		d.state = "chase"
+		p.press("light")
+		await w(0.35)
+		check(d.is_exposed(), "шея открыта при 0 здоровья")
+		await shot("11_exposed")
+		await approach(d)
+		p.press("light")
+		await w(0.12)
+		check(p.state == "finisher", "добивание началось")
+		await w(0.12)
+		await shot("12_finisher_a")
+		await w(0.5)
+		await shot("13_finisher_b")
+		await w(1.5)
+		check(not is_instance_valid(d) or d.is_dead(), "демон обезглавлен")
+		await shot("14_after")
+	# отталкивание от дерева
+	var tree: Node = null
+	for t in get_tree().get_nodes_in_group("kick"):
+		if t.kind == "tree":
+			tree = t
+			break
+	if tree:
+		p.global_position = tree.global_position + Vector3(1.0, 0.2, 0)
+		p.velocity = Vector3.ZERO
+		await w(0.3)
+		p.press("jump")
+		await w(0.25)
+		p.press("jump")
+		await w(0.05)
+		var spd: float = Vector3(p.velocity.x, 0, p.velocity.z).length()
+		check(spd > 12.0, "отталкивание от дерева (%.1f м/с)" % spd)
+		await shot("15_kick")
+		await w(1.0)
+	# бег по стене (каменная стена на z=48)
+	p.global_position = Vector3(0, 0.2, 42.0)
+	p.velocity = Vector3.ZERO
+	G.cam_rig.yaw = PI   # смотреть на +z
+	await w(0.3)
+	p.auto_move = Vector2(-0.5, -1)
+	await w(0.3)
+	p.press("jump")
+	var seen_wall := false
+	for i in 40:
+		await w(0.025)
+		if p.state == "wallrun":
+			seen_wall = true
+			break
+	check(seen_wall, "бег по стене")
+	await w(0.2)
+	await shot("16_wallrun")
+	p.auto_move = Vector2.ZERO
+	await w(1.0)
+	# разрушение: удар по забору (демона подальше)
+	d = demon()
+	if d:
+		d.global_position = Vector3(80, 0.5, -80)
+		d.state = "idle"
+	var fence: Node = null
+	for b in get_tree().get_nodes_in_group("breakable"):
+		if b.get_script() == load("res://scripts/breakable.gd") and b.need_power == 1:
+			fence = b
+			break
+	if fence:
+		var fpos: Vector3 = fence.global_position
+		p.global_position = fpos + Vector3(2.0, 0.3, 0)
+		p.velocity = Vector3.ZERO
+		p.facing = atan2(-1.0, 0.0)
+		p.lock_target = null
+		await w(0.3)
+		p.press("heavy")
+		await w(0.6)
+		check(not is_instance_valid(fence), "забор разрушен")
+		await shot("17_break")
+	# срубить дерево формой
+	var tree2: Node = null
+	for t in get_tree().get_nodes_in_group("kick"):
+		if t.kind == "tree":
+			tree2 = t
+	if tree2:
+		p.global_position = tree2.global_position + Vector3(2.5, 0.3, 0)
+		p.velocity = Vector3.ZERO
+		p.facing = atan2(-1.0, 0.0)
+		p.breath = 100.0
+		await w(0.3)
+		p.press("form1")
+		await w(0.6)
+		check(tree2.cut, "дерево срублено")
+		await w(0.6)
+		await shot("18_tree_cut")
+	# день
+	G.world.set_night(false)
+	p.global_position = Vector3(0, 0.3, 6)
+	G.cam_rig.yaw = 0.0
+	await w(1.0)
+	await shot("19_day")
+	G.world.set_night(true)
+	# новый демон
+	await w(5.5)
+	check(demon() != null, "новый демон появился")
+	print("\n=== АВТОТЕСТ ===")
+	for l in log_lines:
+		print(l)
+	print("ИТОГ: %s" % ("всё в порядке" if fails.is_empty() else "ошибки: %d" % fails.size()))
+	get_tree().quit(0 if fails.is_empty() else 1)
