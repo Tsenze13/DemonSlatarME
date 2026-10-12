@@ -75,7 +75,7 @@ const ATK := {
 		"arm0": Vector3(-80, 120, 0), "arm1": Vector3(-90, -120, 0), "fore0": 0, "fore1": 0, "tw0": 60, "tw1": -60,
 		"fx": "wave_big", "impact": true, "knock": 8.0, "rev": true},
 	# удар из ножен: выхват и срез одним движением
-	"iai": {"dur": 0.42, "hit0": 0.06, "hit1": 0.13, "dmg": 22, "range": 3.6, "arc": 170, "lunge": 16.0,
+	"iai": {"dur": 0.46, "hit0": 0.07, "hit1": 0.17, "dmg": 24, "range": 3.6, "arc": 170, "lunge": 0.0,
 		"power": 2, "stagger": 0.7, "hitstop": 0.1, "shake": 0.3, "next": "l3",
 		"arm0": Vector3(-10, 75, 25), "arm1": Vector3(-88, -125, 0), "fore0": -30, "fore1": 0, "tw0": 55, "tw1": -55,
 		"fx": "slash", "roll": -4, "rev": true, "impact_light": true},
@@ -148,6 +148,9 @@ var grip_w := 0.0                  # вес двуручного хвата (IK 
 var left_w := 0.0                  # вес левой руки на рукояти
 var sprinting := false
 var draw_swapped := false
+var iai_dist := 8.0               # длина рывка при выхвате-ударе
+const IAI_MAX := 8.0
+const IAI_TIME := 0.1
 var draw_from_drawn := false
 var auto_sprint := false
 var sprint_fx_t := 0.0
@@ -996,6 +999,17 @@ func _start_attack(nm: String) -> void:
 	elif inp.length() > 0.2:
 		facing = atan2(inp.x, inp.z)
 	atk_dir = _forward()
+	if nm == "iai":
+		# резкий рывок-выхват: к демону (остановиться перед ним) или на 8 м вперёд
+		iai_dist = IAI_MAX
+		var tg := _aim_target(IAI_MAX + 3.0)
+		if tg:
+			var to2: Vector3 = tg.global_position - global_position
+			to2.y = 0
+			iai_dist = clampf(to2.length() - (tg.radius + 1.1), 0.0, IAI_MAX)
+		invuln_t = 0.2
+		sonic_boom(atk_dir)
+		G.fx.afterimage(model, Color(0.85, 0.95, 1.0), 0.35)
 	if atk.has("jump"):
 		velocity.y = atk.jump
 	elif atk.get("air", false):
@@ -1023,6 +1037,11 @@ func _st_attack(dt: float, inp: Vector3) -> void:
 	else:
 		sp = lunge * maxf(0.0, 1.0 - (t - a.hit1) * 6.0) * 0.3
 	var hv := atk_dir * sp
+	if atk_name == "iai":
+		hv = atk_dir * (iai_dist / IAI_TIME) if (t >= 0.02 and t < 0.02 + IAI_TIME) else Vector3.ZERO
+		if t < 0.02 + IAI_TIME:
+			G.fx.afterimage(model, Color(0.7, 0.88, 1.0), 0.2)
+			G.speedlines = 1.0
 	if a.has("spin") and atk_name == "f2":
 		hv = (inp * 6.0) if inp.length() > 0.1 else Vector3.ZERO
 	velocity.x = hv.x

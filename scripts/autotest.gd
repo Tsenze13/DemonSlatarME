@@ -98,6 +98,7 @@ func _run() -> void:
 	Input.parse_input_event(mm)
 	await w(0.1)
 	check(absf(G.cam_rig.yaw - y0) > 0.1, "мышь вращает камеру")
+	var iai_from: Vector3 = p.global_position
 	var mb := InputEventMouseButton.new()
 	mb.button_index = MOUSE_BUTTON_LEFT
 	mb.pressed = true
@@ -109,7 +110,10 @@ func _run() -> void:
 	Input.parse_input_event(mb2)
 	check(p.state == "attack" or p.atk_name == "l1", "ЛКМ бьёт")
 	check(p.atk_name == "iai" and p.drawn, "первый удар — из ножен, клинок достан")
-	await w(0.5)
+	await w(0.3)
+	var iai_len: float = Vector3(p.global_position.x - iai_from.x, 0, p.global_position.z - iai_from.z).length()
+	check(iai_len > 5.0, "удар из ножен — резкий рывок (%.1f м)" % iai_len)
+	await w(0.2)
 	p.press("draw")
 	await w(0.45)
 	check(not p.drawn, "F убирает клинок в ножны")
