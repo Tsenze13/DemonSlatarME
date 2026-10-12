@@ -73,6 +73,17 @@ func _run() -> void:
 	await w(0.5)
 	await shot("01_start")
 	check(not p.drawn, "в начале клинок в ножнах")
+	# все мечи из набора ставятся в руку и в ножны
+	var ok_sw := true
+	for si in range(-1, 9):
+		p.set_sword(si)
+		await w(0.05)
+		var bl: float = p.blade_base.global_position.distance_to(p.blade_tip.global_position)
+		if bl < 0.6 or bl > 1.1:
+			ok_sw = false
+			print("меч ", si, " длина ", bl)
+	check(ok_sw, "все 10 клинков ставятся")
+	p.set_sword(0)
 	# настоящая мышь: поворот камеры и удар ЛКМ должны доходить до игры
 	var y0: float = G.cam_rig.yaw
 	var mm := InputEventMouseMotion.new()

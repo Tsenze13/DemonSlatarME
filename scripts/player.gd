@@ -7,6 +7,7 @@ const Vox = preload("res://scripts/vox.gd")
 const Trail = preload("res://scripts/trail.gd")
 const Cloth = preload("res://scripts/cloth.gd")
 const Tex = preload("res://scripts/tex.gd")
+const SwordLib = preload("res://scripts/sword_lib.gd")
 
 # --- движение ---
 const RUN_SPEED := 13.5
@@ -131,6 +132,9 @@ var last_speed := 0.0
 var hits_total := 0
 var drawn := false              # клинок в руке или в ножнах
 var sheathed_hilt: Node3D
+var sheath_node: Node3D
+var sword_vis: Node3D
+var sword_index := 0              # 0..8 — мечи из набора, -1 — свой кубический
 var sprinting := false
 var draw_swapped := false
 var auto_sprint := false
@@ -220,30 +224,16 @@ func _build_model() -> void:
 		sl2.material_override = hm
 		arms[nm] = [arm, fore]
 	var fore_r: Node3D = arms.r[1]
-	# катана: рукоять 0,25 м, клинок 0,8 м с лёгким изгибом
+	# клинок: модель из набора игрока (sword_lib) или свой кубический
 	var sword := Vox.pivot(fore_r, Vector3(0, -0.29, 0.0), "sword")
-	Vox.box(sword, Vector3(0.04, 0.25, 0.04), Vector3(0, 0.03, 0), Color(0.15, 0.12, 0.2))
-	Vox.box(sword, Vector3(0.045, 0.03, 0.045), Vector3(0, 0.16, 0), Color(0.75, 0.62, 0.3), false)
-	Vox.box(sword, Vector3(0.11, 0.025, 0.09), Vector3(0, -0.1, 0), Color(0.75, 0.62, 0.3))
-	var b1 := Vox.pivot(sword, Vector3(0, -0.11, 0))
-	Vox.box(b1, Vector3(0.03, 0.42, 0.014), Vector3(0, -0.21, 0), steel, true, 0.25)
-	Vox.box(b1, Vector3(0.014, 0.42, 0.016), Vector3(0, -0.21, -0.013), edge, false, 1.4)
-	var b2 := Vox.pivot(b1, Vector3(0, -0.42, 0))
-	b2.rotation_degrees = Vector3(-6, 0, 0)   # изгиб к обуху
-	Vox.box(b2, Vector3(0.028, 0.38, 0.014), Vector3(0, -0.19, 0), steel, true, 0.25)
-	Vox.box(b2, Vector3(0.014, 0.38, 0.016), Vector3(0, -0.19, -0.013), edge, false, 1.4)
-	var tip := Vox.box(b2, Vector3(0.02, 0.05, 0.014), Vector3(0, -0.4, -0.006), steel, false, 0.25)
-	tip.rotation_degrees = Vector3(-20, 0, 0)
+	sword_vis = Vox.pivot(sword, Vector3.ZERO)
 	blade_base = Vox.pivot(sword, Vector3(0, -0.13, 0))
-	blade_tip = Vox.pivot(b2, Vector3(0, -0.4, 0))
+	blade_tip = Vox.pivot(sword, Vector3(0, -0.95, 0))
 
-	# ножны на левом бедре
-	var sheath := Vox.pivot(hips, Vector3(0.24, 0.0, 0.08))
-	sheath.rotation_degrees = Vector3(-72, 0, 0)
-	Vox.box(sheath, Vector3(0.05, 0.82, 0.04), Vector3(0, -0.36, 0), Color(0.12, 0.1, 0.16))
-	sheathed_hilt = Vox.pivot(sheath, Vector3(0, 0.0, 0))
-	Vox.box(sheathed_hilt, Vector3(0.11, 0.025, 0.09), Vector3(0, 0.02, 0), Color(0.75, 0.62, 0.3))
-	Vox.box(sheathed_hilt, Vector3(0.04, 0.25, 0.04), Vector3(0, 0.16, 0), Color(0.15, 0.12, 0.2))
+	# ножны на левом бедре (размер подгоняется под клинок в set_sword)
+	sheath_node = Vox.pivot(hips, Vector3(0.24, 0.0, 0.08))
+	sheath_node.rotation_degrees = Vector3(-72, 0, 0)
+	sheathed_hilt = Vox.pivot(sheath_node, Vector3(0, 0.02, 0))
 
 	for side in [-1.0, 1.0]:
 		var nm := "r" if side < 0 else "l"
@@ -257,6 +247,7 @@ func _build_model() -> void:
 	for n in ["hips", "torso", "head", "arm_r", "fore_r", "arm_l", "fore_l", "leg_r", "shin_r", "leg_l", "shin_l", "sword"]:
 		J[n] = model.find_child(n, true, false)
 		rest[n] = Vector3.ZERO
+	set_sword(sword_index)
 
 	# полы хаори: толстая блочная ткань вокруг корпуса, открыта спереди
 	var ring := []
@@ -554,6 +545,51 @@ func _common_actions(inp: Vector3) -> bool:
 			_try_form(i + 1)
 			return true
 	return false
+
+# Поставить меч в руку и такой же в ножны.
+func set_sword(i: int) -> void:
+	sword_index = i
+	for c in sword_vis.get_children():
+		c.queue_free()
+	for c in sheathed_hilt.get_children():
+		c.queue_free()
+	for c in sheath_node.get_children():
+		if c != sheathed_hilt:
+			c.queue_free()
+	var blade_len := 0.85
+	var blade_w := 0.05
+	if i >= 0 and i < SwordLib.count():
+		var inf := SwordLib.info(i)
+		blade_w = inf.blade_w
+		var vis := SwordLib.make(i)
+		vis.position = Vector3(0, -0.1, 0)
+		sword_vis.add_child(vis)
+		var hv := SwordLib.make(i)
+		sheathed_hilt.add_child(hv)
+	else:
+		_build_proc_sword(sword_vis)
+		_build_proc_sword(sheathed_hilt)
+		blade_len = 0.8
+	blade_tip.position = Vector3(0, -0.1 - blade_len, 0)
+	# ножны под ширину клинка
+	var sc := Vox.box(sheath_node, Vector3(0.055, blade_len + 0.04, clampf(blade_w + 0.025, 0.045, 0.2)), Vector3(0, -(blade_len + 0.04) * 0.5 + 0.02, 0), Color(0.12, 0.1, 0.16))
+	sc.name = "scabbard"
+	if is_inside_tree():
+		set_drawn(drawn)
+
+func _build_proc_sword(parent: Node3D) -> void:
+	var steel := Color(0.82, 0.86, 0.92)
+	var edge := Color(0.3, 0.62, 1.0)
+	var sw := Vox.pivot(parent, Vector3(0, 0, 0))
+	Vox.box(sw, Vector3(0.04, 0.25, 0.04), Vector3(0, 0.03, 0), Color(0.15, 0.12, 0.2))
+	Vox.box(sw, Vector3(0.11, 0.025, 0.09), Vector3(0, -0.1, 0), Color(0.75, 0.62, 0.3))
+	var b1 := Vox.pivot(sw, Vector3(0, -0.11, 0))
+	Vox.box(b1, Vector3(0.014, 0.42, 0.03), Vector3(0, -0.21, 0), steel, true, 0.25)
+	Vox.box(b1, Vector3(0.016, 0.42, 0.012), Vector3(0, -0.21, -0.013), edge, false, 1.4)
+	var b2 := Vox.pivot(b1, Vector3(0, -0.42, 0))
+	b2.rotation_degrees = Vector3(-6, 0, 0)
+	Vox.box(b2, Vector3(0.014, 0.38, 0.028), Vector3(0, -0.19, 0), steel, true, 0.25)
+	Vox.box(b2, Vector3(0.016, 0.38, 0.012), Vector3(0, -0.19, -0.013), edge, false, 1.4)
 
 func set_drawn(on: bool) -> void:
 	drawn = on

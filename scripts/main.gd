@@ -9,6 +9,7 @@ const CamRig = preload("res://scripts/camera_rig.gd")
 const Fx = preload("res://scripts/fx.gd")
 const Hud = preload("res://scripts/hud.gd")
 const Sfx = preload("res://scripts/sfx.gd")
+const SwordLib = preload("res://scripts/sword_lib.gd")
 
 const BASE_H := 540.0   # высота «пиксельного» кадра (1080p → в 2 раза крупнее)
 
@@ -20,7 +21,8 @@ var respawn_t := -1.0
 var menu: Control
 var vol_slider: HSlider
 var sens_slider: HSlider
-var settings := {"volume": 0.4, "sens": 1.0, "pixel": false}
+var settings := {"volume": 0.4, "sens": 1.0, "pixel": false, "sword": 0}
+var sword_opt: OptionButton
 var pixel_check: CheckBox
 const SETTINGS_PATH := "user://settings.cfg"
 var spawn_points := [Vector3(0, 0.5, -9), Vector3(-8, 0.5, 6), Vector3(10, 0.5, -4), Vector3(4, 0.5, 10)]
@@ -211,6 +213,17 @@ func _build_menu() -> void:
 	box.add_child(t)
 	vol_slider = _slider(box, "Громкость", 0.0, 1.0, 0.05, func(v): _set_volume(v, false))
 	sens_slider = _slider(box, "Чувствительность мыши", 0.2, 3.0, 0.05, func(v): _set_sens(v))
+	var sl := Label.new()
+	sl.text = "Клинок"
+	sl.add_theme_font_size_override("font_size", 20)
+	box.add_child(sl)
+	sword_opt = OptionButton.new()
+	sword_opt.add_theme_font_size_override("font_size", 18)
+	for nm in SwordLib.NAMES:
+		sword_opt.add_item(nm)
+	sword_opt.add_item("Кубический (свой)")
+	sword_opt.item_selected.connect(func(idx): _set_sword(idx))
+	box.add_child(sword_opt)
 	pixel_check = CheckBox.new()
 	pixel_check.text = "Пиксельный фильтр (крупные пиксели)"
 	pixel_check.add_theme_font_size_override("font_size", 18)
@@ -257,6 +270,12 @@ func _set_volume(v: float, show: bool) -> void:
 		hud.notify("Громкость: %d%%" % int(round(settings.volume * 100)), 1.2)
 		_save_settings()
 
+func _set_sword(idx: int) -> void:
+	var i := idx if idx < SwordLib.NAMES.size() else -1
+	settings.sword = i
+	if G.player:
+		G.player.set_sword(i)
+
 func _set_sens(v: float) -> void:
 	settings.sens = v
 	if G.cam_rig:
@@ -268,11 +287,15 @@ func _load_settings() -> void:
 		settings.volume = float(cf.get_value("main", "volume", 0.4))
 		settings.sens = float(cf.get_value("main", "sens", 1.0))
 		settings.pixel = bool(cf.get_value("main", "pixel", false))
+		settings.sword = int(cf.get_value("main", "sword", 0))
 	_set_volume(settings.volume, false)
 	_set_sens(settings.sens)
 	vol_slider.set_value_no_signal(settings.volume)
 	sens_slider.set_value_no_signal(settings.sens)
 	pixel_check.set_pressed_no_signal(settings.pixel)
+	sword_opt.select(settings.sword if settings.sword >= 0 else SwordLib.NAMES.size())
+	if G.player and G.player.sword_index != settings.sword:
+		G.player.set_sword(settings.sword)
 	_on_resize()
 
 func _save_settings() -> void:
@@ -280,6 +303,7 @@ func _save_settings() -> void:
 	cf.set_value("main", "volume", settings.volume)
 	cf.set_value("main", "sens", settings.sens)
 	cf.set_value("main", "pixel", settings.pixel)
+	cf.set_value("main", "sword", settings.sword)
 	cf.save(SETTINGS_PATH)
 
 func _notification(what: int) -> void:
