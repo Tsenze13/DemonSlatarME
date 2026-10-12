@@ -233,16 +233,13 @@ func _draw() -> void:
 			"Shift — рывок   E — шаг-вспышка к цели   Tab / колесо — захват цели",
 			"ЛКМ — комбо   ПКМ — тяжёлый удар   Q — парирование",
 			"1 / 2 / 3 — формы Прилива   R (держать) — восстановить дыхание",
-			"Бег в стену в прыжке — бег по стене   N — день/ночь   F1 — подсказка",
+			"Бег в стену в прыжке — бег по стене   N — день/ночь   − / + — громкость",
+			"Esc — пауза и настройки (громкость, мышь)   F1 — подсказка",
 		]
-		var hy := s.y - 210 * u
+		var hy := s.y - 270 * u
 		var hx := 28 * u
 		draw_rect(Rect2(hx - 12 * u, hy - 26 * u, 640 * u, lines.size() * 24 * u + 20 * u), Color(0.02, 0.03, 0.08, 0.7))
 		for l in lines:
 			_txt(Vector2(hx, hy), l, int(15 * u), Color(0.88, 0.92, 1.0))
 			hy += 24 * u
-	if G.paused:
-		draw_rect(Rect2(Vector2.ZERO, s), Color(0, 0, 0.05, 0.45))
-		_txt(Vector2(s.x * 0.5, s.y * 0.4), "ПАУЗА", int(64 * u), Color(1, 1, 1), HORIZONTAL_ALIGNMENT_CENTER, 0, 14)
-		_txt(Vector2(s.x * 0.5, s.y * 0.4 + 46 * u), "Esc — продолжить   F10 — выйти", int(20 * u), Color(0.85, 0.9, 1.0), HORIZONTAL_ALIGNMENT_CENTER, 0)
-	_txt(Vector2(s.x - 16 * u, s.y - 14 * u), "Клинок и Демон · прототип 0.2", int(12 * u), Color(0.7, 0.75, 0.85, 0.6), HORIZONTAL_ALIGNMENT_RIGHT, 0)
+	_txt(Vector2(s.x - 16 * u, s.y - 14 * u), "Клинок и Демон · прототип 0.3", int(12 * u), Color(0.7, 0.75, 0.85, 0.6), HORIZONTAL_ALIGNMENT_RIGHT, 0)

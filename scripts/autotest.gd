@@ -9,6 +9,7 @@ var fails: Array = []
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	shots_dir = OS.get_environment("KLINOK_SHOTS")
+	seed(12345)
 	_run()
 
 func w(t: float) -> void:
@@ -65,10 +66,31 @@ func _run() -> void:
 	p.global_position = Vector3(0, 0.5, 8)
 	await w(0.5)
 	await shot("01_start")
-	# бег
+	# настоящая мышь: поворот камеры и удар ЛКМ должны доходить до игры
+	var y0: float = G.cam_rig.yaw
+	var mm := InputEventMouseMotion.new()
+	mm.relative = Vector2(200, 0)
+	Input.parse_input_event(mm)
+	await w(0.1)
+	check(absf(G.cam_rig.yaw - y0) > 0.1, "мышь вращает камеру")
+	var mb := InputEventMouseButton.new()
+	mb.button_index = MOUSE_BUTTON_LEFT
+	mb.pressed = true
+	Input.parse_input_event(mb)
+	await w(0.15)
+	var mb2 := InputEventMouseButton.new()
+	mb2.button_index = MOUSE_BUTTON_LEFT
+	mb2.pressed = false
+	Input.parse_input_event(mb2)
+	check(p.state == "attack" or p.atk_name == "l1", "ЛКМ бьёт")
+	await w(0.5)
 	G.cam_rig.yaw = 0.0
-	p.auto_move = Vector2(0, -1)
+	# бег (вбок, не на демона)
+	G.cam_rig.yaw = 0.0
+	p.auto_move = Vector2(-1, 0)
 	await w(1.0)
+	if p.last_speed < 10.0:
+		print("dbg run state ", p.state, " pos ", p.global_position, " vel ", p.velocity, " inp ", p._input_dir(), " am ", p.auto_move)
 	check(p.last_speed > 10.0, "бег быстрый (%.1f м/с)" % p.last_speed)
 	await shot("02_run")
 	p.press("dash")
@@ -85,13 +107,14 @@ func _run() -> void:
 	await w(0.1)
 	check(p.lock_target != null, "захват цели")
 	# комбо
+	var hits0: int = p.hits_total
 	for i in 4:
 		p.press("light")
 		await w(0.27 if i < 3 else 0.2)
 		if i == 3:
 			await shot("04_combo4")
 	await w(0.5)
-	check(G.hud.combo > 0 or G.hud.style > 0, "комбо засчитано (%d)" % G.hud.combo)
+	check(p.hits_total > hits0, "удары комбо попадают (%d)" % (p.hits_total - hits0))
 	await approach(d)
 	p.press("heavy")
 	await w(0.42)
@@ -248,6 +271,15 @@ func _run() -> void:
 		check(tree2.cut, "дерево срублено")
 		await w(0.6)
 		await shot("18_tree_cut")
+	# меню паузы
+	get_parent()._toggle_pause()
+	await w(0.3)
+	await shot("20_pause")
+	check(get_parent().menu.visible, "меню паузы открывается")
+	get_parent()._set_volume(0.2, true)
+	check(AudioServer.get_bus_volume_db(0) < -10.0, "громкость меняется")
+	get_parent()._toggle_pause()
+	await w(0.2)
 	# день
 	G.world.set_night(false)
 	p.global_position = Vector3(0, 0.3, 6)

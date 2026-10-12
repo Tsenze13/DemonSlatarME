@@ -23,10 +23,12 @@ func _ready() -> void:
 	add_child(cam)
 	cam.current = true
 
-func _unhandled_input(e: InputEvent) -> void:
-	if e is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
-		yaw -= e.relative.x * sens
-		pitch = clampf(pitch - e.relative.y * sens, -1.2, 0.55)
+var sens_mult := 1.0
+
+func handle_input(e: InputEvent) -> void:
+	if e is InputEventMouseMotion and (Input.mouse_mode == Input.MOUSE_MODE_CAPTURED or G.autotest):
+		yaw -= e.relative.x * sens * sens_mult
+		pitch = clampf(pitch - e.relative.y * sens * sens_mult, -1.2, 0.55)
 
 func cinematic(target: Node, dur: float) -> void:
 	cine_target = target

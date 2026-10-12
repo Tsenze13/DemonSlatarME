@@ -118,6 +118,7 @@ var fin_stage := 0
 var breathe_fx_t := 0.0
 var msg_cb: Callable
 var last_speed := 0.0
+var hits_total := 0
 var landing_vel := 0.0
 
 func _ready() -> void:
@@ -308,7 +309,8 @@ func _make_cloth(attach: Node3D, anchors: Array, rows: int, seg: float):
 # =====================================================================
 const BUF_ACTIONS := ["jump", "dash", "flash", "light", "heavy", "parry", "form1", "form2", "form3", "lock"]
 
-func _unhandled_input(e: InputEvent) -> void:
+# Вызывается из main.gd: события мыши не доходят до пиксельного SubViewport сами.
+func handle_input(e: InputEvent) -> void:
 	for a in BUF_ACTIONS:
 		if e.is_action_pressed(a, false):
 			buf[a] = G.real_time
@@ -953,6 +955,7 @@ func _check_hits() -> void:
 
 func _on_hit(e: Node, res: Dictionary, dir: Vector3) -> void:
 	var a := atk
+	hits_total += 1
 	var p: Vector3 = res.get("point", e.global_position + Vector3.UP * 1.4)
 	G.hitstop(a.hitstop)
 	G.add_shake(a.shake)
