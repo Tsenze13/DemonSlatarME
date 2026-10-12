@@ -154,6 +154,9 @@ func _run() -> void:
 				hi = maxf(hi, (torso.global_transform.affine_inverse() * q).y)
 	check(hi < 0.5, "хаори не выше плеч (%.2f)" % hi)
 	p.auto_move = Vector2.ZERO
+	p.sprinting = false
+	p.global_position = Vector3(0, 0.5, 6)
+	p.velocity = Vector3.ZERO
 	await w(0.6)
 	var d := demon()
 	check(d != null, "демон есть")

@@ -258,8 +258,10 @@ func _build_model() -> void:
 	back_sheath = Vox.pivot(torso, Vector3(0, 0.3, -0.17))
 
 	# ножны на левом бедре (размер подгоняется под клинок в set_sword)
-	sheath_node = Vox.pivot(hips, Vector3(0.24, 0.0, 0.08))
-	sheath_node.rotation_degrees = Vector3(-72, 0, 0)
+	# катана за поясом-оби, как носили самураи: устье ножен перед левым боком,
+	# рукоять вперёд и чуть к центру, ножны назад и немного вниз, лезвие вверх
+	sheath_node = Vox.pivot(hips, Vector3(0.15, 0.08, 0.17))
+	sheath_node.basis = _wear_basis(Vector3(0.18, -0.3, -1.0))
 	sheathed_hilt = Vox.pivot(sheath_node, Vector3(0, 0.02, 0))
 	scabbard_node = Vox.pivot(sheath_node, Vector3(0, 0.02, 0))
 
@@ -619,7 +621,8 @@ func set_sword(m: int) -> void:
 		sword_vis.add_child(h)
 		# в ножнах — свёрнутый клинок висит на бедре
 		var coil := SwordLib.make(8)
-		coil.rotation_degrees = Vector3(0, 0, 0)
+		coil.basis = sheath_node.basis.inverse() * Basis.from_euler(Vector3(0.25, 0, 0))
+		coil.position = sheath_node.basis.inverse() * Vector3(0.05, 0.15, -0.1)
 		sheathed_hilt.add_child(coil)
 		blade_len = 0.3
 	else:
@@ -1702,6 +1705,15 @@ func _draw_ik(inv: Transform3D) -> void:
 		J.sword.basis = (ft.inverse() * want).orthonormalized()
 	# левая рука держит ножны у устья
 	_ik_arm("l", mouth + Vector3(0, 0.02, 0.02), 1.0)
+
+# Базис ножен: клинок вдоль -Y = dir (назад-вниз), лезвие (-Z) смотрит вверх.
+func _wear_basis(dir: Vector3) -> Basis:
+	var d := dir.normalized()
+	var y := -d
+	var e := Vector3.UP - d * d.dot(Vector3.UP)
+	var z := -e.normalized()
+	var x := y.cross(z).normalized()
+	return Basis(x, y, z)
 
 # Базис клинка в системе торса: клинок вдоль -Y = dir, лезвие (-Z) смотрит вниз.
 func _blade_basis(dir: Vector3) -> Basis:
