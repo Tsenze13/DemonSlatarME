@@ -145,6 +145,19 @@ func _run() -> void:
 		G.cam_rig.pitch = -0.3
 	p.set_sword(0)
 	p.set_drawn(false)
+	# анимации: прыжок с приземлением, сбивание с ног и подъём
+	p.press("jump")
+	await w(0.25)
+	check(not p.is_on_floor(), "прыжок")
+	await w(1.0)
+	check(p.is_on_floor() and p.land_t < 1.2, "приземление отыграно (присед)")
+	var hp0: float = p.hp
+	p.receive_attack(20.0, p.global_position + Vector3(0, 0, 2), false)
+	await w(0.1)
+	check(p.state == "down", "сильный удар сбивает с ног")
+	await w(1.5)
+	check(p.state == "move", "герой поднялся")
+	p.hp = hp0
 	# настоящая мышь: поворот камеры и удар ЛКМ должны доходить до игры
 	var y0: float = G.cam_rig.yaw
 	var mm := InputEventMouseMotion.new()

@@ -472,11 +472,23 @@ func _physics_process(dt: float) -> void:
 		"flash": _st_flash(dt)
 		"draw": _st_draw(dt)
 		"dead": _st_dead(dt)
+		"down": _st_down(dt)
 	landing_vel = velocity.y
 	move_and_slide()
-	if not was_floor and is_on_floor() and landing_vel < -14.0:
-		G.fx.dust(global_position, 10)
-		G.add_shake(0.08)
+	if not was_floor and is_on_floor():
+		# приземление: присед по силе удара, с разбега и высоко — кувырок
+		land_t = 0.0
+		land_k = clampf((-landing_vel - 4.0) / 22.0, 0.0, 1.0)
+		var hsp := Vector3(velocity.x, 0, velocity.z).length()
+		if landing_vel < -22.0 and hsp > 7.0 and state == "move":
+			roll_t = 0.0
+			flip_t = 0.42
+			flip_axis = 1.0
+			land_k *= 0.4
+			G.sfx.play("dash", -10.0, 0.8)
+		if landing_vel < -14.0:
+			G.fx.dust(global_position, 10)
+			G.add_shake(0.08)
 	_separate_from_enemies()
 	_effects(dt)
 	_animate(dt)
@@ -687,7 +699,7 @@ func set_sword(m: int) -> void:
 		sword_mode = "proc"
 		_build_proc_sword(sword_vis)
 		_build_proc_sword(sheathed_hilt)
-		Vox.box(scabbard_node, Vector3(0.055, 0.84, 0.05), Vector3(0, -0.4, 0), Color(0.12, 0.1, 0.16))
+		scabbard_node.add_child(SwordLib.make_scabbard(-1, saya_style))
 		blade_len = 0.8
 	blade_tip.position = Vector3(0, -0.1 - blade_len, 0)
 	if whip and sword_mode == "whip":
@@ -1083,6 +1095,8 @@ func _start_attack(nm: String) -> void:
 			G.impact(0.05, 1)
 	sprinting = false
 	atk = ATK[nm]
+	# ноги в комбо чередуются: шаг то левой, то правой
+	step_lead = -1.0 if nm in ["l2", "dslash", "counter", "iai"] else 1.0
 	atk_name = nm
 	_set_state("attack")
 	hit_set.clear()
@@ -1436,6 +1450,25 @@ func _st_hurt(dt: float) -> void:
 	if state_t > 0.38:
 		_set_state("move")
 
+# Сбит с ног: лежит, потом встаёт. Рывок или прыжок — вскочить раньше.
+func _st_down(dt: float) -> void:
+	var on_floor := is_on_floor()
+	if on_floor:
+		velocity.x = move_toward(velocity.x, 0, 22 * dt)
+		velocity.z = move_toward(velocity.z, 0, 22 * dt)
+	_gravity(dt)
+	if state_t > 0.4 and state_t < DOWN_GETUP and on_floor and (pressed("jump") or pressed("dash")):
+		# подъём прыжком
+		_set_state("move")
+		velocity.y = 7.0
+		flip_t = 0.42
+		flip_axis = -1.0
+		invuln_t = 0.3
+		G.sfx.play("jump", -6.0, 1.2)
+		return
+	if state_t > DOWN_END:
+		_set_state("move")
+
 func _st_dead(dt: float) -> void:
 	velocity.x = 0
 	velocity.z = 0
@@ -1491,8 +1524,15 @@ func receive_attack(dmg: float, src: Vector3, parryable: bool, attacker: Node = 
 		if G.hud:
 			G.hud.notify("Ты пал...")
 		return "hit"
-	velocity = kb * 9.0 + Vector3.UP * 3.0
 	hurt_dir = kb
+	if dmg >= 18.0:
+		# сильный удар сбивает с ног
+		velocity = kb * 11.0 + Vector3.UP * 6.0
+		invuln_t = DOWN_END
+		sprinting = false
+		_set_state("down")
+		return "hit"
+	velocity = kb * 9.0 + Vector3.UP * 3.0
 	_set_state("hurt")
 	return "hit"
 
@@ -1619,17 +1659,58 @@ func _effects(dt: float) -> void:
 # =====================================================================
 # АНИМАЦИЯ (процедурная)
 # =====================================================================
+# Слои: базовая поза состояния → движение тела (наклон от ускорения, крен
+# в поворотах, фазы прыжка, приземление) → пружины суставов (инерция,
+# лёгкий перехлёст, плавные переходы между любыми позами).
+var jvel := {}
+var bsp := {"lean": 0.0, "lean_v": 0.0, "roll": 0.0, "roll_v": 0.0, "hy": HIP_Y, "hy_v": 0.0, "my": 0.0, "my_v": 0.0}
+var prev_hv := Vector3.ZERO
+var acc_s := Vector3.ZERO
+var turn_s := 0.0
+var prev_facing := 0.0
+var land_t := 9.0
+var land_k := 0.0
+var roll_t := 9.0
+var idle_t := 0.0
+var step_lead := 1.0          # какая нога впереди в ударе (1 — левая, -1 — правая)
+const DOWN_GETUP := 0.85      # сбит с ног: когда начинает вставать
+const DOWN_END := 1.25
+
+func _spring_f(key: String, target: float, w: float, z: float, dt: float) -> float:
+	var x: float = bsp[key]
+	var v: float = bsp[key + "_v"]
+	v += (w * w * (target - x) - 2.0 * z * w * v) * dt
+	x += v * dt
+	bsp[key] = x
+	bsp[key + "_v"] = v
+	return x
+
 func _animate(dt: float) -> void:
 	var p := {}
 	for k in J:
 		p[k] = Vector3.ZERO
 	var hips_y := HIP_Y
+	var model_y := 0.0
 	var lean := 0.0
 	var roll := 0.0
 	var hv := Vector3(velocity.x, 0, velocity.z)
 	var sp := hv.length()
 	var snap := false
 	var model_spin := 0.0
+	var on_floor := is_on_floor()
+	var fwd := Vector3(sin(facing), 0, cos(facing))
+	var side_x := Vector3(cos(facing), 0, -sin(facing))     # +X модели (левый бок героя)
+
+	# --- движение тела: ускорение и поворот ---
+	var acc := (hv - prev_hv) / maxf(dt, 0.001)
+	prev_hv = hv
+	acc_s = acc_s.lerp(acc, 1.0 - exp(-12.0 * dt))
+	var dfa := wrapf(facing - prev_facing, -PI, PI)
+	prev_facing = facing
+	turn_s = lerpf(turn_s, dfa / maxf(dt, 0.001), 1.0 - exp(-10.0 * dt))
+	land_t += dt
+	roll_t += dt
+	var t_real := G.real_time
 
 	# базовая стойка с клинком: кулаки у живота, клинок вперёд и чуть вверх, лезвие вниз
 	p.arm_r = IDLE_ARM
@@ -1637,59 +1718,101 @@ func _animate(dt: float) -> void:
 	p.arm_l = Vector3(-30, 20, 15)
 	p.fore_l = Vector3(-50, 0, 0)
 	p.sword = Vector3(0, 0, 0)
-
 	if not drawn:
-		# клинок в ножнах: левая рука придерживает ножны, правая свободна
+		# клинок в ножнах: левая рука придерживает ножны у устья, правая свободна
 		p.arm_r = Vector3(-10, 0, -8)
 		p.fore_r = Vector3(-25, 0, 0)
 		p.arm_l = Vector3(15, -25, 18)
 		p.fore_l = Vector3(-45, 0, 0)
-	if state in ["move", "breathe", "parry", "stance", "hurt", "dead"] or (state == "attack" and false):
-		if is_on_floor() and sp > 0.8:
-			run_phase += dt * (6.0 + sp * 0.62)
+
+	var free_body: bool = state in ["move", "breathe", "parry", "stance"]
+	if free_body:
+		if on_floor and sp > 0.8:
+			idle_t = 0.0
+			# --- бег ---
+			var k := clampf(sp / RUN_SPEED, 0.0, 1.3)
+			run_phase += dt * (5.5 + sp * 0.6)
 			var s := sin(run_phase)
 			var c := cos(run_phase)
-			var k := clampf(sp / RUN_SPEED, 0.0, 1.3)
-			p.leg_r = Vector3(-s * 55 * k, 0, 0)
-			p.leg_l = Vector3(s * 55 * k, 0, 0)
-			p.shin_r = Vector3(maxf(0.0, c) * 80 * k + 10, 0, 0)
-			p.shin_l = Vector3(maxf(0.0, -c) * 80 * k + 10, 0, 0)
-			hips_y = HIP_Y - absf(c) * 0.06 * k - 0.05 * k
+			p.leg_r = Vector3(-s * 58 * k, 0, -3)
+			p.leg_l = Vector3(s * 58 * k, 0, 3)
+			# колено сгибается, когда нога уходит назад и проносится вперёд
+			p.shin_r = Vector3(maxf(0.0, c) * 85 * k + maxf(0.0, s) * 25 * k + 8, 0, 0)
+			p.shin_l = Vector3(maxf(0.0, -c) * 85 * k + maxf(0.0, -s) * 25 * k + 8, 0, 0)
+			hips_y = HIP_Y - absf(c) * 0.06 * k - 0.04 * k
+			# таз крутится за ногами, корпус — против, голова смотрит вперёд
+			p.hips = Vector3(0, -s * 10 * k, -c * 3 * k)
+			p.torso = Vector3(6 + 4 * k, s * 14 * k, c * 2 * k)
+			p.head = Vector3(-4, -s * 4 * k, 0)
+			lean = 6.0 * k
 			if sp > 9.0:
 				# быстрый бег: корпус вперёд, руки и клинок назад
-				lean = 30.0 * minf(1.0, (sp - 9.0) / 5.0)
-				p.torso = Vector3(10, 0, 0)
-				p.arm_r = Vector3(70, 0, -15)
+				var kf := minf(1.0, (sp - 9.0) / 5.0)
+				lean = lerpf(lean, 30.0, kf)
+				p.torso = Vector3(10, s * 8, 0)
+				p.arm_r = Vector3(70 + s * 6, 0, -15)
 				p.fore_r = Vector3(-20, 0, 0)
 				p.sword = Vector3(-60, 0, 0)
-				p.arm_l = Vector3(70, 0, 15)
+				p.arm_l = Vector3(70 - s * 6, 0, 15)
 				p.fore_l = Vector3(-20, 0, 0)
 				p.head = Vector3(-25, 0, 0)
 				if sprinting:
 					lean = 42.0
 					p.arm_r = Vector3(85, 0, -20)
 					p.arm_l = Vector3(85, 0, 20)
+			elif not drawn:
+				# в ножнах: правая рука машет против ноги, левая держит ножны
+				p.arm_r = Vector3(s * 42 * k, 0, -10)
+				p.fore_r = Vector3(-30 - maxf(0.0, -s) * 30 * k, 0, 0)
 			else:
-				p.arm_l = Vector3(s * 40, 0, 10)
-				p.torso = Vector3(8, s * 8, 0)
-		elif not is_on_floor():
-			p.leg_r = Vector3(-50, 0, 0)
-			p.shin_r = Vector3(90, 0, 0)
-			p.leg_l = Vector3(-10, 0, 0)
-			p.shin_l = Vector3(40, 0, 0)
-			lean = clampf(sp * 1.2, 0.0, 20.0)
-			if velocity.y > 3.0:
-				p.arm_r = Vector3(30, 0, -40)
-				p.arm_l = Vector3(30, 0, 40)
-		else:
-			# стойка на месте: ноги шире, дыхание
-			var br := sin(G.real_time * 2.0) * 3.0
-			p.leg_r = Vector3(-15, 0, -8)
-			p.leg_l = Vector3(12, 0, 8)
+				p.arm_l = Vector3(-s * 30, 0, 10)
+		elif on_floor:
+			# --- стойка на месте: ноги шире, дыхание, перенос веса, взгляд по сторонам ---
+			idle_t += dt
+			var br := sin(t_real * 2.0)
+			var sway := sin(t_real * 0.7)
+			p.leg_r = Vector3(-15, 0, -8 - sway * 2)
+			p.leg_l = Vector3(12, 0, 8 - sway * 2)
 			p.shin_r = Vector3(20, 0, 0)
 			p.shin_l = Vector3(12, 0, 0)
-			p.torso = Vector3(br, -15, 0)
-			hips_y = HIP_Y - 0.04
+			p.hips = Vector3(0, -8, sway * 2.5)
+			p.torso = Vector3(br * 3.0, -8, -sway * 2.0)
+			hips_y = HIP_Y - 0.05 + br * 0.008
+			if idle_t > 3.0:
+				p.head = Vector3(0, sin(idle_t * 0.45) * 22.0 * clampf((idle_t - 3.0) / 1.5, 0.0, 1.0), 0)
+		else:
+			# --- в воздухе: фазы прыжка ---
+			idle_t = 0.0
+			var up := clampf(velocity.y / 8.0, 0.0, 1.0)
+			var down := clampf(-velocity.y / 12.0, 0.0, 1.0)
+			var apex := 1.0 - maxf(up, down)
+			# взлёт: толчковая нога вытянута, маховая поджата; вершина — группировка;
+			# падение — ноги вниз навстречу земле, руки в стороны для равновесия
+			p.leg_r = Vector3(-55 * up - 70 * apex - 25 * down, 0, 0)
+			p.shin_r = Vector3(85 * up + 110 * apex + 30 * down, 0, 0)
+			p.leg_l = Vector3(15 * up - 55 * apex + 8 * down, 0, 0)
+			p.shin_l = Vector3(15 * up + 100 * apex + 22 * down, 0, 0)
+			p.torso = Vector3(10 * apex - 4 * down, 0, 0)
+			p.head = Vector3(-6 * up + 10 * down, 0, 0)
+			lean = clampf(sp * 1.2, 0.0, 18.0) + 10.0 * apex - 6.0 * down
+			if not drawn or sp > 9.0:
+				p.arm_r = Vector3(30 * up - 25 * down - 30 * apex, 0, -40 * up - 65 * down - 20 * apex)
+				p.arm_l = Vector3(30 * up - 25 * down - 30 * apex, 0, 40 * up + 65 * down + 20 * apex)
+				p.fore_r = Vector3(-30, 0, 0)
+		if on_floor:
+			# наклон от ускорения (разгон — вперёд, торможение — назад) и крен в поворотах
+			var acc_f := acc_s.dot(fwd)
+			lean += clampf(acc_f * 0.35, -24.0, 14.0)
+			roll += clampf(-turn_s * sp * 0.3, -18.0, 18.0)
+			if acc_f < -25.0 and sp > 4.0:
+				# торможение юзом: ноги вперёд, присед
+				var kb := clampf((-acc_f - 25.0) / 40.0, 0.0, 1.0)
+				p.leg_r = p.leg_r.lerp(Vector3(-45, 0, -6), kb)
+				p.leg_l = p.leg_l.lerp(Vector3(10, 0, 6), kb)
+				p.shin_r = p.shin_r.lerp(Vector3(30, 0, 0), kb)
+				p.shin_l = p.shin_l.lerp(Vector3(70, 0, 0), kb)
+				hips_y -= 0.1 * kb
+
 	if state == "wallrun":
 		run_phase += dt * 16.0
 		var s2 := sin(run_phase)
@@ -1701,43 +1824,55 @@ func _animate(dt: float) -> void:
 		p.fore_r = Vector3(-20, 0, 0)
 		p.arm_l = Vector3(60, 0, 20)
 		p.sword = Vector3(-60, 0, 0)
+		p.torso = Vector3(10, s2 * 10, 0)
 		if wall_vertical:
 			lean = -10.0
 		else:
-			var right := Vector3(cos(facing), 0, -sin(facing))  # сторона +X модели
-			roll = -sign(wall_n.dot(right)) * 28.0
+			roll = -sign(wall_n.dot(side_x)) * 28.0
 			lean = 15.0
 	if state == "dash" or state == "flash":
+		# рывок: низкий выпад, толчковая нога вытянута назад, руки и клинок назад
 		lean = 45.0
 		p.arm_r = Vector3(75, 0, -20)
 		p.arm_l = Vector3(75, 0, 20)
 		p.fore_r = Vector3(-10, 0, 0)
 		p.sword = Vector3(-70, 0, 0)
-		p.leg_r = Vector3(-40, 0, 0)
-		p.shin_r = Vector3(70, 0, 0)
-		p.leg_l = Vector3(30, 0, 0)
-		p.shin_l = Vector3(60, 0, 0)
+		p.leg_r = Vector3(-55, 0, 0)
+		p.shin_r = Vector3(80, 0, 0)
+		p.leg_l = Vector3(40, 0, 0)
+		p.shin_l = Vector3(35, 0, 0)
+		p.head = Vector3(-30, 0, 0)
+		hips_y = HIP_Y - 0.12
 		snap = true
 	if state == "parry":
+		# блок: шаг назад, клинок поперёк, корпус развёрнут
 		var k2 := Vox.ease_out(state_t / 0.08)
 		p.arm_r = Vector3(-100, 25, -10) * k2
 		p.fore_r = Vector3(-60, 0, 0)
 		p.sword = Vector3(0, 0, 90) * k2
 		p.arm_l = Vector3(-90, -20, 20)
 		p.torso = Vector3(-5, -20, 0)
+		p.leg_r = Vector3(25, 0, -10)
+		p.shin_r = Vector3(35, 0, 0)
+		p.leg_l = Vector3(-20, 0, 10)
+		p.shin_l = Vector3(25, 0, 0)
+		hips_y = HIP_Y - 0.1
+		lean = -8.0
 		snap = true
 	if state == "stance" or state == "breathe":
 		p.arm_r = Vector3(-15, -10, -10)
 		p.fore_r = Vector3(-20, 0, 0)
 		p.sword = Vector3(30, 0, 0)
 		p.arm_l = Vector3(-15, 10, 10)
-		p.leg_r = Vector3(-20, 0, -10)
-		p.leg_l = Vector3(25, 0, 10)
-		p.shin_r = Vector3(30, 0, 0)
-		p.shin_l = Vector3(20, 0, 0)
-		hips_y = HIP_Y - 0.08
+		p.leg_r = Vector3(-25, 0, -12)
+		p.leg_l = Vector3(28, 0, 12)
+		p.shin_r = Vector3(35, 0, 0)
+		p.shin_l = Vector3(30, 0, 0)
+		p.hips = Vector3(0, -15, 0)
+		p.torso = Vector3(4, 0, 0)
+		hips_y = HIP_Y - 0.12
 		if state == "breathe":
-			p.torso = Vector3(sin(G.real_time * 5.0) * 4.0, 0, 0)
+			p.torso = Vector3(sin(t_real * 5.0) * 4.0, 0, 0)
 			p.head = Vector3(-10, 0, 0)
 	if state == "draw":
 		# рука к рукояти на левом бедре
@@ -1745,55 +1880,142 @@ func _animate(dt: float) -> void:
 		p.arm_r = Vector3(-25, 70, 30) * kd
 		p.fore_r = Vector3(-60, 0, 0)
 		p.torso = Vector3(5, 25 * kd, 0)
+		p.hips = Vector3(0, -10 * kd, 0)
 		p.arm_l = Vector3(15, -25, 18)
+		p.leg_r = Vector3(-15, 0, -8)
+		p.leg_l = Vector3(15, 0, 8)
+		p.shin_r = Vector3(25, 0, 0)
+		p.shin_l = Vector3(20, 0, 0)
+		hips_y = HIP_Y - 0.06
 		if sword_mode == "dual":
 			# руки за спину: корпус чуть вперёд, плечи раскрыты
 			p.torso = Vector3(10 * kd, 0, 0)
+			p.hips = Vector3.ZERO
 			p.head = Vector3(8 * kd, 0, 0)
 			p.arm_l = Vector3(-25, -70, -30) * kd
 		snap = true
 	if state == "hurt":
-		lean = -25.0
-		p.arm_r = Vector3(-20, 0, -40)
-		p.arm_l = Vector3(-20, 0, 40)
+		# удар отбрасывает: корпус откидывается от удара, голова дёргается, руки врозь
+		var f := hurt_dir.dot(fwd)
+		var sd := hurt_dir.dot(side_x)
+		var kh := 1.0 - clampf((state_t - 0.12) / 0.26, 0.0, 1.0)
+		lean = 32.0 * f * kh
+		roll = -26.0 * sd * kh
+		p.head = Vector3(-30 * f * kh, 0, 0)
+		p.torso = Vector3(-15 * kh, 0, 0)
+		p.arm_r = Vector3(-30, 0, -55) * kh
+		p.arm_l = Vector3(-30, 0, 55) * kh
+		p.leg_r = Vector3(25, 0, -10) * kh
+		p.shin_r = Vector3(40, 0, 0) * kh
+		p.leg_l = Vector3(-25, 0, 10) * kh
+		p.shin_l = Vector3(20, 0, 0) * kh
+		hips_y = HIP_Y - 0.08 * kh
+		snap = true
+	if state == "down":
+		# сбит с ног: падает на спину, лежит, поднимается через присед
+		var t := state_t
+		if t < DOWN_GETUP:
+			var kf2 := Vox.ease_out(t / 0.28)
+			lean = -88.0 * kf2
+			model_y = 0.14 * kf2
+			p.leg_r = Vector3(-30, 0, -10) * kf2
+			p.leg_l = Vector3(-50, 0, 12) * kf2
+			p.shin_r = Vector3(40, 0, 0) * kf2
+			p.shin_l = Vector3(70, 0, 0) * kf2
+			p.arm_r = Vector3(-60, 0, -70) * kf2
+			p.arm_l = Vector3(-60, 0, 70) * kf2
+			p.head = Vector3(20, 0, 0) * kf2
+		else:
+			var kg := Vox.ease_in_out((t - DOWN_GETUP) / (DOWN_END - DOWN_GETUP))
+			# сначала сесть (колени к груди), потом встать
+			var sit := sin(kg * PI)
+			lean = lerpf(-88.0, 0.0, kg) + 35.0 * sit
+			model_y = 0.14 * (1.0 - kg)
+			p.leg_r = Vector3(-110 * sit, 0, -8)
+			p.leg_l = Vector3(-100 * sit, 0, 8)
+			p.shin_r = Vector3(130 * sit, 0, 0)
+			p.shin_l = Vector3(120 * sit, 0, 0)
+			p.arm_r = Vector3(-50 * sit, 0, -30 * sit)
+			p.arm_l = Vector3(-50 * sit, 0, 30 * sit)
+			hips_y = HIP_Y - 0.45 * sit
+		snap = true
 	if state == "dead":
-		lean = -80.0
-		hips_y = 0.3
+		# на колени, потом вперёд лицом в землю
+		var t2 := state_t
+		var kn := Vox.ease_out(t2 / 0.35)
+		var fall := Vox.ease_in_out((t2 - 0.55) / 0.35)
+		p.leg_r = Vector3(-20, 0, -6) * kn
+		p.leg_l = Vector3(-20, 0, 6) * kn
+		p.shin_r = Vector3(110, 0, 0) * kn
+		p.shin_l = Vector3(110, 0, 0) * kn
+		p.torso = Vector3(25, 0, 0) * kn
+		p.head = Vector3(30, 0, 0) * kn
+		p.arm_r = Vector3(10, 0, -10)
+		p.arm_l = Vector3(10, 0, 10)
+		hips_y = lerpf(HIP_Y, 0.45, kn)
+		lean = 80.0 * fall
+		model_y = 0.12 * fall
+		snap = true
 	if state == "attack" or state == "finisher":
 		var a := atk if state == "attack" else ATK["dslash"]
 		var t := state_t if state == "attack" else (0.08 if fin_stage == 0 else 0.3)
 		var arm := Vector3.ZERO
 		var fore := 0.0
 		var tw := 0.0
+		var st := 0.0           # шаг в удар: 0 — вес на задней ноге, 1 — выпад
+		var wind := 0.0         # замах
+		var swing_k := 0.0
 		if t < a.hit0:
 			var k3 := Vox.ease_out(t / maxf(0.01, a.hit0))
 			arm = p.arm_r.lerp(a.arm0, k3)
 			fore = lerpf(p.fore_r.x, a.fore0, k3)
-			tw = lerpf(0.0, a.tw0, k3)
+			# корпус закручивается чуть дальше руки — замах всем телом
+			tw = lerpf(0.0, a.tw0 * 1.2, k3)
+			wind = k3
+			st = -0.25 * k3
 		elif t < a.hit1:
-			var k4 := Vox.ease_in_out((t - a.hit0) / maxf(0.01, a.hit1 - a.hit0))
+			var raw: float = (t - a.hit0) / maxf(0.01, a.hit1 - a.hit0)
+			var k4 := Vox.ease_in_out(raw)
+			swing_k = k4
 			arm = a.arm0.lerp(a.arm1, k4)
 			fore = lerpf(a.fore0, a.fore1, k4)
-			tw = lerpf(a.tw0, a.tw1, k4)
+			# корпус ведёт: доворачивается раньше руки
+			tw = lerpf(a.tw0 * 1.2, a.tw1, Vox.ease_out(minf(1.0, raw * 1.4)))
+			st = Vox.ease_out(minf(1.0, raw * 1.6))
 		else:
 			var k5 := clampf((t - a.hit1) / maxf(0.01, a.dur - a.hit1), 0.0, 1.0)
-			k5 = Vox.ease_in_out((k5 - 0.4) / 0.6) if k5 > 0.4 else 0.0
+			k5 = Vox.ease_in_out((k5 - 0.35) / 0.65) if k5 > 0.35 else 0.0
 			arm = a.arm1.lerp(IDLE_ARM, k5)
 			fore = lerpf(a.fore1, IDLE_FORE, k5)
 			tw = lerpf(a.tw1, 0.0, k5)
+			st = 1.0 - k5
+			swing_k = 1.0
 		p.arm_r = arm
 		p.fore_r = Vector3(fore, 0, 0)
-		p.torso = Vector3(10, tw, 0)
+		# поворот делят таз и корпус, голова держит цель
+		p.hips = Vector3(0, tw * 0.35, 0)
+		p.torso = Vector3(6 + 10 * maxf(0.0, st) - 6 * wind, tw * 0.7, 0)
+		p.head = Vector3(-8 * maxf(0.0, st), -tw * 0.6, 0)
 		# кисть: лезвие смотрит по ходу удара (горизонтальные — вбок, вертикальные — вниз)
 		var wr: float = a.get("wr", 90.0 if a.get("rev", false) else -90.0)
 		p.sword = Vector3(0, wr * clampf(t / maxf(0.01, a.hit0), 0.0, 1.0), 0)
 		p.arm_l = Vector3(-40, 40, 30)
-		p.leg_r = Vector3(-35, 0, -10)
-		p.leg_l = Vector3(30, 0, 10)
-		p.shin_r = Vector3(35, 0, 0)
-		p.shin_l = Vector3(25, 0, 0)
-		hips_y = HIP_Y - 0.1
-		lean = 12.0
+		# ноги: ведущая вперёд, задняя вытянута; при выпаде таз ниже
+		var lead := step_lead
+		var front := Vector3(-30 - 22 * st, 0, 8 * lead)
+		var back := Vector3(25 + 18 * st, 0, -8 * lead)
+		if lead > 0.0:
+			p.leg_l = front
+			p.leg_r = back
+			p.shin_l = Vector3(20 + 25 * maxf(0.0, st), 0, 0)
+			p.shin_r = Vector3(30 + 20 * maxf(0.0, st), 0, 0)
+		else:
+			p.leg_r = Vector3(front.x, 0, -front.z)
+			p.leg_l = Vector3(back.x, 0, -back.z)
+			p.shin_r = Vector3(20 + 25 * maxf(0.0, st), 0, 0)
+			p.shin_l = Vector3(30 + 20 * maxf(0.0, st), 0, 0)
+		hips_y = HIP_Y - 0.06 - 0.1 * maxf(0.0, st)
+		lean = 6.0 + 14.0 * maxf(0.0, st) - 6.0 * wind
 		snap = true
 		if a.has("spin"):
 			var ks := clampf((t - a.hit0) / maxf(0.01, a.hit1 - a.hit0), 0.0, 1.0)
@@ -1803,6 +2025,8 @@ func _animate(dt: float) -> void:
 			p.shin_r = Vector3(90, 0, 0)
 			p.leg_l = Vector3(-20, 0, 0)
 			p.shin_l = Vector3(60, 0, 0)
+			p.hips = Vector3.ZERO
+			hips_y = HIP_Y
 
 	if sword_mode == "dual" and drawn and state == "attack":
 		# удар левой — зеркало правой позы; правая в это время держит стойку (IK)
@@ -1811,22 +2035,50 @@ func _animate(dt: float) -> void:
 			var ar: Vector3 = p.arm_r
 			p.arm_l = Vector3(ar.x, -ar.y, -ar.z)
 			p.fore_l = p.fore_r
-	# применение
-	var rate := 1.0 - exp(-(40.0 if snap else 16.0) * dt)
+
+	# --- приземление: присед тем глубже, чем сильнее удар о землю; кувырок с разбега ---
+	if land_t < 0.32 and state in ["move", "attack"]:
+		var kk := (1.0 - land_t / 0.32) * land_k
+		hips_y -= 0.24 * kk
+		p.leg_r += Vector3(-40, 0, 0) * kk
+		p.leg_l += Vector3(-30, 0, 0) * kk
+		p.shin_r += Vector3(75, 0, 0) * kk
+		p.shin_l += Vector3(65, 0, 0) * kk
+		p.torso += Vector3(18, 0, 0) * kk
+		if state == "move" and (not drawn or sp > 9.0):
+			p.arm_r += Vector3(-20, 0, -25) * kk
+			p.arm_l += Vector3(-20, 0, 25) * kk
+	if roll_t < 0.42:
+		# кувырок: сгруппироваться
+		p.leg_r = Vector3(-110, 0, 0)
+		p.leg_l = Vector3(-100, 0, 0)
+		p.shin_r = Vector3(130, 0, 0)
+		p.shin_l = Vector3(125, 0, 0)
+		p.torso = Vector3(35, 0, 0)
+		p.head = Vector3(30, 0, 0)
+		hips_y = HIP_Y - 0.3
+		snap = true
+
+	# --- пружины суставов: плавно, с инерцией и лёгким перехлёстом ---
+	var w := 40.0 if snap else 20.0
+	var zeta := 0.82 if snap else 0.72
+	var dtc := minf(dt, 1.0 / 30.0)
 	for k in J:
-		if k == "hips":
-			continue
 		var cur: Vector3 = rest[k]
-		cur = cur.lerp(p[k], rate)
+		var v: Vector3 = jvel.get(k, Vector3.ZERO)
+		v += (w * w * (p[k] - cur) - 2.0 * zeta * w * v) * dtc
+		cur += v * dtc
 		rest[k] = cur
+		jvel[k] = v
 		J[k].rotation_degrees = cur + (SWORD_TILT if k == "sword" else Vector3.ZERO)
-	J.hips.position.y = lerpf(J.hips.position.y, hips_y, rate)
+	J.hips.position.y = _spring_f("hy", hips_y, 26.0 if snap else 18.0, 0.8, dtc)
+	model.position.y = _spring_f("my", model_y, 16.0, 0.9, dtc)
+	var lean_s := _spring_f("lean", lean, 24.0 if snap else 14.0, 0.75, dtc)
+	var roll_s := _spring_f("roll", roll, 16.0, 0.8, dtc)
 	var flip := 0.0
 	if flip_t > 0.0:
 		flip = (1.0 - flip_t / 0.42) * TAU * flip_axis
-	model.rotation = Vector3(deg_to_rad(lean) + flip, facing + model_spin, deg_to_rad(roll))
-	if state == "dead":
-		model.rotation.x = deg_to_rad(-80)
+	model.rotation = Vector3(deg_to_rad(lean_s) + flip, facing + model_spin, deg_to_rad(roll_s))
 	if sword_mode == "dual":
 		var sw: Vector3 = J.sword.rotation_degrees
 		sword_l.rotation_degrees = Vector3(sw.x, -sw.y, -sw.z)
