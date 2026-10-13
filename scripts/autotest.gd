@@ -94,6 +94,11 @@ func _run() -> void:
 		p.set_look(sa, sa % SwordLibT.TINTS.size())
 		await w(0.03)
 	check(p.scabbard_node.get_child_count() > 0, "все виды ножен и цвета клинка ставятся")
+	for hi in SwordLibT.HAORI.size():
+		p.set_haori(hi)
+		await w(0.03)
+	check(p.haori_cloth_mats.size() >= 3 and p.haori_style == SwordLibT.HAORI.size() - 1, "все узоры хаори ставятся")
+	p.set_haori(0)
 	p.set_look(0, 0)
 	# парные клинки: цепь, бинты за спиной, размотка при выхвате, намотка обратно, бросок на цепи
 	if SwordLibT.count() >= 8:

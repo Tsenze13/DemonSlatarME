@@ -20,6 +20,16 @@ static func get_tex(kind: String) -> Texture2D:
 		"paper": img = _paper()
 		"cloth": img = _speckle(11, 0.86, 0.94, 0.04)
 		"haori": img = _haori()
+		"haori_check": img = _haori_check()
+		"haori_flame": img = _haori_flame()
+		"haori_dusk": img = _haori_dusk()
+		"haori_shell": img = _haori_shell()
+		"haori_bolt": img = _haori_bolt()
+		"haori_sakura": img = _haori_sakura()
+		"saya_shark": img = _saya_shark()
+		"saya_bolt": img = _saya_bolt()
+		"saya_sakura": img = _saya_sakura()
+		"saya_cord": img = _saya_cord()
 		"lacquer": img = _lacquer()
 		"saya_wave": img = _saya_wave()
 		"saya_ring": img = _saya_ring()
@@ -223,5 +233,174 @@ static func _saya_diamond() -> Image:
 			var v := 1.0 if d < 3 else 0.6
 			if d == 3:
 				v = 0.45
+			im.set_pixel(x, y, _g(v))
+	return im
+
+# --- хаори: свои узоры (16×32, низ — кайма с мотивом, самый низ — тёмный подгиб) ---
+static func _h_img() -> Image:
+	return Image.create(16, 32, false, Image.FORMAT_RGB8)
+
+# Клетка: крупные квадраты двух цветов.
+static func _haori_check() -> Image:
+	var im := _h_img()
+	var a := Color(0.55, 0.1, 0.12)
+	var b := Color(0.1, 0.09, 0.11)
+	for y in 32:
+		for x in 16:
+			var c := a if ((x / 4) + (y / 4)) % 2 == 0 else b
+			if y >= 30:
+				c = Color(0.05, 0.04, 0.05)
+			im.set_pixel(x, y, c)
+	return im
+
+# Пламя: тёмная ткань, снизу поднимаются языки огня.
+static func _haori_flame() -> Image:
+	var im := _h_img()
+	var base := Color(0.12, 0.1, 0.12)
+	var red := Color(0.85, 0.2, 0.08)
+	var orange := Color(1.0, 0.55, 0.12)
+	var yellow := Color(1.0, 0.85, 0.35)
+	for y in 32:
+		for x in 16:
+			var c := base
+			# высота языка пламени по столбцу (повтор каждые 8 пикселей)
+			var lx := x % 8
+			var h: int = [6, 9, 13, 16, 12, 8, 10, 7][lx]
+			var from_bottom := 31 - y
+			if from_bottom < h:
+				c = red
+				if from_bottom < h - 3:
+					c = orange
+				if from_bottom < h - 7:
+					c = yellow
+			if y >= 30:
+				c = Color(0.55, 0.12, 0.05)
+			im.set_pixel(x, y, c)
+	return im
+
+# Сумерки: от светлого к фиолетовому, мелкие звёзды-искры.
+static func _haori_dusk() -> Image:
+	var im := _h_img()
+	var top := Color(0.85, 0.82, 0.92)
+	var bot := Color(0.35, 0.18, 0.55)
+	for y in 32:
+		for x in 16:
+			var k := clampf((y - 6) / 22.0, 0.0, 1.0)
+			var c := top.lerp(bot, k)
+			if (x * 7 + y * 13) % 29 == 0 and y > 12:
+				c = Color(1.0, 0.95, 0.75)
+			if y >= 30:
+				c = Color(0.18, 0.08, 0.28)
+			im.set_pixel(x, y, c)
+	return im
+
+# Панцирь: шестиугольная сетка (кикко).
+static func _haori_shell() -> Image:
+	var im := _h_img()
+	var base := Color(0.32, 0.36, 0.2)
+	var line := Color(0.75, 0.65, 0.3)
+	for y in 32:
+		for x in 16:
+			var c := base
+			var row := y % 8
+			var lx := (x + (4 if (y / 8) % 2 == 1 else 0)) % 8
+			if row == 0 and lx >= 2 and lx <= 5:
+				c = line
+			elif row >= 1 and row <= 3 and (lx == 1 + (row - 1) / 2 or lx == 6 - (row - 1) / 2):
+				pass
+			if (row == 1 or row == 7) and (lx == 1 or lx == 6):
+				c = line
+			if row >= 2 and row <= 6 and (lx == 0 or lx == 7):
+				c = line
+			if y >= 30:
+				c = Color(0.15, 0.17, 0.08)
+			im.set_pixel(x, y, c)
+	return im
+
+# Молнии: зигзаги на чёрном.
+static func _haori_bolt() -> Image:
+	var im := _h_img()
+	var base := Color(0.1, 0.1, 0.13)
+	var bolt := Color(1.0, 0.85, 0.2)
+	for y in 32:
+		for x in 16:
+			var c := base
+			var zig: int = [0, 1, 2, 3, 2, 1][y % 6]
+			if y >= 10 and (x % 8) == 2 + zig:
+				c = bolt
+			if y >= 10 and (x % 8) == 3 + zig and y % 6 < 3:
+				c = bolt.darkened(0.25)
+			if y >= 30:
+				c = Color(0.6, 0.5, 0.1)
+			im.set_pixel(x, y, c)
+	return im
+
+# Сакура: бледно-розовая ткань с лепестками.
+static func _haori_sakura() -> Image:
+	var im := _h_img()
+	var base := Color(0.95, 0.85, 0.88)
+	var petal := Color(0.92, 0.45, 0.6)
+	for y in 32:
+		for x in 16:
+			var c := base
+			var cx := x % 8
+			var cy := (y + (x / 8) * 4) % 8
+			var d: int = abs(cx - 4) + abs(cy - 4)
+			if d == 0:
+				c = Color(1.0, 0.9, 0.5)
+			elif d == 1 and y > 8:
+				c = petal
+			if y >= 30:
+				c = Color(0.7, 0.3, 0.45)
+			im.set_pixel(x, y, c)
+	return im
+
+# --- ещё ножны ---
+# Акулья кожа: светлые зёрна.
+static func _saya_shark() -> Image:
+	var r := RandomNumberGenerator.new()
+	r.seed = 77
+	var im := _img()
+	for y in 16:
+		for x in 16:
+			var v := 0.78 + r.randf_range(-0.04, 0.04)
+			if (x + (y % 2)) % 2 == 0 and r.randf() < 0.55:
+				v = 1.0
+			im.set_pixel(x, y, _g(v))
+	return im
+
+# Зигзаг-молния вдоль ножен.
+static func _saya_bolt() -> Image:
+	var im := _img()
+	for y in 16:
+		for x in 16:
+			var zig: int = [0, 1, 2, 3, 2, 1, 0, 1][y % 8]
+			var v := 0.65
+			if x % 8 == 2 + zig:
+				v = 1.0
+			im.set_pixel(x, y, _g(v))
+	return im
+
+# Лепестки.
+static func _saya_sakura() -> Image:
+	var im := _img()
+	for y in 16:
+		for x in 16:
+			var d: int = abs((x % 8) - 3) + abs(((y + (x / 8) * 4) % 8) - 3)
+			var v := 0.82
+			if d <= 1:
+				v = 1.0
+			im.set_pixel(x, y, _g(v))
+	return im
+
+# Обмотка шнуром наискось.
+static func _saya_cord() -> Image:
+	var im := _img()
+	for y in 16:
+		for x in 16:
+			var k := (x + y) % 6
+			var v := 1.0 if k < 3 else 0.55
+			if k == 3:
+				v = 0.4
 			im.set_pixel(x, y, _g(v))
 	return im

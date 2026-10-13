@@ -8,7 +8,7 @@ const SETTINGS_PATH := "user://settings.cfg"
 var main: Node                     # main.gd — пересчёт пиксельного кадра и пр.
 var settings := {
 	"volume": 0.4, "sfx": 1.0, "music": 0.6, "sens": 1.0, "invert_y": false, "fov": 72.0, "cam_dist": 5.2,
-	"shake": 1.0, "auto_cam": true, "pixel": false, "sword": 0, "saya": 0, "tint": 0,
+	"shake": 1.0, "auto_cam": true, "pixel": false, "sword": 0, "saya": 0, "tint": 0, "haori": 0,
 	"window": 0, "vsync": true, "fps_limit": 0, "shadows": 2, "render_scale": 1.0, "grass": 1.0, "show_fps": false,
 	"keys": {},
 }
@@ -231,7 +231,7 @@ func _option(parent: Control, key: String, title: String, items: Array, cb: Call
 	return o
 
 func _tab_sword() -> void:
-	var v := _page("Клинок")
+	var v := _page("Снаряжение")
 	var names := []
 	for k in 6:
 		names.append(SwordLib.NAMES[k])
@@ -245,6 +245,10 @@ func _tab_sword() -> void:
 	for tn in SwordLib.TINTS:
 		tints.append(tn[0])
 	_option(v, "tint", "Цвет клинка", tints, func(i): settings.tint = i; _apply_look())
+	var hs := []
+	for h in SwordLib.HAORI:
+		hs.append(h[0])
+	_option(v, "haori", "Хаори", hs, _set_haori)
 	_label(v, "Катаны держатся двумя руками и носятся за поясом.\nПарные клинки — на цепи, за спиной в бинтах; ПКМ — бросок на цепи.\nХлыст — дальние хлёсты; ПКМ — щелчок до 7 м.", 15).modulate = Color(0.75, 0.82, 1.0)
 
 func _tab_graphics() -> void:
@@ -389,6 +393,11 @@ func _apply_sword() -> void:
 	if G.player:
 		G.player.set_sword(settings.sword)
 
+func _set_haori(i: int) -> void:
+	settings.haori = i
+	if G.player:
+		G.player.set_haori(i)
+
 func _apply_look() -> void:
 	if G.player:
 		G.player.set_look(settings.saya, settings.tint)
@@ -432,6 +441,7 @@ func apply_all() -> void:
 		G.player.saya_style = settings.saya
 		G.player.blade_tint = settings.tint
 		G.player.set_sword(settings.sword)
+		G.player.set_haori(settings.haori)
 	# элементы меню — по текущим значениям
 	for k in ["volume", "sfx", "music", "sens", "fov", "cam_dist", "shake", "render_scale", "grass"]:
 		(ctrl[k] as HSlider).set_value_no_signal(float(settings[k]))
@@ -440,6 +450,7 @@ func apply_all() -> void:
 	(ctrl.sword as OptionButton).select(clampi(settings.sword if settings.sword >= 0 else 8, 0, 8))
 	(ctrl.saya as OptionButton).select(clampi(settings.saya, 0, SwordLib.SAYA.size() - 1))
 	(ctrl.tint as OptionButton).select(clampi(settings.tint, 0, SwordLib.TINTS.size() - 1))
+	(ctrl.haori as OptionButton).select(clampi(settings.haori, 0, SwordLib.HAORI.size() - 1))
 	(ctrl.window as OptionButton).select(clampi(settings.window, 0, 2))
 	(ctrl.fps_limit as OptionButton).select(clampi(settings.fps_limit, 0, FPS_LIMITS.size() - 1))
 	(ctrl.shadows as OptionButton).select(clampi(settings.shadows, 0, 2))

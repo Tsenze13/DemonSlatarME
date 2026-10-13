@@ -324,6 +324,7 @@ func _build_model() -> void:
 	# хаори: жёсткая часть на плечах (кокетка)
 	var hm: ShaderMaterial = Vox.cel_mat(hcol, true, 0.0, 0.022, "haori", true).duplicate()
 	hm.set_shader_parameter("tex_scale", 2.0)
+	haori_box_mat = hm
 	var yoke := Vox.box(torso, Vector3(0.52, 0.12, 0.31), Vector3(0, 0.47, -0.005), hcol)
 	yoke.material_override = hm
 
@@ -544,6 +545,19 @@ func _face_anim(dt: float) -> void:
 	mouth_open.scale = Vector3(1, maxf(0.05, face_open), 1)
 	mouth.visible = face_open < 0.3
 
+# Узор хаори (SwordLib.HAORI): кокетка, рукава и полы.
+var haori_box_mat: ShaderMaterial
+var haori_cloth_mats: Array = []
+var haori_style := 0
+
+func set_haori(i: int) -> void:
+	haori_style = clampi(i, 0, SwordLib.HAORI.size() - 1)
+	var tex := Tex.get_tex(SwordLib.HAORI[haori_style][1])
+	if haori_box_mat:
+		haori_box_mat.set_shader_parameter("tex", tex)
+	for m in haori_cloth_mats:
+		m.set_shader_parameter("pattern", tex)
+
 func _make_cloth(attach: Node3D, anchors: Array, rows: int, seg: float):
 	var c = MeshInstance3D.new()
 	c.set_script(Cloth)
@@ -557,6 +571,7 @@ func _make_cloth(attach: Node3D, anchors: Array, rows: int, seg: float):
 	var m := ShaderMaterial.new()
 	m.shader = load("res://shaders/cloth_block.gdshader")
 	m.set_shader_parameter("pattern", Tex.get_tex("haori"))
+	haori_cloth_mats.append(m)
 	c.material_override = m
 	model.add_child(c)
 	cloths.append(c)

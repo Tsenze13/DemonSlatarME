@@ -140,6 +140,19 @@ const SAYA := [
 	["Белый с золотом", Color(0.88, 0.85, 0.78), "saya_ring", Color(0.92, 0.75, 0.3)],
 	["Обмотка ромбами", Color(0.25, 0.22, 0.32), "saya_diamond", Color(0.85, 0.7, 0.32)],
 	["Тёмное дерево", Color(0.42, 0.27, 0.15), "wood", Color(0.3, 0.3, 0.33)],
+	# дальше — с особой формой: {bands — металлические пояски, wrap — обмотка у устья, long — длинный наконечник}
+	["Акулья кожа", Color(0.85, 0.85, 0.8), "saya_shark", Color(0.2, 0.2, 0.22), {"bands": 3}],
+	["Гроза", Color(0.12, 0.12, 0.16), "saya_bolt", Color(0.95, 0.8, 0.25), {"long": true}],
+	["Сакура", Color(0.95, 0.7, 0.78), "saya_sakura", Color(0.85, 0.85, 0.9), {"wrap": true}],
+	["Кровавая луна", Color(0.45, 0.04, 0.08), "lacquer", Color(0.95, 0.8, 0.3), {"bands": 5, "long": true}],
+	["Шнуровая обмотка", Color(0.2, 0.25, 0.42), "saya_cord", Color(0.8, 0.8, 0.85), {"wrap": true, "bands": 2}],
+	["Нефрит", Color(0.2, 0.55, 0.42), "lacquer", Color(0.9, 0.85, 0.6), {"bands": 1}],
+]
+
+# Хаори: название и узор (свои, не из аниме).
+const HAORI := [
+	["Прилив", "haori"], ["Клетка", "haori_check"], ["Пламя", "haori_flame"], ["Сумерки", "haori_dusk"],
+	["Панцирь", "haori_shell"], ["Молнии", "haori_bolt"], ["Сакура", "haori_sakura"],
 ]
 
 static func _is_blade(copy: Node3D, mi: MeshInstance3D, xf: Transform3D) -> bool:
@@ -272,10 +285,22 @@ static func make_saya(prof: Dictionary, style := 0) -> Node3D:
 	# кольца сагэо
 	_tube(root, _part(pts, hws, 0.1, 0.112, 0.005), SAYA_T + 0.005, cord_mat)
 	_tube(root, _part(pts, hws, 0.13, 0.142, 0.005), SAYA_T + 0.005, cord_mat)
-	# кодзири — металлический наконечник
-	_tube(root, _part(pts, hws, 0.94, 1.0, 0.004), SAYA_T + 0.004, met_mat)
+	var ex: Dictionary = st[4] if st.size() > 4 else {}
+	# кодзири — металлический наконечник (длинный у некоторых видов)
+	var k0 := 0.86 if ex.get("long", false) else 0.94
+	_tube(root, _part(pts, hws, k0, 1.0, 0.004), SAYA_T + 0.004, met_mat)
 	# тонкий металлический поясок над наконечником
-	_tube(root, _part(pts, hws, 0.9, 0.91, 0.004), SAYA_T + 0.004, met_mat)
+	_tube(root, _part(pts, hws, k0 - 0.04, k0 - 0.03, 0.004), SAYA_T + 0.004, met_mat)
+	# пояски по длине
+	var nb: int = ex.get("bands", 0)
+	for bi in nb:
+		var f := lerpf(0.25, 0.78, (bi + 0.5) / float(nb))
+		_tube(root, _part(pts, hws, f, f + 0.012, 0.003), SAYA_T + 0.003, met_mat)
+	# обмотка шнуром у устья
+	if ex.get("wrap", false):
+		for wi in 6:
+			var f2 := 0.16 + wi * 0.022
+			_tube(root, _part(pts, hws, f2, f2 + 0.012, 0.004), SAYA_T + 0.004, cord_mat)
 	# курикáта — выступ сбоку, через него продет шнур
 	var kp := _at(pts, 0.12)
 	Vox.box(root, Vector3(0.018, 0.034, 0.022), kp + Vector3(SAYA_T + 0.009, 0, 0), horn, true)
