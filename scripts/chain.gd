@@ -22,10 +22,9 @@ func setup() -> void:
 	top_level = true
 	pos.resize(n)
 	prev.resize(n)
-	var dark := Vox.cel_mat(Color(0.42, 0.42, 0.48), true, 0.0, 0.012)
-	var light := Vox.cel_mat(Color(0.7, 0.7, 0.76), true, 0.1, 0.012)
-	var bm := BoxMesh.new()
-	bm.size = Vector3(0.014, 0.034, LINK * 1.2)
+	var dark := Vox.cel_mat(Color(0.42, 0.42, 0.48), true, 0.0, 0.004)
+	var light := Vox.cel_mat(Color(0.7, 0.7, 0.76), true, 0.1, 0.004)
+	var bm := _link_mesh()
 	for i in MAX_LINKS:
 		var mi := MeshInstance3D.new()
 		mi.mesh = bm
@@ -35,6 +34,30 @@ func setup() -> void:
 		add_child(mi)
 		links.append(mi)
 	reset()
+
+# Звено — настоящее кольцо: две продольные планки и две перемычки с дыркой посередине.
+# Соседние звенья повёрнуты на 90° и заходят друг в друга.
+static var _lm: ArrayMesh
+static func _link_mesh() -> ArrayMesh:
+	if _lm:
+		return _lm
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var l := LINK * 1.45
+	var w := 0.036
+	var t := 0.011
+	var parts := [
+		[Vector3(t, t, l), Vector3(0, (w - t) * 0.5, 0)],
+		[Vector3(t, t, l), Vector3(0, -(w - t) * 0.5, 0)],
+		[Vector3(t, w, t), Vector3(0, 0, (l - t) * 0.5)],
+		[Vector3(t, w, t), Vector3(0, 0, -(l - t) * 0.5)],
+	]
+	for pr in parts:
+		var bm := BoxMesh.new()
+		bm.size = pr[0]
+		st.append_from(bm, 0, Transform3D(Basis.IDENTITY, pr[1]))
+	_lm = st.commit()
+	return _lm
 
 func reset() -> void:
 	for i in n:

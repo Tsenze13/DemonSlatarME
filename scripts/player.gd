@@ -543,9 +543,11 @@ func _build_model() -> void:
 	# (при поднятой руке — снизу, при опущенной — сзади), за тело не заходит
 	for nm in ["r", "l"]:
 		var fore: Node3D = arms[nm][1]
-		# верх кармана спрятан внутри рукава — снаружи он выглядит продолжением рукава вниз
+		# верх кармана спрятан внутри рукава — снаружи он выглядит продолжением рукава вниз.
+		# Ткань пришита к предплечью и живёт в его системе: карман всегда с нижней
+		# стороны руки (плоскость z ≤ −0.08), в руку при беге не залетает
 		var sx := -0.01 if nm == "r" else 0.01
-		var sl = _make_cloth(torso, [[fore, Vector3(sx, 0.02, -0.08)], [fore, Vector3(sx, -0.07, -0.085)], [fore, Vector3(sx, -0.16, -0.09)]], 3, 0.1)
+		var sl = _make_cloth(fore, [Vector3(sx, 0.02, -0.08), Vector3(sx, -0.07, -0.085), Vector3(sx, -0.16, -0.09)], 3, 0.1)
 		sl.stiff = 0.8
 		sl.wind = 0.25
 		sl.gravity = 16.0
@@ -553,11 +555,16 @@ func _build_model() -> void:
 		sl.u_step = 0.06          # узор того же масштаба, что на рукаве и полах
 		sl.v_from = 0.76          # низ узора — кайма, как у подола
 		sl.v_to = 1.0
-		sl.max_lift = 2.0         # рука поднимается — карман вместе с ней
-		sl.push_ellipse = Vector2(0.3, 0.2)
-		sl.push_y_max = 0.62
+		sl.max_lift = 2.0
+		sl.push_ellipse = Vector2.ZERO
+		sl.push_plane_z = -0.08
+		sl.push_dir = -1.0
+		sl.push_y_max = 99.0
 		sl.iters = 6
-		sl.lift_ref = model
+		# плечо и спина — тоже препятствия
+		# (к радиусу добавляется половина толщины кармана — 0.125)
+		sl.colliders.append([arms[nm][0], Vector3(0, 0.0, 0), Vector3(0, -0.12, 0), 0.0])
+		sl.colliders.append([torso, Vector3(0, 0.08, -0.02), Vector3(0, 0.42, -0.02), 0.03])
 	# хвост волос и лента
 	var tail = MeshInstance3D.new()
 	tail.set_script(Cloth)

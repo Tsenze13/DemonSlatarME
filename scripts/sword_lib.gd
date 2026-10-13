@@ -178,10 +178,11 @@ static func make(i: int, tint := Color(1, 1, 1), strip_tail := false) -> Node3D:
 	# у тесаков на цепи в модели есть обрывок цепи за навершием — его прячем,
 	# наша цепь крепится прямо к кольцу навершия (pommel)
 	if strip_tail:
-		var pe := pommel(i) + 0.005
+		var pe := pommel(i) + 0.004
 		for mi in copy.find_children("*", "MeshInstance3D", true, false):
 			var bb: AABB = _info[i].xform * (_rel(mi, copy) * (mi as MeshInstance3D).get_aabb())
-			if bb.get_center().y > pe:
+			# всё, что выходит за торец навершия: кольцо и звенья цепи из модели
+			if bb.get_center().y > 0.0 and bb.end.y > pe:
 				mi.visible = false
 	if _sword_sh == null:
 		_sword_sh = load("res://shaders/sword.gdshader")
@@ -239,12 +240,6 @@ static func pommel_point(i: int) -> Vector3:
 	var cur := 0.0
 	var cx := 0.0
 	var cz := 0.0
-	for bb in hb:
-		if bb.position.y <= cur + 0.012:
-			if bb.end.y > cur:
-				cx = bb.get_center().x
-				cz = bb.get_center().z
-			cur = maxf(cur, bb.end.y)
 	# центр рукояти — по самому длинному блоку (обмотка рукояти)
 	var longest := 0.0
 	for bb in hb:
@@ -252,6 +247,13 @@ static func pommel_point(i: int) -> Vector3:
 			longest = bb.size.y
 			cx = bb.get_center().x
 			cz = bb.get_center().z
+	# идём от гарды по блокам, стоящим на оси рукояти; кольцо цепи сбоку от оси — не рукоять
+	for bb: AABB in hb:
+		var c: Vector3 = bb.get_center()
+		if absf(c.x - cx) > 0.012 or absf(c.z - cz) > 0.012:
+			continue
+		if bb.position.y <= cur + 0.012:
+			cur = maxf(cur, bb.end.y)
 	if cur < 0.05:
 		cur = _info[i].handle
 	_pommels[i] = Vector3(cx, cur, cz)

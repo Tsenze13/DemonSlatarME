@@ -360,6 +360,14 @@ func _run() -> void:
 			for q in c.pos:
 				hi = maxf(hi, (torso.global_transform.affine_inverse() * q).y)
 	check(hi < 0.5, "хаори не выше плеч (%.2f)" % hi)
+	# карманы рукавов на бегу остаются под рукой (с нижней стороны предплечья)
+	var in_arm := 0
+	for c in p.cloths:
+		if c.mode == "blocks" and c != p.haori_body:
+			for q in c.pos:
+				if (c.attach.global_transform.affine_inverse() * q).z > -0.07:
+					in_arm += 1
+	check(in_arm == 0, "рукава не залетают в руки на бегу (%d)" % in_arm)
 	# тяжёлый удар с наклоном корпуса: хаори не тянется и не уходит вперёд, под живот
 	p.auto_move = Vector2.ZERO
 	p.sprinting = false
