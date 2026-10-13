@@ -19,6 +19,10 @@ static func get_tex(kind: String) -> Texture2D:
 		"roof": img = _roof()
 		"paper": img = _paper()
 		"cloth": img = _speckle(11, 0.86, 0.94, 0.04)
+		"twill": img = _twill()
+		"hair": img = _hair()
+		"wrap": img = _wrap()
+		"obi": img = _obi()
 		"haori": img = _haori()
 		"haori_check": img = _haori_check()
 		"haori_flame": img = _haori_flame()
@@ -69,6 +73,62 @@ static func _speckle(seed_: int, lo: float, hi: float, dark: float) -> Image:
 			var v := r.randf_range(lo, hi)
 			if r.randf() < dark:
 				v *= 0.75
+			im.set_pixel(x, y, _g(v))
+	return im
+
+# Форма истребителя: плотная ткань — лёгкий шум, редкие складки-рубчики, шов.
+static func _twill() -> Image:
+	var r := RandomNumberGenerator.new()
+	r.seed = 21
+	var im := _img()
+	for y in 16:
+		for x in 16:
+			var v := 0.9 + r.randf_range(-0.035, 0.035)
+			if (x * 3 + y * 5) % 11 == 0:
+				v -= 0.07          # складка
+			if x == 7:
+				v -= 0.08          # шов
+			im.set_pixel(x, y, _g(v))
+	return im
+
+# Волосы: вертикальные пряди, светлые блики и тёмные промежутки.
+static func _hair() -> Image:
+	var r := RandomNumberGenerator.new()
+	r.seed = 5
+	var im := _img()
+	var cols := []
+	for x in 16:
+		cols.append(r.randf_range(0.8, 1.0))
+	for y in 16:
+		for x in 16:
+			var v: float = cols[x]
+			if (x + int(y / 5)) % 3 == 0:
+				v -= 0.18
+			if y < 2 and x % 4 == 1:
+				v += 0.12          # блик
+			im.set_pixel(x, y, _g(v + r.randf_range(-0.03, 0.03)))
+	return im
+
+# Обмотки на голенях (кяхан): косые витки ленты.
+static func _wrap() -> Image:
+	var im := _img()
+	for y in 16:
+		for x in 16:
+			var k := (y * 2 + x) % 8
+			var v := 0.95 if k < 5 else (0.72 if k == 5 else 0.85)
+			im.set_pixel(x, y, _g(v))
+	return im
+
+# Пояс-оби: продольные полосы тканого узора.
+static func _obi() -> Image:
+	var im := _img()
+	for y in 16:
+		for x in 16:
+			var v := 0.9
+			if y % 8 == 0:
+				v = 0.7
+			elif y % 8 == 4 and x % 2 == 0:
+				v = 1.0
 			im.set_pixel(x, y, _g(v))
 	return im
 

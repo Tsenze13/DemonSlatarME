@@ -246,7 +246,8 @@ var blade_base: Node3D
 var blade_tip: Node3D
 var trail
 var cloths: Array = []
-var haori_body = null            # полы хаори (cloth.gd): толчки, разрывы
+var haori_body = null
+var elbow_caps: Array = []       # [колпак локтя, предплечье]            # полы хаори (cloth.gd): толчки, разрывы
 
 var atk := {}
 var atk_name := ""
@@ -398,10 +399,10 @@ func _build_model() -> void:
 	var hcol := Color(0.8, 0.8, 0.8)   # множитель для пиксельного узора хаори
 	# коренастее, «блочные» пропорции: широкие плечи и толстые руки-ноги — видно издалека
 	var hips := Vox.pivot(model, Vector3(0, HIP_Y, 0), "hips")
-	Vox.box(hips, Vector3(0.42, 0.22, 0.25), Vector3(0, 0, 0), uni, true, 0.0, "cloth", true)
+	Vox.box(hips, Vector3(0.42, 0.22, 0.25), Vector3(0, 0, 0), uni, true, 0.0, "twill", true)
 	var torso := Vox.pivot(hips, Vector3(0, 0.06, 0), "torso")
-	Vox.box(torso, Vector3(0.44, 0.5, 0.25), Vector3(0, 0.26, 0), uni, true, 0.0, "cloth", true)
-	Vox.box(torso, Vector3(0.45, 0.08, 0.26), Vector3(0, 0.03, 0), belt)
+	Vox.box(torso, Vector3(0.44, 0.5, 0.25), Vector3(0, 0.26, 0), uni, true, 0.0, "twill", true)
+	Vox.box(torso, Vector3(0.45, 0.08, 0.26), Vector3(0, 0.03, 0), belt, true, 0.0, "obi", true)
 	Vox.box(torso, Vector3(0.1, 0.22, 0.02), Vector3(0, 0.37, 0.127), Color(0.85, 0.85, 0.82), false)  # ворот
 	# пуговицы формы
 	for k in 3:
@@ -413,7 +414,7 @@ func _build_model() -> void:
 		Vox.box(head, Vector3(0.03, 0.07, 0.05), Vector3(0.163 * sx, 0.19, 0.0), skin.darkened(0.08))   # уши
 	_build_face(head, skin, hair)
 	# волосы: шапка с торчащими прядями, чёлка, виски, затылок
-	Vox.box(head, Vector3(0.34, 0.1, 0.34), Vector3(0, 0.39, -0.01), hair)
+	Vox.box(head, Vector3(0.34, 0.1, 0.34), Vector3(0, 0.39, -0.01), hair, true, 0.0, "hair", true)
 	Vox.box(head, Vector3(0.32, 0.07, 0.06), Vector3(0, 0.335, 0.15), hair)
 	var bangs := [[-0.12, 0.27, 0.12, 8.0], [-0.055, 0.28, 0.1, -4.0], [0.01, 0.275, 0.11, 6.0], [0.075, 0.285, 0.09, -8.0], [0.13, 0.275, 0.1, 10.0]]
 	for i in bangs.size():
@@ -426,9 +427,9 @@ func _build_model() -> void:
 	for sp in spikes:
 		var spk := Vox.box(head, Vector3(0.09, 0.11, 0.09), sp[0], hair)
 		spk.rotation_degrees = sp[1]
-	Vox.box(head, Vector3(0.34, 0.28, 0.08), Vector3(0, 0.22, -0.16), hair)
-	Vox.box(head, Vector3(0.04, 0.24, 0.28), Vector3(-0.165, 0.24, -0.01), hair)
-	Vox.box(head, Vector3(0.04, 0.24, 0.28), Vector3(0.165, 0.24, -0.01), hair)
+	Vox.box(head, Vector3(0.34, 0.28, 0.08), Vector3(0, 0.22, -0.16), hair, true, 0.0, "hair", true)
+	Vox.box(head, Vector3(0.04, 0.24, 0.28), Vector3(-0.165, 0.24, -0.01), hair, true, 0.0, "hair", true)
+	Vox.box(head, Vector3(0.04, 0.24, 0.28), Vector3(0.165, 0.24, -0.01), hair, true, 0.0, "hair", true)
 	var tail_anchor := Vox.pivot(head, Vector3(0, 0.3, -0.2), "tail")
 
 	# хаори: жёсткая часть на плечах (кокетка)
@@ -440,19 +441,24 @@ func _build_model() -> void:
 	for side in [-1.0, 1.0]:
 		var nm := "r" if side < 0 else "l"
 		var arm := Vox.pivot(torso, Vector3(0.3 * side, 0.45, 0), "arm_" + nm)
-		Vox.box(arm, Vector3(0.15, 0.28, 0.15), Vector3(0, -0.13, 0), uni)
+		Vox.box(arm, Vector3(0.15, 0.28, 0.15), Vector3(0, -0.13, 0), uni, true, 0.0, "twill", true)
 		var sl1 := Vox.box(arm, Vector3(0.25, 0.27, 0.25), Vector3(0.01 * side, -0.11, 0), hcol)
 		# рукав: своя половина узора (как у полов с той же стороны), внизу у манжеты — кайма
 		var uc := 0.25 if side > 0.0 else 0.75
 		sl1.material_override = _haori_mat(hcol, 0.27, 0.3, 0.66, uc, 0.3, 0.25, true)
 		var fore := Vox.pivot(arm, Vector3(0, -0.27, 0), "fore_" + nm)
-		Vox.box(fore, Vector3(0.14, 0.25, 0.14), Vector3(0, -0.12, 0), uni)
+		Vox.box(fore, Vector3(0.14, 0.25, 0.14), Vector3(0, -0.12, 0), uni, true, 0.0, "twill", true)
 		# кулак: ладонь, ряд костяшек спереди, большой палец к телу
 		Vox.box(fore, Vector3(0.12, 0.1, 0.12), Vector3(0, -0.28, 0), skin)
 		Vox.box(fore, Vector3(0.125, 0.065, 0.04), Vector3(0, -0.3, 0.058), skin.darkened(0.06))
 		Vox.box(fore, Vector3(0.035, 0.055, 0.05), Vector3(-0.06 * side, -0.265, 0.04), skin)
 		var sl2 := Vox.box(fore, Vector3(0.26, 0.2, 0.27), Vector3(0.01 * side, -0.05, -0.01), hcol)
 		sl2.material_override = _haori_mat(hcol, 0.2, 0.62, 1.0, uc, 0.3, 0.26, true)
+		# локоть: рукав не рвётся на сгибе — блок поворачивается на половину угла локтя
+		var elb := Vox.pivot(arm, Vector3(0, -0.27, 0), "elbow_" + nm)
+		var ec := Vox.box(elb, Vector3(0.25, 0.14, 0.25), Vector3(0.01 * side, 0.0, -0.005), hcol)
+		ec.material_override = _haori_mat(hcol, 0.14, 0.56, 0.7, uc, 0.3, 0.25, true)
+		elbow_caps.append([elb, fore])
 		arms[nm] = [arm, fore]
 	var fore_r: Node3D = arms.r[1]
 	# клинок: модель из набора игрока (sword_lib) или свой кубический
@@ -477,10 +483,10 @@ func _build_model() -> void:
 	for side in [-1.0, 1.0]:
 		var nm := "r" if side < 0 else "l"
 		var leg := Vox.pivot(hips, Vector3(0.11 * side, -0.06, 0), "leg_" + nm)
-		Vox.box(leg, Vector3(0.19, 0.42, 0.2), Vector3(0, -0.2, 0), uni, true, 0.0, "cloth", true)
+		Vox.box(leg, Vector3(0.19, 0.42, 0.2), Vector3(0, -0.2, 0), uni, true, 0.0, "twill", true)
 		var shin := Vox.pivot(leg, Vector3(0, -0.42, 0), "shin_" + nm)
-		Vox.box(shin, Vector3(0.17, 0.24, 0.18), Vector3(0, -0.1, 0), uni, true, 0.0, "cloth", true)
-		Vox.box(shin, Vector3(0.165, 0.15, 0.175), Vector3(0, -0.27, 0), belt)   # обмотки
+		Vox.box(shin, Vector3(0.17, 0.24, 0.18), Vector3(0, -0.1, 0), uni, true, 0.0, "twill", true)
+		Vox.box(shin, Vector3(0.165, 0.15, 0.175), Vector3(0, -0.27, 0), belt.lightened(0.55), true, 0.0, "wrap", true)   # обмотки
 		Vox.box(shin, Vector3(0.17, 0.025, 0.18), Vector3(0, -0.22, 0), belt.darkened(0.15), false)
 		# стопа: таби и сандалии-варадзи на ремешках, гнётся в голеностопе
 		var foot := Vox.pivot(shin, Vector3(0, -0.36, 0.0), "foot_" + nm)
@@ -505,7 +511,7 @@ func _build_model() -> void:
 		if i == 0 or i == 12:
 			z = 0.14
 		ring.append(Vector3(x, 0.42, z))
-		if i == 2 or i == 10:
+		if i == 1 or i == 11:
 			slits.append(ring.size())
 			ring.append(Vector3(x, 0.42, z))
 	var body = _make_cloth(torso, ring, 9, 0.105)
@@ -518,21 +524,32 @@ func _build_model() -> void:
 	body.drag = 0.1
 	body.thick = 0.05
 	body.slit_cols = slits
-	body.slit_row = 2
+	body.slit_row = 4             # разрезы по бокам — от пояса вниз
 	body.u_step = 1.0 / 12.0      # узор один раз вокруг тела: левая половина — слева
 	haori_body = body
+	body.lining_side = 1          # изнутри — однотонная подкладка
+	body.lift_ref = model
 	for nm in ["r", "l"]:
 		body.colliders.append([J["leg_" + nm], Vector3(0, 0.02, 0), Vector3(0, -0.4, 0), 0.115])
 		body.colliders.append([J["shin_" + nm], Vector3(0, 0.0, 0), Vector3(0, -0.3, 0), 0.1])
-	# рукава: висящий «мешок» под предплечьем
+		# локти и руки на замахе за спину — ткань ложится поверх, а не пропускает их
+		body.colliders.append([J["arm_" + nm], Vector3(0, -0.08, 0), Vector3(0, -0.27, 0), 0.13, "behind"])
+		body.colliders.append([J["fore_" + nm], Vector3(0, 0.0, 0), Vector3(0, -0.22, 0), 0.12, "behind"])
+	# рукава: карман-тамото — толстый блок ткани висит вдоль нижнего края предплечья
+	# (при поднятой руке — снизу, при опущенной — сзади), за тело не заходит
 	for nm in ["r", "l"]:
 		var fore: Node3D = arms[nm][1]
-		var sl = _make_cloth(torso, [[fore, Vector3(-0.1, -0.12, -0.13)], [fore, Vector3(0.0, -0.12, -0.14)], [fore, Vector3(0.1, -0.12, -0.13)]], 3, 0.13)
-		sl.stiff = 0.6
-		sl.wind = 0.3
+		var sl = _make_cloth(torso, [[fore, Vector3(0.0, 0.04, -0.12)], [fore, Vector3(0.0, -0.05, -0.125)], [fore, Vector3(0.0, -0.14, -0.13)]], 3, 0.1)
+		sl.stiff = 0.7
+		sl.wind = 0.25
 		sl.gravity = 16.0
-		sl.thick = 0.06
+		sl.thick = 0.22           # толщина блока = ширина рукава
 		sl.u_step = 0.12
+		sl.max_lift = 2.0         # рука поднимается — карман вместе с ней
+		sl.push_ellipse = Vector2(0.3, 0.2)
+		sl.push_y_max = 0.62
+		sl.iters = 6
+		sl.lift_ref = model
 	# хвост волос и лента
 	var tail = MeshInstance3D.new()
 	tail.set_script(Cloth)
@@ -699,8 +716,23 @@ func set_haori(i: int) -> void:
 	var tex := Tex.get_tex(SwordLib.HAORI[haori_style][1])
 	for bm in haori_box_mats:
 		bm.set_shader_parameter("tex", tex)
+	var lin := haori_lining(tex)
 	for m in haori_cloth_mats:
 		m.set_shader_parameter("pattern", tex)
+		m.set_shader_parameter("lining", lin)
+
+# Подкладка хаори — однотонная, тёмный оттенок основного цвета узора
+# (видна изнутри, когда полы развеваются).
+static func haori_lining(tex: Texture2D) -> Color:
+	var img := tex.get_image()
+	var sum := Color(0, 0, 0)
+	var n := 0
+	for y in range(0, img.get_height(), 2):
+		for x in range(0, img.get_width(), 2):
+			sum += img.get_pixel(x, y)
+			n += 1
+	var avg := Color(sum.r / n, sum.g / n, sum.b / n)
+	return avg.darkened(0.55).lerp(Color(0.1, 0.06, 0.08), 0.25)
 
 # Толчок всем тканям хаори (полы и рукава).
 func cloth_kick(v: Vector3) -> void:
@@ -726,6 +758,7 @@ func _make_cloth(attach: Node3D, anchors: Array, rows: int, seg: float):
 	var m := ShaderMaterial.new()
 	m.shader = load("res://shaders/cloth_block.gdshader")
 	m.set_shader_parameter("pattern", Tex.get_tex("haori"))
+	m.set_shader_parameter("lining", haori_lining(Tex.get_tex("haori")))
 	haori_cloth_mats.append(m)
 	c.material_override = m
 	model.add_child(c)
@@ -864,6 +897,8 @@ func _physics_process(dt: float) -> void:
 	_separate_from_enemies()
 	_update_cuts(dt)
 	_update_glint(dt)
+	for ec in elbow_caps:
+		ec[0].quaternion = Quaternion.IDENTITY.slerp((ec[1] as Node3D).quaternion, 0.5)
 	_effects(dt)
 	_animate(dt)
 	if sword_mode == "whip":
@@ -1175,7 +1210,7 @@ func set_drawn(on: bool) -> void:
 			_update_chain()
 			chain.reset()
 		chain.visible = cv
-		chain.length = 1.3 if on else 0.75
+		chain.length = 0.95 if on else 0.75
 	if whip:
 		whip.visible = on and sword_mode == "whip"
 		if whip.visible:
@@ -1643,9 +1678,9 @@ func _start_attack(nm: String) -> void:
 	atk_dir = _forward()
 	# хаори отзывается на замах: полы откидывает назад, во вращениях — раскручивает
 	var a_def: Dictionary = ATK.get(nm, {})
-	cloth_kick(-atk_dir * 2.5)
+	cloth_kick(-atk_dir * 1.5)
 	if a_def.get("spin", 0.0) > 0.0:
-		cloth_flare(2.5, 5.0 * float(a_def.spin))
+		cloth_flare(1.5, minf(2.5 * float(a_def.spin), 4.0))
 	if nm == "iai":
 		# резкий рывок-выхват: к демону (остановиться перед ним) или на 8 м вперёд
 		iai_dist = IAI_MAX

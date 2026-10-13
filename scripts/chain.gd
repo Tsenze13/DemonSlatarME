@@ -91,6 +91,24 @@ func _physics_process(dt: float) -> void:
 				pos[i].y = 0.03
 	pos[0] = pa
 	pos[n - 1] = pb
+	# жёсткий предел длины звеньев: проход от одного конца и от другого
+	# (иначе на резких ударах звенья не успевают сойтись и цепь тянется)
+	var lim := seg * 1.03
+	for pass_i in 3:
+		for i in range(1, n - 1):
+			var d := pos[i] - pos[i - 1]
+			var l := d.length()
+			if l > lim:
+				var np := pos[i - 1] + d / l * lim
+				prev[i] += np - pos[i]
+				pos[i] = np
+		for i in range(n - 2, 0, -1):
+			var d := pos[i] - pos[i + 1]
+			var l := d.length()
+			if l > lim:
+				var np := pos[i + 1] + d / l * lim
+				prev[i] += np - pos[i]
+				pos[i] = np
 	# защита: если цепь всё же вытянулась вдвое длиннее нужного — уложить заново
 	var total := 0.0
 	for i in n - 1:

@@ -137,6 +137,23 @@ func _run() -> void:
 		check(p.bandage.strips.size() == 0, "упавшие бинты исчезли")
 		await shot("00d_dual_stance")
 		check(p.chain.sag() > 0.08, "цепь провисает между руками (%.2f)" % p.chain.sag())
+		# цепь не растягивается в ударах
+		var ch_pos: Vector3 = p.global_position
+		var ch_face: float = p.facing
+		var ch_worst := 0.0
+		for k in 3:
+			p.press("light")
+			for f in 6:
+				await w(0.03)
+				var tot := 0.0
+				for i in p.chain.n - 1:
+					tot += p.chain.pos[i].distance_to(p.chain.pos[i + 1])
+				ch_worst = maxf(ch_worst, tot / maxf(p.chain.length, p.chain.pa.distance_to(p.chain.pb)))
+		check(ch_worst < 1.15, "цепь не растягивается в ударах (%.2f)" % ch_worst)
+		await w(1.2)
+		p.global_position = ch_pos
+		p.facing = ch_face
+		p.velocity = Vector3.ZERO
 		G.cam_rig.dist = 4.5
 		G.cam_rig.yaw = PI * 0.5
 		var tp0: Vector3 = p.global_position
@@ -229,7 +246,7 @@ func _run() -> void:
 		if sm is ShaderMaterial and sm.shader and sm.shader.resource_path.ends_with("sword.gdshader") and sm.next_pass != null:
 			sw_ok = true
 	check(sw_ok, "клинок с кромкой, бликом и контуром")
-	check(hb.slit_cols.size() == 2 and hb.colliders.size() == 4, "у хаори разрезы по бокам и ноги-капсулы")
+	check(hb.slit_cols.size() == 2 and hb.colliders.size() >= 4, "у хаори разрезы по бокам и ноги-капсулы")
 	hb.mend()
 	hb.tear(p.global_position + Vector3(0, 0.7, -0.3), 0.5)
 	check(hb.tear_count() > 0, "хаори рвётся от удара")
@@ -342,6 +359,25 @@ func _run() -> void:
 			for q in c.pos:
 				hi = maxf(hi, (torso.global_transform.affine_inverse() * q).y)
 	check(hi < 0.5, "хаори не выше плеч (%.2f)" % hi)
+	# тяжёлый удар с наклоном корпуса: хаори не тянется и не уходит вперёд, под живот
+	p.auto_move = Vector2.ZERO
+	p.sprinting = false
+	await w(0.4)
+	p.press("heavy")
+	var worst := 0.0
+	var front := -9.0
+	var hb2 = p.haori_body
+	for f in 12:
+		await w(0.03)
+		for c in hb2.cols:
+			for r in range(1, hb2.rows):
+				worst = maxf(worst, hb2.pos[hb2._idx(c, r)].distance_to(hb2.pos[hb2._idx(c, r - 1)]) / hb2.seg)
+		var back_c: int = hb2.cols / 2
+		var lp: Vector3 = p.J.torso.global_transform.affine_inverse() * hb2.pos[hb2._idx(back_c, 4)]
+		front = maxf(front, lp.z)
+	check(worst < 1.1, "хаори не растягивается в ударе (%.2f)" % worst)
+	check(front < 0.05, "спинка хаори остаётся за спиной (%.2f)" % front)
+	await w(0.6)
 	p.auto_move = Vector2.ZERO
 	p.sprinting = false
 	p.global_position = Vector3(0, 0.5, 6)
