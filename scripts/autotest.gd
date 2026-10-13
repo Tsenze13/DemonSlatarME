@@ -220,8 +220,30 @@ func _run() -> void:
 	await w(0.1)
 	check(p.state == "down", "сильный удар сбивает с ног")
 	check(p.cut_count() > 0, "на герое виден порез (внутри текстуры)")
+	# хаори: разрезы по бокам, ткань обтекает ноги, рвётся от удара
+	var hb = p.haori_body
+	# клинки игрока — свой шейдер: свет, кромка, блик, контур
+	var sw_ok := false
+	for mi in p.sword_vis.find_children("*", "MeshInstance3D", true, false):
+		var sm = mi.material_override
+		if sm is ShaderMaterial and sm.shader and sm.shader.resource_path.ends_with("sword.gdshader") and sm.next_pass != null:
+			sw_ok = true
+	check(sw_ok, "клинок с кромкой, бликом и контуром")
+	check(hb.slit_cols.size() == 2 and hb.colliders.size() == 4, "у хаори разрезы по бокам и ноги-капсулы")
+	hb.mend()
+	hb.tear(p.global_position + Vector3(0, 0.7, -0.3), 0.5)
+	check(hb.tear_count() > 0, "хаори рвётся от удара")
+	var spread := 0.0
+	for k in 6:
+		await w(0.05)
+	for c in hb.tears:
+		var r0: int = hb.tears[c].r0
+		spread = maxf(spread, hb.pos[hb._idx(c, hb.rows - 1)].distance_to(hb.pos[hb._idx(c + 1, hb.rows - 1)]))
+	check(spread > 0.0, "края разрыва свободны (%.2f)" % spread)
 	await w(1.5)
 	check(p.state == "move", "герой поднялся")
+	await w(4.0)
+	check(hb.tear_count() == 0, "разрыв хаори зашился")
 	p.hp = hp0
 	# настоящая мышь: поворот камеры и удар ЛКМ должны доходить до игры
 	var y0: float = G.cam_rig.yaw

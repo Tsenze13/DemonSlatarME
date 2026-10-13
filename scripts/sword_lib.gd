@@ -164,24 +164,91 @@ static func _is_blade(copy: Node3D, mi: MeshInstance3D, xf: Transform3D) -> bool
 	return bb.get_center().y < -0.06
 
 # Готовый меч: узел с моделью, гарда в (0,0,0), клинок вдоль -Y.
+# Материалы заменяются на sword.gdshader: аниме-свет, кромка, хамон, бегущий блик и контур.
+static var _sword_sh: Shader
+static var _outline_n: Shader
+static var _edges := {}
+
 static func make(i: int, tint := Color(1, 1, 1)) -> Node3D:
 	_ensure()
 	var holder := Node3D.new()
 	var copy: Node3D = _groups[i].duplicate()
 	copy.transform = _info[i].xform
 	holder.add_child(copy)
+	if _sword_sh == null:
+		_sword_sh = load("res://shaders/sword.gdshader")
+		_outline_n = load("res://shaders/outline_n.gdshader")
+	var ed: Dictionary = _edge_profile(i)
+	var xf: Transform3D = _info[i].xform
 	for mi in copy.find_children("*", "MeshInstance3D", true, false):
 		var m := mi as MeshInstance3D
 		m.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
-		if tint != Color(1, 1, 1) and _is_blade(copy, m, _info[i].xform):
-			var src := m.get_active_material(0)
-			if src is StandardMaterial3D:
-				var dm: StandardMaterial3D = src.duplicate()
-				dm.albedo_color = tint
-				dm.emission_enabled = true
-				dm.emission = tint * 0.25
-				m.material_override = dm
+		var src := m.get_active_material(0)
+		if not (src is StandardMaterial3D):
+			continue
+		var blade := _is_blade(copy, m, xf)
+		var to_n: Transform3D = xf * _rel(m, copy)
+		var sm := ShaderMaterial.new()
+		sm.shader = _sword_sh
+		sm.set_shader_parameter("tex", (src as StandardMaterial3D).albedo_texture)
+		sm.set_shader_parameter("to_norm", Projection(to_n))
+		sm.set_shader_parameter("is_blade", blade)
+		sm.set_shader_parameter("blade_len", BLADE_LEN)
+		sm.set_shader_parameter("edge_lo", ed.lo)
+		sm.set_shader_parameter("edge_w", ed.w)
+		sm.set_shader_parameter("glint_speed", 0.28 + 0.03 * (i % 4))
+		if tint != Color(1, 1, 1) and blade:
+			sm.set_shader_parameter("tint", tint)
+			sm.set_shader_parameter("tint_k", 1.0)
+		var o := ShaderMaterial.new()
+		o.shader = _outline_n
+		o.set_shader_parameter("tex", (src as StandardMaterial3D).albedo_texture)
+		# толщина контура — в координатах меша (модель нормализована масштабом)
+		var sc: float = to_n.basis.get_scale().x
+		o.set_shader_parameter("width", 0.0065 / maxf(sc, 0.0001))
+		sm.next_pass = o
+		m.material_override = sm
 	return holder
+
+# Блик ярче во время удара: boost 0..1 для всех клинков меча.
+static func set_glint(holder: Node, boost: float) -> void:
+	if holder == null:
+		return
+	for mi in holder.find_children("*", "MeshInstance3D", true, false):
+		var sm := (mi as MeshInstance3D).material_override as ShaderMaterial
+		if sm and sm.shader == _sword_sh:
+			sm.set_shader_parameter("glint_boost", boost)
+
+# Где у клинка лезвие (min z) и его ширина в 9 точках по длине — для кромки и хамона.
+static func _edge_profile(i: int) -> Dictionary:
+	if _edges.has(i):
+		return _edges[i]
+	var lo := PackedFloat32Array()
+	var ws := PackedFloat32Array()
+	var boxes := []
+	var xf: Transform3D = _info[i].xform
+	for mi in _groups[i].find_children("*", "MeshInstance3D", true, false):
+		var bb: AABB = xf * (_rel(mi, _groups[i]) * (mi as MeshInstance3D).get_aabb())
+		if bb.get_center().y < -0.06:
+			boxes.append(bb)
+	var last_lo := -0.03
+	var last_w := 0.06
+	for k in 9:
+		var y := -BLADE_LEN * float(k) / 8.0
+		var half := BLADE_LEN / 8.0 * 0.5
+		var a := 99.0
+		var b := -99.0
+		for bb in boxes:
+			if bb.position.y - half <= y and bb.end.y + half >= y:
+				a = minf(a, bb.position.z)
+				b = maxf(b, bb.end.z)
+		if b > a:
+			last_lo = a
+			last_w = b - a
+		lo.append(last_lo)
+		ws.append(last_w)
+	_edges[i] = {"lo": lo, "w": ws}
+	return _edges[i]
 
 # Части меча: "handle" — рукоять и гарда, "blade" — только клинок.
 static func make_part(i: int, part: String) -> Node3D:

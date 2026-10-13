@@ -246,6 +246,7 @@ var blade_base: Node3D
 var blade_tip: Node3D
 var trail
 var cloths: Array = []
+var haori_body = null            # полы хаори (cloth.gd): толчки, разрывы
 
 var atk := {}
 var atk_name := ""
@@ -492,23 +493,37 @@ func _build_model() -> void:
 		J[n] = model.find_child(n, true, false)
 		rest[n] = Vector3.ZERO
 
-	# полы хаори: толстая блочная ткань вокруг корпуса, открыта спереди
+	# полы хаори: толстая блочная ткань вокруг корпуса, открыта спереди.
+	# 12 клеток по кругу × 6 рядов, по бокам разрезы — перед и спинка развеваются
+	# отдельно; ткань обтекает ноги, рвётся от ударов и зашивается.
 	var ring := []
-	for i in 9:
-		var a := lerpf(-1.12, 1.12, float(i) / 8.0) * PI * 0.5 + PI * 0.5
+	var slits := []
+	for i in 13:
+		var a := lerpf(-1.12, 1.12, float(i) / 12.0) * PI * 0.5 + PI * 0.5
 		var x := cos(a) * 0.255
 		var z := -sin(a) * 0.16
-		if i == 0 or i == 8:
+		if i == 0 or i == 12:
 			z = 0.14
 		ring.append(Vector3(x, 0.42, z))
-	var body = _make_cloth(torso, ring, 4, 0.21)
+		if i == 2 or i == 10:
+			slits.append(ring.size())
+			ring.append(Vector3(x, 0.42, z))
+	var body = _make_cloth(torso, ring, 9, 0.105)
 	body.push_ellipse = Vector2(0.25, 0.16)
 	body.stiff = 0.7
+	body.bend_w = 0.35
+	body.iters = 8
 	body.wind = 0.3
 	body.gravity = 18.0
-	body.drag = 0.12
+	body.drag = 0.1
 	body.thick = 0.05
-	body.u_step = 1.0 / 8.0       # узор один раз вокруг тела: левая половина — слева
+	body.slit_cols = slits
+	body.slit_row = 2
+	body.u_step = 1.0 / 12.0      # узор один раз вокруг тела: левая половина — слева
+	haori_body = body
+	for nm in ["r", "l"]:
+		body.colliders.append([J["leg_" + nm], Vector3(0, 0.02, 0), Vector3(0, -0.4, 0), 0.115])
+		body.colliders.append([J["shin_" + nm], Vector3(0, 0.0, 0), Vector3(0, -0.3, 0), 0.1])
 	# рукава: висящий «мешок» под предплечьем
 	for nm in ["r", "l"]:
 		var fore: Node3D = arms[nm][1]
@@ -687,6 +702,16 @@ func set_haori(i: int) -> void:
 	for m in haori_cloth_mats:
 		m.set_shader_parameter("pattern", tex)
 
+# Толчок всем тканям хаори (полы и рукава).
+func cloth_kick(v: Vector3) -> void:
+	for c in cloths:
+		if is_instance_valid(c) and c.mode == "blocks":
+			c.impulse(v)
+
+func cloth_flare(k: float, swirl := 0.0) -> void:
+	if haori_body:
+		haori_body.flare(k, swirl)
+
 func _make_cloth(attach: Node3D, anchors: Array, rows: int, seg: float):
 	var c = MeshInstance3D.new()
 	c.set_script(Cloth)
@@ -821,6 +846,9 @@ func _physics_process(dt: float) -> void:
 		# приземление: присед по силе удара, с разбега и высоко — кувырок
 		land_t = 0.0
 		land_k = clampf((-landing_vel - 4.0) / 22.0, 0.0, 1.0)
+		# полы по инерции идут вниз и раскрываются колоколом
+		cloth_kick(Vector3.DOWN * (2.0 + 6.0 * land_k))
+		cloth_flare(1.5 + 5.0 * land_k)
 		var hsp := Vector3(velocity.x, 0, velocity.z).length()
 		if landing_vel < -22.0 and hsp > 7.0 and state == "move":
 			roll_t = 0.0
@@ -835,6 +863,7 @@ func _physics_process(dt: float) -> void:
 			G.add_shake(0.08)
 	_separate_from_enemies()
 	_update_cuts(dt)
+	_update_glint(dt)
 	_effects(dt)
 	_animate(dt)
 	if sword_mode == "whip":
@@ -919,6 +948,7 @@ func _st_move(dt: float, inp: Vector3) -> void:
 	if pressed("jump"):
 		if on_floor:
 			velocity.y = JUMP_V
+			cloth_kick(Vector3.DOWN * 4.0)
 			takeoff_t = 0.0
 			G.sfx.play("jump", -8.0)
 			G.fx.dust(global_position, 5)
@@ -927,6 +957,7 @@ func _st_move(dt: float, inp: Vector3) -> void:
 		elif air_jumps > 0:
 			air_jumps -= 1
 			velocity.y = JUMP_V * 0.92
+			cloth_kick(Vector3.DOWN * 4.0)
 			flip_t = 0.35
 			flip_axis = 1.0
 			G.fx.ring(global_position, 0.6, Color(0.6, 0.85, 1.0), Color.WHITE, 0.3, 2.0, 0.15)
@@ -1310,6 +1341,7 @@ func _st_wallrun(dt: float, inp: Vector3) -> void:
 	if pressed("jump"):
 		var hv2 := Vector3(velocity.x, 0, velocity.z)
 		velocity = wall_n * 12.0 + hv2 * 0.75 + Vector3.UP * JUMP_V
+		cloth_kick(Vector3.DOWN * 4.0)
 		if wall_vertical:
 			velocity = wall_n * 13.0 + Vector3.UP * 12.0
 		facing = atan2(velocity.x, velocity.z)
@@ -1368,6 +1400,7 @@ func _style_trail() -> void:
 	trail_prev = p
 
 func sonic_boom(dir: Vector3) -> void:
+	cloth_kick(-dir * 6.0 + Vector3.UP * 2.5)
 	G.sfx.play("sonic", -2.0)
 	G.sfx.play("dash", -6.0)
 	G.speedlines = maxf(G.speedlines, 0.9)
@@ -1608,6 +1641,11 @@ func _start_attack(nm: String) -> void:
 	elif inp.length() > 0.2:
 		facing = atan2(inp.x, inp.z)
 	atk_dir = _forward()
+	# хаори отзывается на замах: полы откидывает назад, во вращениях — раскручивает
+	var a_def: Dictionary = ATK.get(nm, {})
+	cloth_kick(-atk_dir * 2.5)
+	if a_def.get("spin", 0.0) > 0.0:
+		cloth_flare(2.5, 5.0 * float(a_def.spin))
 	if nm == "iai":
 		# резкий рывок-выхват: к демону (остановиться перед ним) или на 8 м вперёд
 		iai_dist = IAI_MAX
@@ -2477,6 +2515,7 @@ func receive_attack(dmg: float, src: Vector3, parryable: bool, attacker: Node = 
 	var kb := (global_position - src)
 	kb.y = 0
 	kb = kb.normalized()
+	cloth_kick(kb * 5.0 + Vector3.UP * 1.5)
 	if hp <= 0.0:
 		hp = 0.0
 		_set_state("dead")
@@ -2520,6 +2559,20 @@ func _add_cut(src: Vector3) -> void:
 	var line := side.rotated(fwd, deg_to_rad(randf_range(-40, 40)))
 	var wp := best.global_position + Vector3(0, randf_range(-0.08, 0.08), 0) - fwd * 0.08
 	Wounds.add(cuts, best, wp, line, fwd, randf_range(0.022, 0.034), 0.3, 25.0)
+	# удар рвёт и хаори: края разреза расходятся и полощутся, через 20 с зашивается
+	if haori_body and randf() < 0.7:
+		haori_body.tear(hit_p + fwd * 0.1, 20.0)
+
+# Блик на клинке ярче во время удара (sword.gdshader, glint_boost).
+var glint_b := 0.0
+var glint_sent := -1.0
+func _update_glint(dt: float) -> void:
+	var want := 1.0 if state in ["attack", "finisher"] else 0.0
+	glint_b = move_toward(glint_b, want, dt * (8.0 if want > glint_b else 2.5))
+	if absf(glint_b - glint_sent) > 0.04 or (glint_b == 0.0 and glint_sent != 0.0):
+		glint_sent = glint_b
+		SwordLib.set_glint(sword_vis, glint_b)
+		SwordLib.set_glint(sword_l_vis, glint_b)
 
 func _update_cuts(dt: float) -> void:
 	Wounds.update(cuts, dt, 0.0)
@@ -2529,6 +2582,8 @@ func cut_count() -> int:
 
 func clear_cuts() -> void:
 	Wounds.clear(cuts)
+	if haori_body:
+		haori_body.mend()
 
 func _parry_success(src: Vector3) -> void:
 	G.slowmo(0.25, 0.55)
