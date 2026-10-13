@@ -12,6 +12,9 @@ uniform sampler2D tex : filter_nearest, repeat_enable;
 uniform bool use_tex = false;
 uniform bool tex_local = false;
 uniform float tex_scale = 1.0;
+uniform vec2 tex_mul = vec2(1.0, 1.0);     // растяжение узора по осям (хаори на рукавах)
+uniform vec2 tex_offset = vec2(0.0, 0.0);
+uniform bool tex_flat_top = false;          // верх блока — без узора по глубине (хаори)
 
 varying vec3 tp;
 varying vec3 tn;
@@ -35,13 +38,13 @@ void fragment() {
 		vec3 an = abs(tn);
 		vec2 uv;
 		if (an.y >= an.x && an.y >= an.z) {
-			uv = tp.xz;
+			uv = tex_flat_top ? vec2(tp.x, 0.0) : tp.xz;
 		} else if (an.x >= an.z) {
 			uv = vec2(tp.z, -tp.y);
 		} else {
 			uv = vec2(tp.x, -tp.y);
 		}
-		c *= texture(tex, uv * tex_scale).rgb * 1.25;
+		c *= texture(tex, uv * tex_scale * tex_mul + tex_offset).rgb * 1.25;
 	}
 	ALBEDO = c;
 	EMISSION = albedo.rgb * emission;

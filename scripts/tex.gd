@@ -26,6 +26,12 @@ static func get_tex(kind: String) -> Texture2D:
 		"haori_shell": img = _haori_shell()
 		"haori_bolt": img = _haori_bolt()
 		"haori_sakura": img = _haori_sakura()
+		"haori_ichimatsu": img = _haori_ichimatsu()
+		"haori_split": img = _haori_split()
+		"haori_flame_white": img = _haori_flame_white()
+		"haori_butterfly": img = _haori_butterfly()
+		"haori_uroko": img = _haori_uroko()
+		"haori_stripes": img = _haori_stripes()
 		"saya_shark": img = _saya_shark()
 		"saya_bolt": img = _saya_bolt()
 		"saya_sakura": img = _saya_sakura()
@@ -35,6 +41,12 @@ static func get_tex(kind: String) -> Texture2D:
 		"saya_ring": img = _saya_ring()
 		"saya_diamond": img = _saya_diamond()
 		_: img = _speckle(3, 0.8, 0.95, 0.1)
+	# узоры хаори — 32 пикселя по ширине: вся ширина = один оборот вокруг тела
+	if kind.begins_with("haori") and img.get_width() == 16:
+		var wide := Image.create(32, img.get_height(), false, Image.FORMAT_RGB8)
+		wide.blit_rect(img, Rect2i(0, 0, 16, img.get_height()), Vector2i(0, 0))
+		wide.blit_rect(img, Rect2i(0, 0, 16, img.get_height()), Vector2i(16, 0))
+		img = wide
 	var t := ImageTexture.create_from_image(img)
 	_cache[kind] = t
 	return t
@@ -403,4 +415,106 @@ static func _saya_cord() -> Image:
 			if k == 3:
 				v = 0.4
 			im.set_pixel(x, y, _g(v))
+	return im
+
+# --- узоры хаори как в аниме (традиционные японские узоры), 32×32 ---
+static func _w_img() -> Image:
+	return Image.create(32, 32, false, Image.FORMAT_RGB8)
+
+# Ичимацу: зелёно-чёрная шахматная клетка.
+static func _haori_ichimatsu() -> Image:
+	var im := _w_img()
+	var g := Color(0.12, 0.5, 0.36)
+	var b := Color(0.07, 0.07, 0.08)
+	for y in 32:
+		for x in 32:
+			im.set_pixel(x, y, g if ((x / 4) + (y / 4)) % 2 == 0 else b)
+	return im
+
+# Половинки: левая — гладкий бордо, правая — черепаший узор (кикко) жёлто-зелёно-оранжевый.
+static func _haori_split() -> Image:
+	var im := _w_img()
+	var maroon := Color(0.45, 0.1, 0.13)
+	var cols := [Color(0.85, 0.7, 0.2), Color(0.3, 0.55, 0.3), Color(0.9, 0.5, 0.15)]
+	var line := Color(0.12, 0.1, 0.1)
+	for y in 32:
+		for x in 32:
+			var c := maroon
+			if x >= 16:
+				var cy := y / 6
+				var lx := (x - 16 + (3 if cy % 2 == 1 else 0)) % 6
+				var ly := y % 6
+				var cell := ((x - 16 + (3 if cy % 2 == 1 else 0)) / 6 + cy) % 3
+				c = cols[cell]
+				if ly == 0 or lx == 0:
+					c = line
+			im.set_pixel(x, y, c)
+	return im
+
+# Пламя на белом: белая ткань, снизу красно-оранжевые языки огня.
+static func _haori_flame_white() -> Image:
+	var im := _w_img()
+	var white := Color(0.95, 0.94, 0.9)
+	var red := Color(0.85, 0.15, 0.08)
+	var orange := Color(1.0, 0.5, 0.1)
+	var yellow := Color(1.0, 0.8, 0.3)
+	var hs := [8, 12, 16, 13, 9, 11, 15, 10]
+	for y in 32:
+		for x in 32:
+			var c := white
+			var h: int = hs[(x / 4) % 8] + (2 if x % 4 == 1 or x % 4 == 2 else 0)
+			var fb := 31 - y
+			if fb < h:
+				c = red
+				if fb < h - 3:
+					c = orange
+				if fb < h - 7:
+					c = yellow
+			im.set_pixel(x, y, c)
+	return im
+
+# Крылья бабочки: сверху белое, к низу — бирюза и тёмная зелень, чёрные прожилки, белые пятна.
+static func _haori_butterfly() -> Image:
+	var im := _w_img()
+	var top := Color(0.95, 0.95, 0.97)
+	var mid := Color(0.35, 0.75, 0.72)
+	var bot := Color(0.12, 0.3, 0.32)
+	for y in 32:
+		for x in 32:
+			var k := clampf((y - 6) / 24.0, 0.0, 1.0)
+			var c := top.lerp(mid, minf(1.0, k * 1.6)) if k < 0.6 else mid.lerp(bot, (k - 0.6) / 0.4)
+			# прожилки — расходятся веером вниз
+			var vx := (x % 8) - 4
+			if y > 8 and abs(vx * 8 - (y - 8) * (1 if vx > 0 else -1)) < 3 and vx != 0:
+				c = Color(0.08, 0.1, 0.1)
+			if y > 8 and x % 8 == 0:
+				c = Color(0.08, 0.1, 0.1)
+			if y > 25 and (x + y) % 9 == 0:
+				c = Color(0.95, 0.95, 0.95)
+			im.set_pixel(x, y, c)
+	return im
+
+# Уроко: оранжево-жёлтая ткань с рядами белых треугольников (чешуя).
+static func _haori_uroko() -> Image:
+	var im := _w_img()
+	for y in 32:
+		for x in 32:
+			var k := y / 31.0
+			var c := Color(1.0, 0.78, 0.2).lerp(Color(0.95, 0.5, 0.1), k)
+			var row := y / 8
+			var lx := (x + (4 if row % 2 == 1 else 0)) % 8
+			var ly := y % 8
+			# треугольник остриём вверх: ширина растёт книзу
+			if abs(lx - 4) <= ly / 2 and ly > 0:
+				c = Color(0.97, 0.96, 0.9)
+			im.set_pixel(x, y, c)
+	return im
+
+# Полосы: чёрно-белые наискось.
+static func _haori_stripes() -> Image:
+	var im := _w_img()
+	for y in 32:
+		for x in 32:
+			var c := Color(0.92, 0.92, 0.9) if ((x + y) / 4) % 2 == 0 else Color(0.1, 0.1, 0.12)
+			im.set_pixel(x, y, c)
 	return im

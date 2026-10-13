@@ -392,11 +392,9 @@ func _build_model() -> void:
 	var tail_anchor := Vox.pivot(head, Vector3(0, 0.3, -0.2), "tail")
 
 	# хаори: жёсткая часть на плечах (кокетка)
-	var hm: ShaderMaterial = Vox.cel_mat(hcol, true, 0.0, 0.022, "haori", true).duplicate()
-	hm.set_shader_parameter("tex_scale", 2.0)
-	haori_box_mat = hm
 	var yoke := Vox.box(torso, Vector3(0.52, 0.12, 0.31), Vector3(0, 0.47, -0.005), hcol)
-	yoke.material_override = hm
+	# кокетка — верх узора, по всей ширине (левый бок героя — левая половина текстуры)
+	yoke.material_override = _haori_mat(hcol, 0.12, 0.02, 0.14, 0.5, 1.0, 0.52, true)
 
 	var arms := {}
 	for side in [-1.0, 1.0]:
@@ -404,7 +402,9 @@ func _build_model() -> void:
 		var arm := Vox.pivot(torso, Vector3(0.3 * side, 0.45, 0), "arm_" + nm)
 		Vox.box(arm, Vector3(0.15, 0.28, 0.15), Vector3(0, -0.13, 0), uni)
 		var sl1 := Vox.box(arm, Vector3(0.25, 0.27, 0.25), Vector3(0.01 * side, -0.11, 0), hcol)
-		sl1.material_override = hm
+		# рукав: своя половина узора (как у полов с той же стороны), внизу у манжеты — кайма
+		var uc := 0.25 if side > 0.0 else 0.75
+		sl1.material_override = _haori_mat(hcol, 0.27, 0.3, 0.66, uc, 0.3, 0.25, true)
 		var fore := Vox.pivot(arm, Vector3(0, -0.27, 0), "fore_" + nm)
 		Vox.box(fore, Vector3(0.14, 0.25, 0.14), Vector3(0, -0.12, 0), uni)
 		# кулак: ладонь, ряд костяшек спереди, большой палец к телу
@@ -412,7 +412,7 @@ func _build_model() -> void:
 		Vox.box(fore, Vector3(0.125, 0.065, 0.04), Vector3(0, -0.3, 0.058), skin.darkened(0.06))
 		Vox.box(fore, Vector3(0.035, 0.055, 0.05), Vector3(-0.06 * side, -0.265, 0.04), skin)
 		var sl2 := Vox.box(fore, Vector3(0.26, 0.2, 0.27), Vector3(0.01 * side, -0.05, -0.01), hcol)
-		sl2.material_override = hm
+		sl2.material_override = _haori_mat(hcol, 0.2, 0.62, 1.0, uc, 0.3, 0.26, true)
 		arms[nm] = [arm, fore]
 	var fore_r: Node3D = arms.r[1]
 	# клинок: модель из набора игрока (sword_lib) или свой кубический
@@ -469,7 +469,7 @@ func _build_model() -> void:
 	body.gravity = 18.0
 	body.drag = 0.08
 	body.thick = 0.05
-	body.u_step = 0.25
+	body.u_step = 1.0 / 8.0       # узор один раз вокруг тела: левая половина — слева
 	# рукава: висящий «мешок» под предплечьем
 	for nm in ["r", "l"]:
 		var fore: Node3D = arms[nm][1]
@@ -478,7 +478,7 @@ func _build_model() -> void:
 		sl.wind = 0.3
 		sl.gravity = 16.0
 		sl.thick = 0.06
-		sl.u_step = 0.25
+		sl.u_step = 0.12
 	# хвост волос и лента
 	var tail = MeshInstance3D.new()
 	tail.set_script(Cloth)
@@ -616,7 +616,18 @@ func _face_anim(dt: float) -> void:
 	mouth.visible = face_open < 0.3
 
 # Узор хаори (SwordLib.HAORI): кокетка, рукава и полы.
-var haori_box_mat: ShaderMaterial
+var haori_box_mats: Array = []
+
+# Материал кусков хаори-коробок: узор натянут так, что по высоте блока идёт
+# участок текстуры v0..v1, по ширине — u_span вокруг u_c (без обрывов узора).
+func _haori_mat(col: Color, h: float, v0: float, v1: float, u_c: float, u_span: float, w: float, flip: bool) -> ShaderMaterial:
+	var m: ShaderMaterial = Vox.cel_mat(col, true, 0.0, 0.022, SwordLib.HAORI[0][1], true).duplicate()
+	m.set_shader_parameter("tex_scale", 1.0)
+	m.set_shader_parameter("tex_mul", Vector2(u_span / w * (-1.0 if flip else 1.0), (v1 - v0) / h))
+	m.set_shader_parameter("tex_offset", Vector2(u_c, (v0 + v1) * 0.5))
+	m.set_shader_parameter("tex_flat_top", true)
+	haori_box_mats.append(m)
+	return m
 var haori_cloth_mats: Array = []
 var haori_style := 0
 
@@ -632,8 +643,8 @@ func set_breath(i: int) -> void:
 func set_haori(i: int) -> void:
 	haori_style = clampi(i, 0, SwordLib.HAORI.size() - 1)
 	var tex := Tex.get_tex(SwordLib.HAORI[haori_style][1])
-	if haori_box_mat:
-		haori_box_mat.set_shader_parameter("tex", tex)
+	for bm in haori_box_mats:
+		bm.set_shader_parameter("tex", tex)
 	for m in haori_cloth_mats:
 		m.set_shader_parameter("pattern", tex)
 
@@ -2023,7 +2034,7 @@ func _on_hit(e: Node, res: Dictionary, dir: Vector3) -> void:
 	G.fx.blood(p, dir, 8 if a.power < 2 else 14)
 	if a.fx in ["wave", "wave_big", "wave_ring", "whirl"]:
 		G.fx.breath_burst(p, dir, 10)
-	G.fx.number(p + Vector3.UP * 0.4, str(int(res.get("dmg", a.dmg))), Color(1, 1, 1) if a.power < 2 else Color(0.6, 0.85, 1.0), a.power >= 2)
+	G.fx.number(p + Vector3.UP * 0.4, str(int(res.get("dmg", a.dmg))), Color(1, 1, 1) if a.power < 2 else G.br().flash, a.power >= 2)
 	G.sfx.play("hit_heavy" if a.power >= 2 else "hit", -2.0)
 	if a.get("impact", false) and not hit_set.has("_imp"):
 		hit_set["_imp"] = true
@@ -2056,7 +2067,13 @@ func _st_stance(dt: float) -> void:
 	breathe_fx_t -= dt
 	if breathe_fx_t <= 0.0:
 		breathe_fx_t = 0.3
-		G.fx.ring(global_position + Vector3.UP * 0.04, 0.5, Color(0.25, 0.55, 1.0), Color(0.9, 0.97, 1.0), 0.7, 3.5, 0.12)
+		var bb2: Dictionary = G.br()
+		G.fx.ring(global_position + Vector3.UP * 0.04, 0.5, bb2.a, bb2.b, 0.7, 3.5, 0.12)
+		if G.breath_style == "flame":
+			G.fx.embers(global_position + Vector3.UP * 0.2, 4, 0.6)
+		elif G.breath_style == "thunder" and randf() < 0.5:
+			var rp := global_position + Vector3(randf_range(-1, 1), 0, randf_range(-1, 1)).normalized() * 1.2
+			G.fx.lightning(rp + Vector3.UP * 1.5, rp, Color(1.0, 0.85, 0.2), 0.12, 0.25, 0, 0.05)
 	if state_t > 1.0:
 		_start_attack("ripple")
 
@@ -2070,7 +2087,7 @@ func _st_breathe(dt: float, inp: Vector3) -> void:
 	if breathe_fx_t <= 0.0:
 		breathe_fx_t = 0.12
 		var p := global_position + Vector3(randf_range(-0.6, 0.6), 0.1, randf_range(-0.6, 0.6))
-		G.fx.burst(p, Color(0.55, 0.8, 1.0), 2, 2.5, 0.08, 0.7, -3.0, Vector3.UP, 0.3, 0.5)
+		G.fx.burst(p, G.br().edge, 2, 2.5, 0.08, 0.7, -3.0, Vector3.UP, 0.3, 0.5)
 		var mouth: Vector3 = J.head.global_position + Vector3.UP * 0.2 + _forward() * 0.2
 		G.fx.burst(mouth, Color(0.92, 0.95, 1.0), 1, 1.0, 0.1, 0.5, -0.5, _forward(), 0.3, 1.0)
 	if not (Input.is_action_pressed("breathe") or auto_breathe) or inp.length() > 0.3:
@@ -2251,7 +2268,7 @@ func _counter_strike(attacker: Node, src: Vector3) -> void:
 	var to := target_pos - global_position
 	to.y = 0
 	var behind := target_pos + to.normalized() * 2.2
-	G.fx.afterimage(model, Color(0.6, 0.85, 1.0), 0.5)
+	G.fx.afterimage(model, G.br().flash, 0.5)
 	G.fx.streak(global_position + Vector3.UP, behind + Vector3.UP, Color(0.75, 0.9, 1.0), 0.35, 0.3)
 	global_position = Vector3(behind.x, global_position.y, behind.z)
 	facing = atan2(-to.x, -to.z)
@@ -2303,8 +2320,11 @@ func _st_finisher(dt: float) -> void:
 		# пролёт сквозь демона — классический аниме-срез
 		var from := global_position
 		var to := global_position + atk_dir * 5.4
-		G.fx.streak(from + Vector3.UP * 1.5, to + Vector3.UP * 1.5, Color(0.85, 0.95, 1.0), 0.6, 0.22)
-		G.fx.afterimage(model, Color(0.5, 0.8, 1.0), 0.6)
+		var fb: Dictionary = G.br()
+		G.fx.streak(from + Vector3.UP * 1.5, to + Vector3.UP * 1.5, fb.b, 0.6, 0.22)
+		G.fx.afterimage(model, fb.flash, 0.6)
+		if G.breath_style == "thunder":
+			G.fx.lightning(from + Vector3.UP * 1.2, to + Vector3.UP * 1.2, fb.a, 0.6, 0.4, 3, 0.12)
 		global_position = to
 		G.impact(0.1, 0)
 		G.hitstop(0.12)
@@ -2313,8 +2333,9 @@ func _st_finisher(dt: float) -> void:
 		G.add_shake(0.6)
 		if is_instance_valid(e):
 			var neck: Vector3 = e.neck_pos()
-			G.fx.slash_arc(neck - atk_dir * 2.5, atk_dir, 2.0, 3.0, 120.0, 0.9, Color(0.15, 0.4, 0.95), Color(0.9, 0.97, 1.0), 1, 0.9)
-			G.fx.arc(neck, Basis.looking_at(atk_dir, Vector3.UP), 1.6, -0.2, PI + 0.2, 0.25, Color(1, 1, 1), Color(0.6, 0.85, 1.0), 0.8, 0)
+			G.fx.breath_arc(neck - atk_dir * 2.5, atk_dir, 2.0, 3.0, 120.0, 0.9, 0.9)
+			G.fx.arc(neck, Basis.looking_at(atk_dir, Vector3.UP), 1.6, -0.2, PI + 0.2, 0.25, Color(1, 1, 1), fb.flash, 0.8, 0)
+			G.fx.breath_burst(neck, atk_dir, 16)
 			e.decapitate(atk_dir)
 		if G.hud:
 			G.hud.add_combo("finish", 60)
@@ -2437,8 +2458,8 @@ func _animate(dt: float) -> void:
 			p.shin_l = Vector3(maxf(0.0, -c) * 85 * k + maxf(0.0, -s) * 25 * k + 8, 0, 0)
 			hips_y = HIP_Y - absf(c) * 0.06 * k - 0.04 * k
 			# таз крутится за ногами, корпус — против, голова смотрит вперёд
-			p.hips = Vector3(0, -s * 10 * k, -c * 3 * k)
-			p.torso = Vector3(6 + 4 * k, s * 14 * k, c * 2 * k)
+			p.hips = Vector3(0, -s * 5 * k, 0)
+			p.torso = Vector3(6 + 4 * k, s * 7 * k, 0)
 			p.head = Vector3(-4, -s * 4 * k, 0)
 			lean = 6.0 * k
 			if sp > 9.0:
@@ -2496,11 +2517,11 @@ func _animate(dt: float) -> void:
 				p.arm_l = Vector3(30 * up - 25 * down - 30 * apex, 0, 40 * up + 65 * down + 20 * apex)
 				p.fore_r = Vector3(-30, 0, 0)
 		if on_floor:
-			# наклон от ускорения (разгон — вперёд, торможение — назад) и крен в поворотах
+			# лёгкий крен в повороте на бегу (без раскачки)
 			var acc_f := acc_s.dot(fwd)
-			lean += clampf(acc_f * 0.35, -24.0, 14.0)
-			roll += clampf(-turn_s * sp * 0.3, -18.0, 18.0)
-			if acc_f < -25.0 and sp > 4.0:
+			roll += clampf(-turn_s * sp * 0.08, -6.0, 6.0)
+			# торможение юзом — только когда игрок сам отпустил направление на быстром беге
+			if acc_f < -25.0 and sp > 8.0 and _input_dir().length() < 0.1 and state == "move":
 				# торможение юзом: ноги вперёд, присед
 				var kb := clampf((-acc_f - 25.0) / 40.0, 0.0, 1.0)
 				p.leg_r = p.leg_r.lerp(Vector3(-45, 0, -6), kb)
@@ -2767,9 +2788,9 @@ func _animate(dt: float) -> void:
 		else:
 			p["foot_" + sd] = Vector3(clampf(flat * 0.3 + 20.0, -30.0, 50.0), 0, 0)
 
-	# --- пружины суставов: плавно, с инерцией и лёгким перехлёстом ---
-	var w := 40.0 if snap else 20.0
-	var zeta := 0.82 if snap else 0.72
+	# --- пружины суставов: плавно, с инерцией, без раскачки (критическое затухание) ---
+	var w := 40.0 if snap else 22.0
+	var zeta := 1.0
 	var dtc := minf(dt, 1.0 / 30.0)
 	for k in J:
 		var cur: Vector3 = rest[k]
@@ -2779,10 +2800,10 @@ func _animate(dt: float) -> void:
 		rest[k] = cur
 		jvel[k] = v
 		J[k].rotation_degrees = cur + (SWORD_TILT if k == "sword" else Vector3.ZERO)
-	J.hips.position.y = _spring_f("hy", hips_y, 26.0 if snap else 18.0, 0.8, dtc)
-	model.position.y = _spring_f("my", model_y, 16.0, 0.9, dtc)
-	var lean_s := _spring_f("lean", lean, 24.0 if snap else 14.0, 0.75, dtc)
-	var roll_s := _spring_f("roll", roll, 16.0, 0.8, dtc)
+	J.hips.position.y = _spring_f("hy", hips_y, 26.0 if snap else 18.0, 1.0, dtc)
+	model.position.y = _spring_f("my", model_y, 16.0, 1.0, dtc)
+	var lean_s := _spring_f("lean", lean, 22.0 if snap else 14.0, 1.0, dtc)
+	var roll_s := _spring_f("roll", roll, 14.0, 1.0, dtc)
 	var flip := 0.0
 	if flip_t > 0.0:
 		flip = (1.0 - flip_t / 0.42) * TAU * flip_axis

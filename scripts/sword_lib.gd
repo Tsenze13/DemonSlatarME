@@ -149,10 +149,14 @@ const SAYA := [
 	["Нефрит", Color(0.2, 0.55, 0.42), "lacquer", Color(0.9, 0.85, 0.6), {"bands": 1}],
 ]
 
-# Хаори: название и узор (свои, не из аниме).
+# Хаори: название и узор (свои и как в аниме).
 const HAORI := [
 	["Прилив", "haori"], ["Клетка", "haori_check"], ["Пламя", "haori_flame"], ["Сумерки", "haori_dusk"],
 	["Панцирь", "haori_shell"], ["Молнии", "haori_bolt"], ["Сакура", "haori_sakura"],
+	# узоры как в аниме (традиционные японские)
+	["Ичимацу — зелёно-чёрная клетка", "haori_ichimatsu"], ["Половинки — бордо и черепаший узор", "haori_split"],
+	["Пламя на белом", "haori_flame_white"], ["Крылья бабочки", "haori_butterfly"],
+	["Жёлтая чешуя (уроко)", "haori_uroko"], ["Чёрно-белые полосы", "haori_stripes"],
 ]
 
 static func _is_blade(copy: Node3D, mi: MeshInstance3D, xf: Transform3D) -> bool:
