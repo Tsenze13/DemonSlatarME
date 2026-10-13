@@ -33,23 +33,24 @@ const SWORD_TILT := Vector3(-28, 0, 0)   # клинок вперёд от кул
 # arm0/arm1 — поворот правой руки (градусы) в начале и конце взмаха,
 # fore — сгиб локтя, tw — поворот корпуса, spin — оборот всего тела.
 const ATK := {
-	"l1": {"dur": 0.34, "hit0": 0.09, "hit1": 0.17, "dmg": 8, "range": 3.1, "arc": 140, "lunge": 9.0,
+	"l1": {"sweep": true, "dur": 0.34, "hit0": 0.09, "hit1": 0.17, "dmg": 8, "range": 3.1, "arc": 140, "lunge": 9.0,
 		"power": 1, "stagger": 0.3, "hitstop": 0.055, "shake": 0.12, "next": "l2",
 		"arm0": Vector3(-85, -110, 0), "arm1": Vector3(-80, 95, 0), "fore0": -15, "fore1": -5, "tw0": -40, "tw1": 40,
 		"fx": "slash", "roll": 8},
-	"l2": {"dur": 0.34, "hit0": 0.08, "hit1": 0.16, "dmg": 8, "range": 3.1, "arc": 140, "lunge": 8.0,
+	"l2": {"sweep": true, "dur": 0.34, "hit0": 0.08, "hit1": 0.16, "dmg": 8, "range": 3.1, "arc": 140, "lunge": 8.0,
 		"power": 1, "stagger": 0.3, "hitstop": 0.055, "shake": 0.12, "next": "l3",
 		"arm0": Vector3(-75, 100, 0), "arm1": Vector3(-85, -115, 0), "fore0": -20, "fore1": -5, "tw0": 40, "tw1": -45,
 		"fx": "slash", "roll": -10, "rev": true},
-	"l3": {"dur": 0.4, "hit0": 0.1, "hit1": 0.19, "dmg": 10, "range": 3.2, "arc": 120, "lunge": 9.0,
-		"power": 1, "stagger": 0.35, "hitstop": 0.065, "shake": 0.16, "next": "l4",
-		"arm0": Vector3(-175, -45, 0), "arm1": Vector3(-15, 35, 0), "fore0": -10, "fore1": 0, "tw0": -25, "tw1": 25,
-		"fx": "slash", "roll": 65, "wr": 0.0},
+	# третий — восходящий срез: подбрасывает демона
+	"l3": {"sweep": true, "launch": true, "dur": 0.42, "hit0": 0.1, "hit1": 0.2, "dmg": 10, "range": 3.2, "arc": 120, "lunge": 9.0,
+		"power": 1, "stagger": 0.35, "hitstop": 0.07, "shake": 0.18, "next": "l4",
+		"arm0": Vector3(-5, -50, 0), "arm1": Vector3(-185, 25, 0), "fore0": -20, "fore1": 0, "tw0": -20, "tw1": 20,
+		"fx": "slash", "roll": -70, "wr": 180.0},
 	"l4": {"dur": 0.55, "hit0": 0.12, "hit1": 0.3, "dmg": 15, "range": 3.6, "arc": 360, "lunge": 11.0,
 		"power": 2, "stagger": 0.6, "hitstop": 0.09, "shake": 0.3, "next": "",
 		"arm0": Vector3(-90, -100, 0), "arm1": Vector3(-90, 100, 0), "fore0": 0, "fore1": 0, "tw0": -30, "tw1": 30,
 		"spin": 1.0, "fx": "wave_ring", "knock": 9.0},
-	"air": {"dur": 0.38, "hit0": 0.08, "hit1": 0.17, "dmg": 10, "range": 3.3, "arc": 130, "lunge": 4.0,
+	"air": {"sweep": true, "dur": 0.38, "hit0": 0.08, "hit1": 0.17, "dmg": 10, "range": 3.3, "arc": 130, "lunge": 4.0,
 		"power": 1, "stagger": 0.35, "hitstop": 0.06, "shake": 0.15, "next": "air",
 		"arm0": Vector3(-200, 0, 0), "arm1": Vector3(-15, 0, 0), "fore0": 0, "fore1": 0, "tw0": 0, "tw1": 0,
 		"fx": "slash", "roll": 90, "air": true, "wr": 0.0},
@@ -57,7 +58,7 @@ const ATK := {
 		"power": 2, "stagger": 0.5, "hitstop": 0.08, "shake": 0.25, "next": "l3",
 		"arm0": Vector3(-60, 120, 0), "arm1": Vector3(-90, -120, 0), "fore0": -10, "fore1": 0, "tw0": 50, "tw1": -50,
 		"fx": "slash", "roll": -5, "rev": true},
-	"heavy": {"dur": 0.78, "hit0": 0.4, "hit1": 0.5, "dmg": 24, "range": 3.7, "arc": 150, "lunge": 7.0,
+	"heavy": {"sweep": true, "dur": 0.78, "hit0": 0.4, "hit1": 0.5, "dmg": 24, "range": 3.7, "arc": 150, "lunge": 7.0,
 		"power": 2, "stagger": 0.8, "hitstop": 0.11, "shake": 0.45, "next": "",
 		"arm0": Vector3(-200, 0, 0), "arm1": Vector3(-10, 0, 0), "fore0": -20, "fore1": 0, "tw0": -10, "tw1": 5,
 		"fx": "heavy", "roll": 90, "knock": 7.0, "guard": true, "wr": 0.0},
@@ -81,6 +82,52 @@ const ATK := {
 		"power": 2, "stagger": 0.7, "hitstop": 0.1, "shake": 0.3, "next": "l3",
 		"arm0": Vector3(-10, 75, 25), "arm1": Vector3(-88, -125, 0), "fore0": -30, "fore1": 0, "tw0": 55, "tw1": -55,
 		"fx": "slash", "roll": -4, "rev": true, "impact_light": true},
+	# --- парные клинки: быстрые удары то правой, то левой, крест, вихрь на цепи ---
+	"d1": {"sweep": true, "dur": 0.26, "hit0": 0.06, "hit1": 0.13, "dmg": 6, "range": 2.9, "arc": 140, "lunge": 8.0,
+		"power": 1, "stagger": 0.25, "hitstop": 0.045, "shake": 0.1, "next": "d2",
+		"arm0": Vector3(-80, -100, 0), "arm1": Vector3(-75, 90, 0), "fore0": -10, "fore1": -5, "tw0": -35, "tw1": 35,
+		"fx": "slash", "roll": 6},
+	"d2": {"sweep": true, "dur": 0.26, "hit0": 0.06, "hit1": 0.13, "dmg": 6, "range": 2.9, "arc": 140, "lunge": 8.0,
+		"power": 1, "stagger": 0.25, "hitstop": 0.045, "shake": 0.1, "next": "d3",
+		"arm0": Vector3(-80, -100, 0), "arm1": Vector3(-75, 90, 0), "fore0": -10, "fore1": -5, "tw0": 35, "tw1": -35,
+		"fx": "slash", "roll": -6, "rev": true},
+	"d3": {"sweep": true, "launch": true, "dur": 0.42, "hit0": 0.1, "hit1": 0.2, "dmg": 12, "range": 3.2, "arc": 120, "lunge": 10.0,
+		"power": 2, "stagger": 0.5, "hitstop": 0.08, "shake": 0.22, "next": "d4",
+		"arm0": Vector3(-20, -60, 0), "arm1": Vector3(-170, 40, 0), "fore0": -20, "fore1": 0, "tw0": 0, "tw1": 0,
+		"fx": "cross", "wr": 180.0},
+	"d4": {"dur": 0.72, "hit0": 0.12, "hit1": 0.58, "dmg": 7, "range": 4.4, "arc": 360, "lunge": 4.0,
+		"power": 1, "stagger": 0.3, "hitstop": 0.035, "shake": 0.1, "next": "",
+		"arm0": Vector3(-90, -80, 0), "arm1": Vector3(-90, -80, 0), "fore0": 0, "fore1": 0, "tw0": 0, "tw1": 0,
+		"spin": 2.0, "fx": "chain_whirl", "multi": 0.12, "knock": 6.0},
+	"dair": {"sweep": true, "dur": 0.36, "hit0": 0.08, "hit1": 0.17, "dmg": 9, "range": 3.2, "arc": 130, "lunge": 4.0,
+		"power": 1, "stagger": 0.35, "hitstop": 0.06, "shake": 0.15, "next": "dair",
+		"arm0": Vector3(-200, -20, 0), "arm1": Vector3(-20, 20, 0), "fore0": 0, "fore1": 0, "tw0": 0, "tw1": 0,
+		"fx": "cross", "air": true, "wr": 0.0},
+	# --- гибкий клинок: дальние хлёсты, щелчок сверху, круг, дальний удар ---
+	"w1": {"sweep": true, "dur": 0.42, "hit0": 0.12, "hit1": 0.22, "dmg": 8, "range": 2.6, "arc": 130, "lunge": 3.0,
+		"power": 1, "stagger": 0.3, "hitstop": 0.05, "shake": 0.12, "next": "w2",
+		"arm0": Vector3(-100, -120, 0), "arm1": Vector3(-70, 80, 0), "fore0": -30, "fore1": 0, "tw0": -45, "tw1": 40,
+		"fx": "lash", "roll": 4},
+	"w2": {"sweep": true, "dur": 0.42, "hit0": 0.12, "hit1": 0.22, "dmg": 8, "range": 2.6, "arc": 130, "lunge": 3.0,
+		"power": 1, "stagger": 0.3, "hitstop": 0.05, "shake": 0.12, "next": "w3",
+		"arm0": Vector3(-70, 90, 0), "arm1": Vector3(-100, -110, 0), "fore0": -30, "fore1": 0, "tw0": 40, "tw1": -45,
+		"fx": "lash", "roll": -4, "rev": true},
+	"w3": {"sweep": true, "dur": 0.55, "hit0": 0.16, "hit1": 0.27, "dmg": 13, "range": 3.0, "arc": 40, "lunge": 2.0,
+		"power": 2, "stagger": 0.6, "hitstop": 0.08, "shake": 0.25, "next": "w4",
+		"arm0": Vector3(-200, 0, 0), "arm1": Vector3(-40, 0, 0), "fore0": -40, "fore1": 0, "tw0": -10, "tw1": 10,
+		"fx": "crack", "roll": 90, "wr": 0.0, "knock": 5.0},
+	"w4": {"dur": 0.6, "hit0": 0.12, "hit1": 0.4, "dmg": 12, "range": 2.8, "arc": 360, "lunge": 2.0,
+		"power": 2, "stagger": 0.6, "hitstop": 0.07, "shake": 0.25, "next": "",
+		"arm0": Vector3(-90, -110, 0), "arm1": Vector3(-90, 100, 0), "fore0": 0, "fore1": 0, "tw0": -30, "tw1": 30,
+		"spin": 1.0, "fx": "lash_ring", "knock": 9.0},
+	"wheavy": {"sweep": true, "dur": 0.7, "hit0": 0.32, "hit1": 0.42, "dmg": 20, "range": 3.8, "arc": 30, "lunge": 0.0,
+		"power": 2, "stagger": 0.8, "hitstop": 0.1, "shake": 0.4, "next": "",
+		"arm0": Vector3(-185, -20, 0), "arm1": Vector3(-75, 0, 0), "fore0": -50, "fore1": 0, "tw0": -20, "tw1": 15,
+		"fx": "crack", "roll": 90, "wr": 0.0, "knock": 9.0},
+	"wair": {"sweep": true, "dur": 0.4, "hit0": 0.1, "hit1": 0.2, "dmg": 9, "range": 2.8, "arc": 130, "lunge": 3.0,
+		"power": 1, "stagger": 0.35, "hitstop": 0.06, "shake": 0.15, "next": "wair",
+		"arm0": Vector3(-200, 0, 0), "arm1": Vector3(-30, 0, 0), "fore0": 0, "fore1": 0, "tw0": 0, "tw1": 0,
+		"fx": "lash", "roll": 90, "air": true, "wr": 0.0},
 	# парные клинки: бросок правого клинка на цепи — летит, вращаясь, и возвращается
 	"chain": {"dur": 0.74, "hit0": 0.13, "hit1": 0.52, "dmg": 11, "range": 7.0, "arc": 50, "lunge": 0.0,
 		"power": 2, "stagger": 0.45, "hitstop": 0.04, "shake": 0.18, "next": "",
@@ -177,6 +224,9 @@ var throw_from := Vector3.ZERO
 var throw_to := Vector3.ZERO
 var throw_init := false
 var ik_pole_up := false
+var sweep_prev: Array = []        # отрезки клинков в прошлом кадре (попадание по движению клинка)
+const SWEEP_EXT := 0.75           # «ветер клинка» — добавка к длине лезвия
+const SWEEP_PAD := 0.3
 
 func _ready() -> void:
 	collision_layer = 2
@@ -625,7 +675,7 @@ func _common_actions(inp: Vector3) -> bool:
 		if not drawn:
 			_start_attack("iai")
 		else:
-			_start_attack("chain" if sword_mode == "dual" else "heavy")
+			_start_attack("heavy")
 		return true
 	if pressed("parry"):
 		if not drawn:
@@ -1087,7 +1137,14 @@ func _aim_target(max_d := 7.0) -> Node:
 			best = e
 	return best
 
+# У каждого оружия свой набор: базовое имя удара → удар этого оружия.
+const WEAPON_ATK := {
+	"dual": {"l1": "d1", "l2": "d2", "l3": "d3", "l4": "d4", "heavy": "chain", "air": "dair"},
+	"whip": {"l1": "w1", "l2": "w2", "l3": "w3", "l4": "w4", "heavy": "wheavy", "air": "wair"},
+}
+
 func _start_attack(nm: String) -> void:
+	nm = WEAPON_ATK.get(sword_mode, {}).get(nm, nm)
 	if not drawn:
 		set_drawn(true)
 		G.sfx.play("draw", -3.0)
@@ -1096,7 +1153,8 @@ func _start_attack(nm: String) -> void:
 	sprinting = false
 	atk = ATK[nm]
 	# ноги в комбо чередуются: шаг то левой, то правой
-	step_lead = -1.0 if nm in ["l2", "dslash", "counter", "iai"] else 1.0
+	step_lead = -1.0 if nm in ["l2", "dslash", "counter", "iai", "d2", "w2"] else 1.0
+	sweep_prev = []
 	atk_name = nm
 	_set_state("attack")
 	hit_set.clear()
@@ -1176,7 +1234,12 @@ func _st_attack(dt: float, inp: Vector3) -> void:
 	trail.emitting = t >= a.hit0 - 0.05 and t <= a.hit1 + 0.06
 	if atk_name == "chain":
 		_throw_update(t)
-	if t >= a.hit0 and t <= a.hit1:
+	# для попадания по клинку: запомнить его положение до окна удара,
+	# окно чуть длиннее — суставы на пружинах догоняют позу с запаздыванием
+	var sweep_on: bool = a.get("sweep", false)
+	if sweep_on and t < a.hit0:
+		sweep_prev = _blade_segments()
+	if t >= a.hit0 and t <= a.hit1 + (0.07 if sweep_on else 0.0):
 		if a.has("multi"):
 			multi_t -= dt
 			if multi_t <= 0.0:
@@ -1184,6 +1247,12 @@ func _st_attack(dt: float, inp: Vector3) -> void:
 				hit_set.clear()
 				if atk_name == "chain":
 					G.sfx.play("whoosh", -9.0, 1.4)
+				elif atk_name == "d4":
+					# вихрь на цепи: стальное кольцо вокруг
+					var oo := global_position + Vector3.UP * 1.0
+					G.fx.arc(oo, Basis(Vector3.RIGHT, deg_to_rad(randf_range(-12, 12))), 2.6, 0.0, PI * 1.6, 0.3,
+						Color(0.6, 0.65, 0.75), Color.WHITE, 0.25, 0, 0.0, 0.06)
+					G.sfx.play("whoosh", -8.0, 1.5)
 				else:
 					_attack_fx_tick()
 		if not hit_set.has("_fx"):
@@ -1259,6 +1328,30 @@ func _attack_fx() -> void:
 			pass
 		"chain":
 			G.sfx.play("clang", -12.0, 1.6)
+		"cross":
+			# крест двумя клинками
+			G.fx.slash_arc(o, atk_dir, 50.0, 1.9, 140.0, 0.5, Color(0.75, 0.85, 1.0), Color.WHITE, 0, 0.22, false)
+			G.fx.slash_arc(o, atk_dir, -50.0, 1.9, 140.0, 0.5, Color(0.75, 0.85, 1.0), Color.WHITE, 0, 0.22, true)
+			G.sfx.play("clang", -10.0, 1.3)
+		"chain_whirl":
+			G.sfx.play("whoosh_big", -6.0, 1.2)
+		"lash":
+			# хлыст: длинная тонкая дуга
+			G.fx.slash_arc(o, atk_dir, a.get("roll", 0.0), 4.2, 150.0, 0.25, Color(0.95, 0.45, 0.7), Color.WHITE, 0, 0.2, a.get("rev", false))
+			G.sfx.play("crack", -10.0, 1.6)
+		"crack":
+			# щелчок хлыста: удар в землю далеко впереди
+			var reach: float = a.range * 1.9
+			var gp2 := global_position + atk_dir * reach * 0.85 + Vector3.UP * 0.1
+			G.fx.slash_arc(o, atk_dir, 90.0, reach * 0.6, 120.0, 0.3, Color(0.95, 0.45, 0.7), Color.WHITE, 0, 0.25)
+			G.fx.streak(o + atk_dir * 0.5, gp2, Color(1.0, 0.75, 0.9), 0.25, 0.12)
+			G.fx.ring(gp2, 0.5, Color(0.85, 0.8, 0.65), Color.WHITE, 0.35, 3.0, 0.3)
+			G.fx.dust(gp2, 10)
+			G.sfx.play("crack", -3.0, 1.3)
+			G.add_shake(0.2)
+		"lash_ring":
+			G.fx.arc(o, Basis.IDENTITY, 2.8 * 1.9 * 0.7, 0.0, TAU, 0.35, Color(0.95, 0.45, 0.7), Color.WHITE, 0.4, 0, 0.2, 0.2)
+			G.sfx.play("whoosh_big", -4.0, 1.3)
 
 func _attack_fx_tick() -> void:
 	# Водоворот: волна вокруг тела на каждом обороте
@@ -1267,6 +1360,118 @@ func _attack_fx_tick() -> void:
 	G.fx.arc(o, b, 2.3, 0.0, PI * 1.5, 0.9, Color(0.15, 0.45, 0.95), Color(0.9, 0.97, 1.0), 0.32, 1, 0.0, 0.08)
 	G.fx.droplets(o, Vector3.UP, 5)
 	G.sfx.play("whoosh", -8.0, 1.2)
+
+# ---------------------------------------------------------------------
+# Попадание по движению клинка: отрезок лезвия (с «ветром» SWEEP_EXT) в этом
+# и прошлом кадре заметает полосу; кто в неё попал — по тому и удар.
+func _blade_segments() -> Array:
+	var segs := []
+	if sword_mode == "whip":
+		var pts: Array = [blade_base.global_position]
+		for i in range(0, whip.n, 2):
+			pts.append(whip.pos[i])
+		pts.append(whip.tip())
+		for i in pts.size() - 1:
+			segs.append([pts[i], pts[i + 1]])
+		return segs
+	var side := _dual_side() if sword_mode == "dual" else "r"
+	if side != "l":
+		var a := blade_base.global_position
+		var b := blade_tip.global_position
+		segs.append([a, b + (b - a).normalized() * SWEEP_EXT])
+	if sword_mode == "dual" and side != "r":
+		var a2 := sword_l.global_transform * Vector3(0, -0.13, 0)
+		var b2 := sword_l.global_transform * Vector3(0, -0.95, 0)
+		segs.append([a2, b2 + (b2 - a2).normalized() * SWEEP_EXT])
+	return segs
+
+# Ближайшие точки двух отрезков: [расстояние, точка на втором].
+static func seg_seg(p1: Vector3, q1: Vector3, p2: Vector3, q2: Vector3) -> Array:
+	var d1 := q1 - p1
+	var d2 := q2 - p2
+	var r := p1 - p2
+	var a := d1.dot(d1)
+	var e := d2.dot(d2)
+	var f := d2.dot(r)
+	var sc := 0.0
+	var tc := 0.0
+	if a < 1e-8 and e < 1e-8:
+		return [r.length(), p2]
+	if a < 1e-8:
+		tc = clampf(f / e, 0.0, 1.0)
+	else:
+		var c := d1.dot(r)
+		if e < 1e-8:
+			sc = clampf(-c / a, 0.0, 1.0)
+		else:
+			var b := d1.dot(d2)
+			var den := a * e - b * b
+			sc = clampf((b * f - c * e) / den, 0.0, 1.0) if den > 1e-8 else 0.0
+			tc = (b * sc + f) / e
+			if tc < 0.0:
+				tc = 0.0
+				sc = clampf(-c / a, 0.0, 1.0)
+			elif tc > 1.0:
+				tc = 1.0
+				sc = clampf((b - c) / a, 0.0, 1.0)
+	var c1 := p1 + d1 * sc
+	var c2 := p2 + d2 * tc
+	return [c1.distance_to(c2), c2]
+
+# Полоса клинка: подотрезки между прошлым и текущим кадром.
+func _swept() -> Array:
+	var cur := _blade_segments()
+	var out := []
+	for i in cur.size():
+		if i < sweep_prev.size():
+			for k in 4:
+				var f := float(k) / 3.0
+				out.append([(sweep_prev[i][0] as Vector3).lerp(cur[i][0], f), (sweep_prev[i][1] as Vector3).lerp(cur[i][1], f)])
+		else:
+			out.append(cur[i])
+	sweep_prev = cur
+	return out
+
+func _sweep_hits() -> void:
+	var a := atk
+	var band := _swept()
+	for e in G.enemies:
+		if not is_instance_valid(e) or e.is_dead() or hit_set.has(e.get_instance_id()):
+			continue
+		var e0: Vector3 = e.global_position + Vector3.UP * 0.3
+		var e1: Vector3 = e.global_position + Vector3.UP * 2.3
+		var best := 99.0
+		var pt := Vector3.ZERO
+		for sg in band:
+			var r: Array = seg_seg(e0, e1, sg[0], sg[1])
+			if r[0] < best:
+				best = r[0]
+				pt = r[1]
+		if best > e.radius + SWEEP_PAD:
+			continue
+		hit_set[e.get_instance_id()] = true
+		var flat: Vector3 = e.global_position - global_position
+		flat.y = 0
+		var dir := flat.normalized() if flat.length() > 0.1 else atk_dir
+		var res: Dictionary = e.take_hit(a.dmg, dir, a)
+		res["point"] = pt
+		_on_hit(e, res, dir)
+	for b in get_tree().get_nodes_in_group("breakable"):
+		if not is_instance_valid(b) or hit_set.has(b.get_instance_id()):
+			continue
+		var c: Vector3 = b.center()
+		var bd := 99.0
+		for sg in band:
+			var r2: Array = seg_seg(c, c, sg[0], sg[1])
+			bd = minf(bd, r2[0])
+		if bd > b.brad + SWEEP_PAD:
+			continue
+		hit_set[b.get_instance_id()] = true
+		var fl: Vector3 = c - global_position
+		fl.y = 0
+		if b.slash_hit(global_position, fl.normalized() if fl.length() > 0.1 else atk_dir, a.power):
+			G.hitstop(0.03)
+			G.add_shake(0.12)
 
 # ---------------------------------------------------------------------
 # Бросок на цепи: правый клинок летит к цели, крутясь, и возвращается в руку.
@@ -1344,6 +1549,9 @@ func _check_hits() -> void:
 	var a := atk
 	if atk_name == "chain":
 		_throw_hits()
+		return
+	if a.get("sweep", false):
+		_sweep_hits()
 		return
 	var range_: float = a.range * (1.9 if sword_mode == "whip" else 1.0)
 	var half := deg_to_rad(a.arc) * 0.5
@@ -2088,7 +2296,8 @@ func _animate(dt: float) -> void:
 # Двуручный хват катаны: руки сами тянутся к рукояти (обратная кинематика).
 # Парные клинки: какой рукой идёт удар (r — правой, l — левой, both — обеими).
 const DUAL_SIDE := {"l1": "r", "l2": "l", "l3": "r", "l4": "both", "air": "r", "dslash": "l",
-	"heavy": "both", "f1": "both", "f2": "both", "counter": "both", "ripple": "l", "iai": "both", "chain": "r"}
+	"heavy": "both", "f1": "both", "f2": "both", "counter": "both", "ripple": "l", "iai": "both", "chain": "r",
+	"d1": "r", "d2": "l", "d3": "both", "d4": "both", "dair": "both"}
 # Стойки (система торса): рука, направление клинка.
 # парные: кулак у пояса, клинок вверх и вперёд, как меч в руке; лезвие смотрит вперёд
 const DUAL_R_H := Vector3(-0.29, 0.0, 0.3)

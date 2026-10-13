@@ -41,6 +41,10 @@ var run_phase := 0.0
 var exposed_time := 3.5
 var regen_count := 0
 var wounds: Array = []     # порезы: {n, life}
+var hit_dir := Vector3.ZERO     # откуда пришёл последний удар (куда толкнул)
+var hit_react := 0.0            # вздрагивание от удара (1 → 0)
+var air_down := false           # после полёта — упасть на землю
+var lean_s := 15.0
 
 func _ready() -> void:
 	collision_layer = 4
@@ -312,6 +316,26 @@ func _physics_process(dt: float) -> void:
 			if state_t > stagger_time:
 				_set_state("chase")
 				atk_cd = 0.4
+		"air":
+			# в полёте после подброса или отбрасывания
+			velocity.y -= 26.0 * dt
+			if state_t > 0.12 and is_on_floor():
+				G.fx.dust(global_position, 10)
+				G.add_shake(0.1)
+				_set_state("down" if air_down else "chase")
+		"down":
+			_gravity(dt)
+			velocity.x = move_toward(velocity.x, 0, 25 * dt)
+			velocity.z = move_toward(velocity.z, 0, 25 * dt)
+			if state_t > 1.0:
+				_set_state("getup")
+		"getup":
+			_gravity(dt)
+			_brake(dt)
+			_face(dirp, dt, 6.0)
+			if state_t > 0.5:
+				_set_state("chase")
+				atk_cd = 0.35
 		"exposed":
 			_gravity(dt)
 			_brake(dt)
@@ -437,7 +461,25 @@ func take_hit(dmg: float, dir: Vector3, atk: Dictionary) -> Dictionary:
 	velocity += dir * knock
 	velocity.y = maxf(velocity.y, 1.0 if atk.power < 2 else 3.0)
 	var armored: bool = state in ["swing", "leap", "spikes"] or (state == "windup" and atk.power < 2)
-	if not armored and atk.stagger > 0.0:
+	hit_dir = dir
+	hit_react = 1.0 if not armored else 0.5
+	if state in ["air", "down"]:
+		# в воздухе удары держат его наверху (жонглирование), на земле — добивают лежачего
+		if state == "air":
+			velocity.y = maxf(velocity.y, 4.5)
+			velocity.x = dir.x * 2.0
+			velocity.z = dir.z * 2.0
+	elif not armored and atk.get("launch", false):
+		# подброшен восходящим ударом
+		velocity = dir * 1.5 + Vector3.UP * 9.5
+		air_down = true
+		_set_state("air")
+	elif not armored and knock >= 8.0:
+		# сильный удар сбивает с ног и отбрасывает
+		velocity = dir * knock * 1.1 + Vector3.UP * 6.0
+		air_down = true
+		_set_state("air")
+	elif not armored and atk.stagger > 0.0:
 		stagger(atk.stagger * (0.6 if rage else 1.0))
 	# отрубить руку сильным ударом
 	if atk.power >= 2 and randf() < 0.35:
@@ -497,7 +539,7 @@ func _update_wounds(dt: float) -> void:
 		w.n.scale = Vector3(1.0, w.s, w.s)
 
 func stagger(t: float) -> void:
-	if state in ["exposed", "dead", "locked"]:
+	if state in ["exposed", "dead", "locked", "air", "down"]:
 		return
 	stagger_time = t
 	_set_state("stagger")
@@ -665,6 +707,7 @@ func _animate(dt: float) -> void:
 		p[k] = Vector3.ZERO
 	var hips_y := 0.95
 	var lean := 15.0
+	var model_y := 0.0
 	var sp := Vector3(velocity.x, 0, velocity.z).length()
 	# сутулая стойка, длинные руки висят
 	p.torso = Vector3(20, 0, 0)
@@ -733,6 +776,37 @@ func _animate(dt: float) -> void:
 			p.arm_r = Vector3(10, 0, -10)
 			p.arm_l = Vector3(10, 0, 10)
 			lean = 0.0
+		"air":
+			# кувыркается в воздухе, руки и ноги врозь
+			lean = -35.0 - state_t * 120.0
+			p.arm_r = Vector3(-120, 0, -60)
+			p.arm_l = Vector3(-120, 0, 60)
+			p.leg_r = Vector3(-50, 0, -15)
+			p.leg_l = Vector3(-20, 0, 15)
+			p.shin_r = Vector3(70, 0, 0)
+			p.head = Vector3(30, 0, 0)
+			lean = maxf(lean, -100.0)
+		"down":
+			lean = -88.0
+			model_y = 0.22
+			p.arm_r = Vector3(-90, 0, -60)
+			p.arm_l = Vector3(-60, 0, 70)
+			p.leg_r = Vector3(-20, 0, -10)
+			p.leg_l = Vector3(-45, 0, 12)
+			p.shin_l = Vector3(60, 0, 0)
+			p.head = Vector3(15, 0, 0)
+		"getup":
+			var kg := clampf(state_t / 0.5, 0.0, 1.0)
+			var sit := sin(kg * PI)
+			lean = lerpf(-88.0, 15.0, kg) + 30.0 * sit
+			model_y = 0.22 * (1.0 - kg)
+			hips_y = 0.95 - 0.4 * sit
+			p.leg_r = Vector3(-100 * sit, 0, 0)
+			p.leg_l = Vector3(-90 * sit, 0, 0)
+			p.shin_r = Vector3(120 * sit, 0, 0)
+			p.shin_l = Vector3(110 * sit, 0, 0)
+			p.arm_r = Vector3(30, 0, -30)
+			p.arm_l = Vector3(30, 0, 30)
 		"roar":
 			p.torso = Vector3(-15, 0, 0)
 			p.head = Vector3(-35, 0, 0)
@@ -740,14 +814,30 @@ func _animate(dt: float) -> void:
 			p.arm_l = Vector3(-30, 0, 70)
 			lean = -10.0
 	var rate := 1.0 - exp(-14.0 * dt)
+	# вздрагивание от удара: корпус и голова откидываются от клинка, быстро и без сглаживания
+	hit_react = maxf(0.0, hit_react - dt * 4.0)
+	var hr := hit_react * hit_react
+	var fwd := _fwd()
+	var side_x := Vector3(cos(facing), 0, -sin(facing))
+	var hf := hit_dir.dot(fwd)
+	var hs := hit_dir.dot(side_x)
 	for k in J:
 		if k == "hips" or not p.has(k):
 			continue
 		rest[k] = rest[k].lerp(p[k], rate)
-		J[k].rotation_degrees = rest[k]
+		var add := Vector3.ZERO
+		if k == "torso":
+			add = Vector3(28.0 * hf, 0, -22.0 * hs) * hr
+		elif k == "head":
+			add = Vector3(35.0 * hf, 0, -25.0 * hs) * hr
+		elif k == "arm_r" or k == "arm_l":
+			add = Vector3(-25.0, 0, 0) * hr
+		J[k].rotation_degrees = rest[k] + add
 	J.hips.position.y = lerpf(J.hips.position.y, hips_y, rate)
+	model.position.y = lerpf(model.position.y, model_y, rate)
 	for s in ["r", "l"]:
 		var f: Node3D = J["fore_" + s]
 		if f.scale.x < 1.0:
 			f.scale = f.scale.lerp(Vector3.ONE, 1.0 - exp(-3.0 * dt))
-	model.rotation = Vector3(deg_to_rad(lean), facing, 0)
+	lean_s = lerpf(lean_s, lean + 12.0 * hf * hr, 1.0 - exp(-(22.0 if state in ["air", "down", "getup"] else 12.0) * dt))
+	model.rotation = Vector3(deg_to_rad(lean_s), facing, 0)

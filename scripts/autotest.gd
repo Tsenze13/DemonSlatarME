@@ -145,6 +145,26 @@ func _run() -> void:
 		G.cam_rig.pitch = -0.3
 	p.set_sword(0)
 	p.set_drawn(false)
+	# у каждого оружия свои удары
+	var sets := [[6, "d1", "chain"], [7, "w1", "wheavy"], [0, "l1", "heavy"]]
+	var ok_sets := true
+	for st in sets:
+		p.set_sword(st[0])
+		p.set_drawn(true)
+		await w(0.1)
+		p.press("light")
+		await w(0.05)
+		var a1: String = p.atk_name
+		await w(0.5)
+		p.press("heavy")
+		await w(0.05)
+		var a2: String = p.atk_name
+		await w(0.9)
+		if a1 != st[1] or a2 != st[2]:
+			ok_sets = false
+			print("оружие ", st[0], ": ", a1, " ", a2)
+	check(ok_sets, "у парных и хлыста свои удары")
+	p.set_drawn(false)
 	# анимации: прыжок с приземлением, сбивание с ног и подъём
 	p.press("jump")
 	await w(0.25)
@@ -241,13 +261,27 @@ func _run() -> void:
 	check(p.lock_target != null, "захват цели")
 	# комбо
 	var hits0: int = p.hits_total
+	var launched := false
+	# чтобы прыжок демона не сбил героя посреди проверки комбо
+	if d.state in ["leap_wind", "leap", "windup", "swing", "spikes"]:
+		d._set_state("chase")
+	d.atk_cd = 3.0
 	for i in 4:
 		p.press("light")
-		await w(0.27 if i < 3 else 0.2)
+		for f in 9:
+			await w(0.03)
+			if d.state == "air":
+				launched = true
 		if i == 3:
 			await shot("04_combo4")
-	await w(0.5)
-	check(p.hits_total > hits0, "удары комбо попадают (%d)" % (p.hits_total - hits0))
+	for f in 15:
+		await w(0.03)
+		if d.state == "air":
+			launched = true
+	check(p.hits_total - hits0 >= 3, "удары комбо попадают по движению клинка (%d)" % (p.hits_total - hits0))
+	check(launched, "восходящий срез подбрасывает демона")
+	await w(1.6)
+	check(d.state != "down" and d.state != "air", "демон поднялся (%s)" % d.state)
 	check(d.wounds.size() > 0, "на демоне видны порезы (%d)" % d.wounds.size())
 	# регенерация после паузы
 	var hp_before: float = d.hp
