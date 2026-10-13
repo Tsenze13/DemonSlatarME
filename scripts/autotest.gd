@@ -76,7 +76,7 @@ func _run() -> void:
 	check(not p.drawn, "в начале клинок в ножнах")
 	# все мечи из набора ставятся в руку и в ножны
 	var ok_sw := true
-	for si in range(-1, 9):
+	for si in range(-1, 11):
 		p.set_sword(si)
 		p.set_drawn(true)
 		await w(0.15)
@@ -86,10 +86,11 @@ func _run() -> void:
 			if bl < 0.8:
 				ok_sw = false
 				print("хлыст ", bl)
-		elif bl < 0.6 or bl > 1.1:
+		elif bl < 0.25 or bl > 1.1:
 			ok_sw = false
 			print("меч ", si, " длина ", bl)
 	check(ok_sw, "все виды оружия ставятся")
+	p.set_sword(0)
 	for sa in SwordLibT.SAYA.size():
 		p.set_look(sa, sa % SwordLibT.TINTS.size())
 		await w(0.03)
@@ -151,7 +152,7 @@ func _run() -> void:
 	p.set_sword(0)
 	p.set_drawn(false)
 	# у каждого оружия свои удары
-	var sets := [[6, "d1", "chain"], [7, "w1", "wheavy"], [0, "l1", "heavy"]]
+	var sets := [[6, "d1", "chain"], [7, "w1", "wheavy"], [9, "n1", "nheavy"], [10, "fl1", "flheavy"], [0, "l1", "heavy"]]
 	var ok_sets := true
 	for st in sets:
 		p.set_sword(st[0])
@@ -168,7 +169,31 @@ func _run() -> void:
 		if a1 != st[1] or a2 != st[2]:
 			ok_sets = false
 			print("оружие ", st[0], ": ", a1, " ", a2)
-	check(ok_sets, "у парных и хлыста свои удары")
+	check(ok_sets, "у каждого оружия свои удары")
+	# нагината и шар на цепи: за спиной, выхват, шар летит
+	p.set_sword(10)
+	p.set_drawn(false)
+	await w(0.3)
+	check(p.back_sheath.visible and p.flail.visible, "топор за спиной, шар на цепи висит")
+	p.press("draw")
+	await w(0.6)
+	check(p.drawn, "топор достаётся из-за спины")
+	var bp0: Vector3 = p.global_position
+	p.press("heavy")
+	await w(0.42)
+	var bd: float = p.flail.pos.distance_to(bp0)
+	check(bd > 4.0, "шар бросается на цепи (%.1f м)" % bd)
+	await w(0.8)
+	p.set_sword(9)
+	p.set_drawn(false)
+	await w(0.2)
+	p.press("draw")
+	await w(0.6)
+	check(p.drawn and p.sword_mode == "naginata", "нагината достаётся из-за спины")
+	var tip_d: float = p.blade_tip.global_position.distance_to(p.J.sword.global_position)
+	check(tip_d > 1.5, "нагината длинная (%.2f м)" % tip_d)
+	p.set_sword(0)
+	p.set_drawn(false)
 	p.set_drawn(false)
 	# анимации: прыжок с приземлением, сбивание с ног и подъём
 	p.press("jump")

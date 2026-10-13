@@ -11,6 +11,8 @@ const SwordLib = preload("res://scripts/sword_lib.gd")
 const Whip = preload("res://scripts/whip.gd")
 const Chain = preload("res://scripts/chain.gd")
 const Bandage = preload("res://scripts/bandage.gd")
+const Weapons = preload("res://scripts/weapons.gd")
+const Flail = preload("res://scripts/flail.gd")
 
 # --- движение ---
 const RUN_SPEED := 13.5
@@ -128,6 +130,56 @@ const ATK := {
 		"power": 1, "stagger": 0.35, "hitstop": 0.06, "shake": 0.15, "next": "wair",
 		"arm0": Vector3(-200, 0, 0), "arm1": Vector3(-30, 0, 0), "fore0": 0, "fore1": 0, "tw0": 0, "tw1": 0,
 		"fx": "lash", "roll": 90, "air": true, "wr": 0.0},
+	# --- нагината: широкие махи, укол с выпадом, круг, удар сверху ---
+	"n1": {"sweep": true, "dur": 0.44, "hit0": 0.12, "hit1": 0.23, "dmg": 10, "range": 3.8, "arc": 160, "lunge": 7.0,
+		"power": 1, "stagger": 0.35, "hitstop": 0.06, "shake": 0.14, "next": "n2",
+		"arm0": Vector3(-80, -120, 0), "arm1": Vector3(-80, 100, 0), "fore0": -10, "fore1": 0, "tw0": -50, "tw1": 50,
+		"fx": "slash_long", "roll": 5},
+	"n2": {"sweep": true, "dur": 0.44, "hit0": 0.12, "hit1": 0.23, "dmg": 10, "range": 3.8, "arc": 160, "lunge": 7.0,
+		"power": 1, "stagger": 0.35, "hitstop": 0.06, "shake": 0.14, "next": "n3",
+		"arm0": Vector3(-75, 100, 0), "arm1": Vector3(-85, -120, 0), "fore0": -10, "fore1": 0, "tw0": 50, "tw1": -50,
+		"fx": "slash_long", "roll": -5, "rev": true},
+	"n3": {"sweep": true, "dur": 0.42, "hit0": 0.1, "hit1": 0.19, "dmg": 13, "range": 4.6, "arc": 40, "lunge": 16.0,
+		"power": 1, "stagger": 0.45, "hitstop": 0.07, "shake": 0.16, "next": "n4",
+		"arm0": Vector3(-40, 0, 0), "arm1": Vector3(-88, 0, 0), "fore0": -100, "fore1": 0, "tw0": 25, "tw1": -10,
+		"fx": "thrust", "wr": 90.0},
+	"n4": {"sweep": true, "dur": 0.62, "hit0": 0.12, "hit1": 0.42, "dmg": 14, "range": 4.2, "arc": 360, "lunge": 4.0,
+		"power": 2, "stagger": 0.6, "hitstop": 0.08, "shake": 0.25, "next": "",
+		"arm0": Vector3(-90, -100, 0), "arm1": Vector3(-90, 100, 0), "fore0": 0, "fore1": 0, "tw0": -30, "tw1": 30,
+		"spin": 1.0, "fx": "spin_long", "knock": 9.0},
+	"nheavy": {"sweep": true, "dur": 0.8, "hit0": 0.38, "hit1": 0.48, "dmg": 24, "range": 4.4, "arc": 60, "lunge": 8.0,
+		"power": 2, "stagger": 0.8, "hitstop": 0.11, "shake": 0.45, "next": "",
+		"arm0": Vector3(-200, 0, 0), "arm1": Vector3(-20, 0, 0), "fore0": -20, "fore1": 0, "tw0": -10, "tw1": 5,
+		"fx": "heavy", "roll": 90, "knock": 7.0, "wr": 0.0},
+	"nair": {"sweep": true, "dur": 0.4, "hit0": 0.1, "hit1": 0.2, "dmg": 11, "range": 3.8, "arc": 140, "lunge": 4.0,
+		"power": 1, "stagger": 0.35, "hitstop": 0.06, "shake": 0.15, "next": "nair",
+		"arm0": Vector3(-200, 0, 0), "arm1": Vector3(-15, 0, 0), "fore0": 0, "fore1": 0, "tw0": 0, "tw1": 0,
+		"fx": "slash_long", "roll": 90, "air": true, "wr": 0.0},
+	# --- шар и топор на цепи: удар топором, шар дугой, шар сверху в землю, вихрь, бросок шара ---
+	"fl1": {"sweep": true, "dur": 0.4, "hit0": 0.12, "hit1": 0.21, "dmg": 11, "range": 3.0, "arc": 140, "lunge": 8.0,
+		"power": 1, "stagger": 0.4, "hitstop": 0.07, "shake": 0.16, "next": "fl2",
+		"arm0": Vector3(-150, -60, 0), "arm1": Vector3(-40, 50, 0), "fore0": -30, "fore1": 0, "tw0": -35, "tw1": 30,
+		"fx": "slash", "roll": 50, "wr": 0.0},
+	"fl2": {"dur": 0.62, "hit0": 0.16, "hit1": 0.4, "dmg": 13, "range": 4.0, "arc": 200, "lunge": 2.0,
+		"power": 2, "stagger": 0.5, "hitstop": 0.08, "shake": 0.22, "next": "fl3",
+		"arm0": Vector3(-90, 110, 0), "arm1": Vector3(-90, -110, 0), "fore0": -10, "fore1": 0, "tw0": 50, "tw1": -50,
+		"fx": "ball", "ball": "arc", "knock": 6.0},
+	"fl3": {"dur": 0.8, "hit0": 0.26, "hit1": 0.46, "dmg": 20, "range": 5.0, "arc": 60, "lunge": 1.0,
+		"power": 2, "stagger": 0.8, "hitstop": 0.12, "shake": 0.5, "next": "fl4",
+		"arm0": Vector3(-200, 0, 0), "arm1": Vector3(-45, 0, 0), "fore0": -40, "fore1": 0, "tw0": -10, "tw1": 10,
+		"fx": "ball", "ball": "slam", "knock": 9.0, "wr": 0.0},
+	"fl4": {"dur": 0.95, "hit0": 0.14, "hit1": 0.78, "dmg": 9, "range": 3.6, "arc": 360, "lunge": 2.0,
+		"power": 1, "stagger": 0.35, "hitstop": 0.05, "shake": 0.14, "next": "",
+		"arm0": Vector3(-150, 0, 0), "arm1": Vector3(-150, 0, 0), "fore0": -20, "fore1": -20, "tw0": 0, "tw1": 0,
+		"fx": "ball", "ball": "whirl", "multi": 0.14, "knock": 5.0},
+	"flheavy": {"dur": 0.85, "hit0": 0.16, "hit1": 0.64, "dmg": 22, "range": 8.0, "arc": 40, "lunge": 0.0,
+		"power": 2, "stagger": 0.8, "hitstop": 0.1, "shake": 0.35, "next": "",
+		"arm0": Vector3(-170, -30, 0), "arm1": Vector3(-80, 10, 0), "fore0": -70, "fore1": 0, "tw0": -40, "tw1": 25,
+		"fx": "ball", "ball": "throw", "knock": 10.0, "wr": 0.0},
+	"flair": {"sweep": true, "dur": 0.4, "hit0": 0.1, "hit1": 0.2, "dmg": 11, "range": 3.0, "arc": 130, "lunge": 4.0,
+		"power": 1, "stagger": 0.4, "hitstop": 0.07, "shake": 0.16, "next": "flair",
+		"arm0": Vector3(-200, 0, 0), "arm1": Vector3(-20, 0, 0), "fore0": 0, "fore1": 0, "tw0": 0, "tw1": 0,
+		"fx": "slash", "roll": 90, "air": true, "wr": 0.0},
 	# парные клинки: бросок правого клинка на цепи — летит, вращаясь, и возвращается
 	"chain": {"dur": 0.74, "hit0": 0.13, "hit1": 0.52, "dmg": 11, "range": 7.0, "arc": 50, "lunge": 0.0,
 		"power": 2, "stagger": 0.45, "hitstop": 0.04, "shake": 0.18, "next": "",
@@ -224,6 +276,15 @@ var throw_from := Vector3.ZERO
 var throw_to := Vector3.ZERO
 var throw_init := false
 var ik_pole_up := false
+# оружие без ножен: нагината и шар с топором на цепи — носятся за спиной
+var back_item: Node3D
+var flail
+var fchain
+var ball_impact := false
+const NAG_H := Vector3(-0.12, 0.04, 0.28)
+const NAG_D := Vector3(0.12, 0.3, 1.0)
+const FL_H := Vector3(-0.3, 0.06, 0.24)
+const FL_D := Vector3(-0.15, 0.75, 0.55)
 var sweep_prev: Array = []        # отрезки клинков в прошлом кадре (попадание по движению клинка)
 const SWEEP_EXT := 0.75           # «ветер клинка» — добавка к длине лезвия
 const SWEEP_PAD := 0.3
@@ -265,6 +326,14 @@ func _ready() -> void:
 	thrown.top_level = true
 	thrown.visible = false
 	add_child(thrown)
+	flail = Node3D.new()
+	flail.set_script(Flail)
+	add_child(flail)
+	flail.setup(Weapons.ball())
+	fchain = Node3D.new()
+	fchain.set_script(Chain)
+	add_child(fchain)
+	fchain.setup()
 	set_sword(sword_index)
 	global_position = spawn_pos
 	facing = PI
@@ -723,6 +792,8 @@ func _physics_process(dt: float) -> void:
 				thrown.visible = false
 				sword_vis.visible = true
 		_update_chain()
+	if sword_mode == "flail":
+		_update_flail()
 
 func _separate_from_enemies() -> void:
 	for e in G.enemies:
@@ -862,6 +933,8 @@ func set_sword(m: int) -> void:
 	if sword_vis == null:
 		return
 	back_swords.clear()
+	back_item = null
+	blade_base.position = Vector3(0, -0.13, 0)
 	if bandage:
 		bandage.build([], [])
 	for holder in [sword_vis, sword_l_vis, sheathed_hilt, scabbard_node, back_sheath, thrown]:
@@ -910,6 +983,22 @@ func set_sword(m: int) -> void:
 		coil.transform = (sheath_node.transform * Transform3D(Basis.IDENTITY, sheathed_hilt.position)).affine_inverse() * hip_xf
 		sheathed_hilt.add_child(coil)
 		blade_len = 0.3
+	elif m == 9:
+		sword_mode = "naginata"
+		sword_vis.add_child(Weapons.naginata(_tint()))
+		back_item = Weapons.naginata(_tint())
+		back_item.transform = _item_back_xf()
+		back_sheath.add_child(back_item)
+		blade_base.position = Vector3(0, -Weapons.NAG_BASE, 0)
+		blade_len = Weapons.NAG_TIP - 0.1
+	elif m == 10:
+		sword_mode = "flail"
+		sword_vis.add_child(Weapons.axe(_tint()))
+		back_item = Weapons.axe(_tint())
+		back_item.transform = _item_back_xf()
+		back_sheath.add_child(back_item)
+		blade_base.position = Vector3(0, -Weapons.AXE_BASE, 0)
+		blade_len = Weapons.AXE_TIP - 0.1
 	else:
 		sword_mode = "proc"
 		_build_proc_sword(sword_vis)
@@ -921,6 +1010,11 @@ func set_sword(m: int) -> void:
 		whip.set_tint(_tint())
 		whip.reset()
 	set_drawn(drawn)
+
+# Нагината и топор за спиной: наискось, рабочая часть над правым плечом.
+func _item_back_xf() -> Transform3D:
+	var d := Vector3(-0.42, 0.9, 0.0).normalized()
+	return Transform3D(_aim(d, Vector3(0, 0, 1)), Vector3(0.04, 0.0, -0.05))
 
 # Клинки за спиной (система back_sheath): k=0 — правый (рукоять над правым плечом).
 func _back_basis(k: int) -> Basis:
@@ -971,7 +1065,7 @@ func set_drawn(on: bool) -> void:
 	J.sword.visible = on
 	sword_l.visible = on and sword_mode == "dual"
 	sheathed_hilt.visible = not on
-	back_sheath.visible = not on and sword_mode == "dual"
+	back_sheath.visible = not on and sword_mode in ["dual", "naginata", "flail"]
 	scabbard_node.visible = sword_mode in ["katana", "proc"]
 	if chain:
 		var cv: bool = sword_mode == "dual"
@@ -985,6 +1079,17 @@ func set_drawn(on: bool) -> void:
 		whip.visible = on and sword_mode == "whip"
 		if whip.visible:
 			whip.reset()
+	if flail:
+		var fv: bool = sword_mode == "flail"
+		flail.length = 2.4 if on else 0.8
+		if fv and not flail.visible:
+			flail.visible = true
+			_update_flail()
+			flail.reset()
+			fchain.visible = true
+			fchain.reset()
+		flail.visible = fv
+		fchain.visible = fv
 
 func _st_draw(dt: float) -> void:
 	# достать или убрать клинок: рука тянется к ножнам на левом бедре
@@ -993,7 +1098,7 @@ func _st_draw(dt: float) -> void:
 	_gravity(dt)
 	var slow := sword_mode in ["katana", "proc"]
 	var swap_t := (0.16 if not drawn else 0.4) if slow else (0.12 if not drawn else 0.2)
-	if sword_mode == "dual":
+	if sword_mode in ["dual", "naginata", "flail"]:
 		swap_t = 0.17 if not drawn else 0.2
 	if not draw_swapped and state_t >= swap_t:
 		draw_swapped = true
@@ -1004,7 +1109,7 @@ func _st_draw(dt: float) -> void:
 			set_drawn(true)
 			G.sfx.play("draw", -2.0)
 			G.fx.burst(blade_tip.global_position, Color(0.9, 0.97, 1.0), 6, 3.0, 0.06, 0.25, 0.0)
-	var end_t := 0.52 if slow else (0.4 if sword_mode == "dual" else 0.3)
+	var end_t := 0.52 if slow else (0.4 if sword_mode in ["dual", "naginata", "flail"] else 0.3)
 	if state_t > end_t:
 		_set_state("move")
 
@@ -1306,6 +1411,8 @@ func _aim_target(max_d := 7.0) -> Node:
 const WEAPON_ATK := {
 	"dual": {"l1": "d1", "l2": "d2", "l3": "d3", "l4": "d4", "heavy": "chain", "air": "dair"},
 	"whip": {"l1": "w1", "l2": "w2", "l3": "w3", "l4": "w4", "heavy": "wheavy", "air": "wair"},
+	"naginata": {"l1": "n1", "l2": "n2", "l3": "n3", "l4": "n4", "heavy": "nheavy", "air": "nair"},
+	"flail": {"l1": "fl1", "l2": "fl2", "l3": "fl3", "l4": "fl4", "heavy": "flheavy", "air": "flair"},
 }
 
 func _start_attack(nm: String) -> void:
@@ -1345,6 +1452,15 @@ func _start_attack(nm: String) -> void:
 		invuln_t = 0.2
 		sonic_boom(atk_dir)
 		G.fx.afterimage(model, Color(0.85, 0.95, 1.0), 0.35)
+	ball_impact = false
+	if atk.get("ball", "") == "throw":
+		var dist2: float = atk.range
+		var tg3 := _aim_target(atk.range + 2.0)
+		if tg3:
+			var to4: Vector3 = tg3.global_position - global_position
+			to4.y = 0
+			dist2 = clampf(to4.length() + 0.5, 3.0, atk.range)
+		throw_to = global_position + atk_dir * dist2 + Vector3.UP * 1.0
 	if nm == "chain":
 		# бросок на цепи: до демона (сквозь него) или на полную длину
 		var dist: float = atk.throw
@@ -1399,6 +1515,8 @@ func _st_attack(dt: float, inp: Vector3) -> void:
 	trail.emitting = t >= a.hit0 - 0.05 and t <= a.hit1 + 0.06
 	if atk_name == "chain":
 		_throw_update(t)
+	if a.has("ball"):
+		_ball_update(t)
 	# для попадания по клинку: запомнить его положение до окна удара,
 	# окно чуть длиннее — суставы на пружинах догоняют позу с запаздыванием
 	var sweep_on: bool = a.get("sweep", false)
@@ -1500,6 +1618,16 @@ func _attack_fx() -> void:
 			G.sfx.play("clang", -10.0, 1.3)
 		"chain_whirl":
 			G.sfx.play("whoosh_big", -6.0, 1.2)
+		"slash_long":
+			G.fx.slash_arc(o, atk_dir, a.get("roll", 0.0), 3.0, 160.0, 0.6, Color(0.6, 0.82, 1.0), Color.WHITE, 0, 0.24, a.get("rev", false))
+		"thrust":
+			G.fx.streak(o + atk_dir * 0.6, o + atk_dir * 4.8, Color(0.85, 0.95, 1.0), 0.22, 0.18)
+			G.fx.ring(o + atk_dir * 4.4, 0.4, Color(0.7, 0.9, 1.0), Color.WHITE, 0.25, 2.5, 0.2, atk_dir)
+			G.sfx.play("shing", -10.0, 1.4)
+		"spin_long":
+			G.fx.arc(o, Basis.IDENTITY, 3.4, 0.0, TAU, 0.7, Color(0.6, 0.82, 1.0), Color.WHITE, 0.4, 0, 0.2, 0.2)
+		"ball":
+			G.sfx.play("whoosh_big", -4.0, 0.8)
 		"lash":
 			# хлыст: длинная тонкая дуга
 			G.fx.slash_arc(o, atk_dir, a.get("roll", 0.0), 4.2, 150.0, 0.25, Color(0.95, 0.45, 0.7), Color.WHITE, 0, 0.2, a.get("rev", false))
@@ -1697,6 +1825,92 @@ func _throw_hits() -> void:
 		if b.slash_hit(global_position, atk_dir, a.power):
 			G.hitstop(0.03)
 
+# Шар на цепи в ударе: герой ведёт его по траектории удара.
+func _ball_update(t: float) -> void:
+	var a := atk
+	var kind: String = a.ball
+	var t0: float = a.hit0 - 0.1
+	var t1: float = a.hit1 + 0.05
+	flail.driven = t >= t0 and t <= t1 and sword_mode == "flail"
+	if not flail.driven:
+		return
+	var k := clampf((t - t0) / (t1 - t0), 0.0, 1.0)
+	var o := global_position + Vector3.UP * 1.1
+	var f := atk_dir
+	match kind:
+		"arc":
+			var ke := Vox.ease_in_out(k)
+			var ang := lerpf(1.9, -1.9, ke)
+			flail.drive = o + f.rotated(Vector3.UP, ang) * 3.6 + Vector3.UP * (sin(ke * PI) * 0.4 - 0.2)
+		"slam":
+			var ke2 := Vox.ease_in_out(k)
+			var p0 := o - f * 0.8 + Vector3.UP * 2.4
+			var p1 := o + f * 1.8 + Vector3.UP * 3.4
+			var p2 := global_position + f * 4.5 + Vector3.UP * 0.25
+			flail.drive = p0.lerp(p1, ke2).lerp(p1.lerp(p2, ke2), ke2)
+			if k >= 0.97 and not ball_impact:
+				ball_impact = true
+				_ball_impact(p2)
+		"whirl":
+			var ang2 := k * TAU * 2.0
+			flail.drive = global_position + Vector3.UP * 1.0 + f.rotated(Vector3.UP, ang2) * 3.2
+		"throw":
+			var hand: Vector3 = J.sword.global_transform * Vector3(0, 0.15, 0)
+			var out := Vox.ease_out(minf(1.0, k * 2.0)) if k < 0.5 else 1.0 - Vox.ease_in_out((k - 0.5) * 2.0)
+			flail.drive = hand.lerp(throw_to, out) + Vector3.UP * sin(out * PI) * 0.4
+	flail.length = maxf(2.4, flail.drive.distance_to(flail.anchor) + 0.2)
+
+# Удар шаром о землю: волна, пыль и урон вокруг места удара.
+func _ball_impact(p: Vector3) -> void:
+	G.fx.ring(p, 0.8, Color(0.85, 0.8, 0.65), Color.WHITE, 0.45, 4.5, 0.45)
+	G.fx.dust(p, 22)
+	G.fx.burst(p, Color(0.45, 0.4, 0.35), 14, 10.0, 0.2, 0.7, 20.0, Vector3.UP, 0.6)
+	G.sfx.play("boom", -1.0, 0.9)
+	G.add_shake(0.5)
+	_ball_hits(2.6, p)
+
+func _ball_hits(scale: float, at := Vector3.INF) -> void:
+	var a := atk
+	if sword_mode != "flail" or (not flail.driven and at == Vector3.INF):
+		return
+	var c: Vector3 = flail.pos if at == Vector3.INF else at
+	var rad := 0.45 * scale + 0.3
+	for e in G.enemies:
+		if not is_instance_valid(e) or e.is_dead() or hit_set.has(e.get_instance_id()):
+			continue
+		var r: Array = seg_seg(c, c, e.global_position + Vector3.UP * 0.3, e.global_position + Vector3.UP * 2.3)
+		if r[0] > rad + e.radius:
+			continue
+		hit_set[e.get_instance_id()] = true
+		var flat: Vector3 = e.global_position - global_position
+		flat.y = 0
+		var dir := flat.normalized() if flat.length() > 0.1 else atk_dir
+		var res: Dictionary = e.take_hit(a.dmg, dir, a)
+		res["point"] = c
+		_on_hit(e, res, dir)
+	for b in get_tree().get_nodes_in_group("breakable"):
+		if not is_instance_valid(b) or hit_set.has(b.get_instance_id()):
+			continue
+		if (b.center() as Vector3).distance_to(c) > b.brad + rad:
+			continue
+		hit_set[b.get_instance_id()] = true
+		if b.slash_hit(global_position, atk_dir, 2):
+			G.hitstop(0.03)
+
+func _update_flail() -> void:
+	if flail == null or sword_mode != "flail":
+		return
+	if drawn:
+		flail.anchor = J.sword.global_transform * Vector3(0, 0.15, 0)
+	elif back_item:
+		flail.anchor = back_item.global_transform * Vector3(0, 0.15, 0)
+	if not (state == "attack" and atk.has("ball")):
+		flail.driven = false
+		flail.length = move_toward(flail.length, 2.4 if drawn else 0.8, 0.1)
+	fchain.pa = flail.anchor
+	fchain.pb = flail.pos + Vector3.UP * 0.2
+	fchain.length = flail.length
+
 func _update_chain() -> void:
 	if chain == null or sword_mode != "dual":
 		return
@@ -1714,6 +1928,9 @@ func _check_hits() -> void:
 	var a := atk
 	if atk_name == "chain":
 		_throw_hits()
+		return
+	if a.has("ball"):
+		_ball_hits(1.0)
 		return
 	if a.get("sweep", false):
 		_sweep_hits()
@@ -2587,6 +2804,16 @@ func _apply_ik(dt: float, sp: float) -> void:
 			rw = 1.0
 	elif sword_mode == "whip" and drawn and idle_ok:
 		rw = 1.0
+	elif sword_mode == "naginata" and drawn:
+		# нагината — двумя руками, левая дальше по древку
+		if idle_ok:
+			gw = 1.0
+			H = NAG_H
+			D = NAG_D.normalized()
+		if gw > 0.0 or state in ["attack", "finisher", "parry"]:
+			lw = 1.0
+	elif sword_mode == "flail" and drawn and (idle_ok or state == "parry"):
+		rw = 1.0
 	grip_w = move_toward(grip_w, gw, dt * 7.0)
 	left_w = move_toward(left_w, lw, dt * 9.0)
 	grip_r_w = move_toward(grip_r_w, rw, dt * 9.0)
@@ -2599,10 +2826,14 @@ func _apply_ik(dt: float, sp: float) -> void:
 	if state == "draw" and sword_mode == "dual":
 		_dual_draw_ik()
 		return
+	if state == "draw" and sword_mode in ["naginata", "flail"]:
+		_item_draw_ik()
+		return
 	if grip_w > 0.001:
 		_hold("r", H, D, grip_w, J.sword)
 	if left_w > 0.001:
-		var tl: Vector3 = inv * (J.sword.global_transform * Vector3(0, 0.15, 0))
+		var loff := 0.5 if sword_mode == "naginata" else 0.15
+		var tl: Vector3 = inv * (J.sword.global_transform * Vector3(0, loff, 0))
 		_ik_arm("l", tl, left_w)
 	if sword_mode == "dual":
 		if grip_r_w > 0.001:
@@ -2613,6 +2844,8 @@ func _apply_ik(dt: float, sp: float) -> void:
 			_hold("l", lh, ld, grip_l_w, sword_l)
 	elif sword_mode == "whip" and grip_r_w > 0.001:
 		_hold("r", WHIP_H, WHIP_D.normalized(), grip_r_w, J.sword)
+	elif sword_mode == "flail" and grip_r_w > 0.001:
+		_hold("r", FL_H, FL_D.normalized(), grip_r_w, J.sword)
 
 # Рука в точке H (система торса), клинок в её кулаке смотрит по D, лезвие вниз.
 func _hold(side: String, H: Vector3, D: Vector3, w: float, blade: Node3D) -> void:
@@ -2699,6 +2932,44 @@ func _dual_draw_ik() -> void:
 		if drawn:
 			var ft: Basis = J["arm_" + side].basis * J["fore_" + side].basis
 			blade.basis = (ft.inverse() * b).orthonormalized()
+
+# Нагината / топор: правая рука за плечо к древку, оружие по дуге — в стойку.
+func _item_draw_ik() -> void:
+	if back_item == null:
+		return
+	var t := state_t
+	var bx: Transform3D = back_sheath.transform * back_item.transform
+	var grip: Vector3 = bx.origin
+	var bb: Basis = bx.basis
+	var H := NAG_H if sword_mode == "naginata" else FL_H
+	var sb := _blade_basis((NAG_D if sword_mode == "naginata" else FL_D).normalized())
+	var hand := grip
+	var b := bb
+	var w := 1.0
+	if not draw_from_drawn:
+		if t < 0.17:
+			w = Vox.ease_out(t / 0.13)
+		else:
+			var kk := Vox.ease_in_out((t - 0.17) / 0.2)
+			hand = grip.lerp(H, kk) + Vector3(0, sin(kk * PI) * 0.15, 0)
+			b = Basis(bb.get_rotation_quaternion().slerp(sb.get_rotation_quaternion(), kk))
+	else:
+		if t < 0.2:
+			var kk2 := Vox.ease_in_out(t / 0.18)
+			hand = H.lerp(grip, kk2) + Vector3(0, sin(kk2 * PI) * 0.15, 0)
+			b = Basis(sb.get_rotation_quaternion().slerp(bb.get_rotation_quaternion(), kk2))
+		else:
+			w = 1.0 - Vox.ease_in_out((t - 0.22) / 0.16)
+	ik_pole_up = hand.y > 0.35
+	_ik_arm("r", hand, w)
+	ik_pole_up = false
+	if drawn:
+		var ft: Basis = J.arm_r.basis * J.fore_r.basis
+		J.sword.basis = (ft.inverse() * b).orthonormalized()
+		if sword_mode == "naginata" and t > 0.25:
+			# вторая рука ложится на древко
+			var inv: Transform3D = J.torso.global_transform.affine_inverse()
+			_ik_arm("l", inv * (J.sword.global_transform * Vector3(0, 0.5, 0)), clampf((t - 0.25) / 0.12, 0.0, 1.0))
 
 # Базис ножен: клинок вдоль -Y = dir (назад-вниз), лезвие (-Z) смотрит вверх.
 func _wear_basis(dir: Vector3) -> Basis:

@@ -235,7 +235,7 @@ func _tab_sword() -> void:
 	var names := []
 	for k in 6:
 		names.append(SwordLib.NAMES[k])
-	names += ["Парные клинки (на цепи)", "Гибкий клинок (хлыст)", "Кубический (свой)"]
+	names += ["Парные клинки (на цепи)", "Гибкий клинок (хлыст)", "Кубический (свой)", "Нагината (древковое)", "Шар и топор на цепи"]
 	_option(v, "sword", "Оружие", names, func(i): settings.sword = i; _apply_sword())
 	var sayas := []
 	for st in SwordLib.SAYA:
@@ -249,7 +249,7 @@ func _tab_sword() -> void:
 	for h in SwordLib.HAORI:
 		hs.append(h[0])
 	_option(v, "haori", "Хаори", hs, _set_haori)
-	_label(v, "Катаны держатся двумя руками и носятся за поясом.\nПарные клинки — на цепи, за спиной в бинтах; ПКМ — бросок на цепи.\nХлыст — дальние хлёсты; ПКМ — щелчок до 7 м.", 15).modulate = Color(0.75, 0.82, 1.0)
+	_label(v, "Катаны держатся двумя руками и носятся за поясом.\nПарные клинки — на цепи, за спиной в бинтах; ПКМ — бросок на цепи.\nХлыст — дальние хлёсты; ПКМ — щелчок до 7 м.\nНагината — длинные махи и укол; шар на цепи — бьёт по кругу и в землю, ПКМ — бросок на 8 м.", 15).modulate = Color(0.75, 0.82, 1.0)
 
 func _tab_graphics() -> void:
 	var v := _page("Графика")
@@ -447,7 +447,7 @@ func apply_all() -> void:
 		(ctrl[k] as HSlider).set_value_no_signal(float(settings[k]))
 	for k in ["invert_y", "auto_cam", "vsync", "pixel", "show_fps"]:
 		(ctrl[k] as CheckBox).set_pressed_no_signal(bool(settings[k]))
-	(ctrl.sword as OptionButton).select(clampi(settings.sword if settings.sword >= 0 else 8, 0, 8))
+	(ctrl.sword as OptionButton).select(clampi(settings.sword if settings.sword >= 0 else 8, 0, 10))
 	(ctrl.saya as OptionButton).select(clampi(settings.saya, 0, SwordLib.SAYA.size() - 1))
 	(ctrl.tint as OptionButton).select(clampi(settings.tint, 0, SwordLib.TINTS.size() - 1))
 	(ctrl.haori as OptionButton).select(clampi(settings.haori, 0, SwordLib.HAORI.size() - 1))
