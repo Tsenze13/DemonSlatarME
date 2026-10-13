@@ -79,7 +79,13 @@ void fragment() {
 		// вспышки — лента мерцает
 		a *= 0.6 + 0.4 * step(0.3, hash(vec2(floor(t * 24.0), 1.0)));
 	} else if (style == 0) {
-		c = mix(col_a.rgb, col_b.rgb, smoothstep(0.2, 0.0, w));
+		// чистый срез как в аниме: полумесяц, к внешнему краю — белая режущая линия,
+		// внутрь — цвет стиля и прозрачность, поверх — тонкие линии скорости
+		c = mix(col_a.rgb * 0.95, col_b.rgb, smoothstep(0.55, 0.8, y));
+		a *= 0.25 + 0.75 * smoothstep(0.1, 0.65, y);
+		float speed = step(0.94, fract(y * 9.0 + hash(vec2(floor(x * 10.0), 3.0)) * 0.5)) * step(0.4, hash(vec2(floor(x * 14.0), 7.0)));
+		c = mix(c, col_b.rgb, speed);
+		c = mix(c, col_a.rgb * 0.45, step(0.93, y) * step(w, taper));
 	} else {
 		c = mix(col_a.rgb, col_b.rgb, step(0.6, w));
 	}

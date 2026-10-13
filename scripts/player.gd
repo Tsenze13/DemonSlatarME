@@ -500,7 +500,7 @@ func _build_model() -> void:
 	body.stiff = 0.7
 	body.wind = 0.3
 	body.gravity = 18.0
-	body.drag = 0.08
+	body.drag = 0.12
 	body.thick = 0.05
 	body.u_step = 1.0 / 8.0       # узор один раз вокруг тела: левая половина — слева
 	# рукава: висящий «мешок» под предплечьем
@@ -691,6 +691,7 @@ func _make_cloth(attach: Node3D, anchors: Array, rows: int, seg: float):
 	c.seg = seg
 	c.mode = "blocks"
 	c.push_y_max = 0.6
+	c.max_lift = 0.78        # полы не задираются вбок и вверх — отклоняются не больше ~40°
 	var m := ShaderMaterial.new()
 	m.shader = load("res://shaders/cloth_block.gdshader")
 	m.set_shader_parameter("pattern", Tex.get_tex("haori"))
@@ -1323,17 +1324,42 @@ func _start_dash(inp: Vector3) -> void:
 	invuln_t = DASH_TIME + 0.03
 	dash_from = global_position
 	sonic_boom(dash_dir)
-	G.fx.afterimage(model, Color(0.4, 0.7, 1.0))
+	G.fx.afterimage(model, _sc())
 
 # Звуковой барьер: хлопок, кольцо пара поперёк движения, пыль.
+# Цвет стиля дыхания для обычных ударов, силуэтов и следов.
+func _sc() -> Color:
+	return G.br().edge
+
+# След стихии за героем на рывке и быстром беге.
+var trail_prev := Vector3.ZERO
+func _style_trail() -> void:
+	var p := global_position + Vector3.UP * 0.9
+	if trail_prev == Vector3.ZERO or trail_prev.distance_to(p) > 6.0:
+		trail_prev = p
+		return
+	match G.breath_style:
+		"flame":
+			G.fx.embers(global_position + Vector3.UP * 0.4, 5, 0.7)
+			G.fx.burst(p, Color(1.0, 0.5, 0.1), 2, 1.5, 0.16, 0.3, -4.0, Vector3.UP, 0.5, 2.0)
+		"thunder":
+			if randf() < 0.6:
+				G.fx.lightning(trail_prev, p + Vector3(randf_range(-0.3, 0.3), randf_range(-0.3, 0.3), randf_range(-0.3, 0.3)), Color(1.0, 0.85, 0.2), 0.15, 0.25, 0, 0.05)
+		_:
+			G.fx.droplets(global_position + Vector3.UP * 0.3, Vector3.UP, 3)
+			if is_on_floor() and randf() < 0.4:
+				G.fx.ring(global_position + Vector3.UP * 0.04, 0.3, G.br().a, G.br().b, 0.4, 2.5, 0.08)
+	trail_prev = p
+
 func sonic_boom(dir: Vector3) -> void:
 	G.sfx.play("sonic", -2.0)
 	G.sfx.play("dash", -6.0)
 	G.speedlines = maxf(G.speedlines, 0.9)
 	G.add_shake(0.12)
 	var c := global_position + Vector3.UP * 0.9
-	G.fx.ring(c, 0.35, Color(0.85, 0.92, 1.0), Color.WHITE, 0.35, 5.0, 0.18, dir)
-	G.fx.ring(c - dir * 0.4, 0.25, Color(0.85, 0.92, 1.0), Color.WHITE, 0.25, 3.5, 0.12, dir)
+	var rc := _sc().lerp(Color.WHITE, 0.6)
+	G.fx.ring(c, 0.35, rc, Color.WHITE, 0.35, 5.0, 0.18, dir)
+	G.fx.ring(c - dir * 0.4, 0.25, rc, Color.WHITE, 0.25, 3.5, 0.12, dir)
 	if is_on_floor():
 		G.fx.dust(global_position, 10)
 
@@ -1343,7 +1369,8 @@ func _st_dash(dt: float, inp: Vector3) -> void:
 	ghost_t -= dt
 	if ghost_t <= 0.0:
 		ghost_t = 0.035
-		G.fx.afterimage(model, Color(0.4, 0.7, 1.0), 0.22)
+		G.fx.afterimage(model, _sc(), 0.22)
+		_style_trail()
 	if state_t >= DASH_TIME:
 		velocity = dash_dir * RUN_SPEED * 1.6
 		_set_state("move")
@@ -1389,7 +1416,7 @@ func _start_flash() -> void:
 	flash_from = global_position
 	flash_to = global_position + dir * dist
 	facing = atan2(dir.x, dir.z)
-	G.fx.afterimage(model, Color(0.85, 0.95, 1.0), 0.35)
+	G.fx.afterimage(model, _sc().lightened(0.4), 0.35)
 	_set_state("flash")
 	invuln_t = 0.2
 	sonic_boom(dir)
@@ -1518,7 +1545,7 @@ func _start_attack(nm: String) -> void:
 			iai_dist = clampf(to2.length() - (tg.radius + 1.1), 0.0, IAI_MAX)
 		invuln_t = 0.2
 		sonic_boom(atk_dir)
-		G.fx.afterimage(model, Color(0.85, 0.95, 1.0), 0.35)
+		G.fx.afterimage(model, _sc().lightened(0.4), 0.35)
 	ball_impact = false
 	if atk.get("ball", "") == "throw":
 		var dist2: float = atk.range
@@ -1605,7 +1632,7 @@ func _st_attack(dt: float, inp: Vector3) -> void:
 	if atk_name == "iai":
 		hv = atk_dir * (iai_dist / IAI_TIME) if (t >= 0.02 and t < 0.02 + IAI_TIME) else Vector3.ZERO
 		if t < 0.02 + IAI_TIME:
-			G.fx.afterimage(model, Color(0.7, 0.88, 1.0), 0.2)
+			G.fx.afterimage(model, _sc().lightened(0.3), 0.2)
 			G.speedlines = 1.0
 	if a.has("spin") and atk_name == "f2":
 		hv = (inp * 6.0) if inp.length() > 0.1 else Vector3.ZERO
@@ -1694,7 +1721,7 @@ func _attack_fx() -> void:
 	var foam := Color(0.88, 0.96, 1.0)
 	match a.fx:
 		"slash":
-			G.fx.slash_arc(o, atk_dir, a.get("roll", 0.0), 1.9, 150.0, 0.55, Color(0.55, 0.8, 1.0), Color.WHITE, 0, 0.22, a.get("rev", false))
+			G.fx.slash_arc(o, atk_dir, a.get("roll", 0.0), 1.9, 150.0, 0.55, _sc(), Color.WHITE, 0, 0.22, a.get("rev", false))
 		"wave":
 			G.fx.breath_arc(o, atk_dir, a.get("roll", 0.0), 2.6, 170.0, 1.0, 0.45, a.get("rev", false))
 			G.fx.breath_burst(o + atk_dir * 1.5, atk_dir, 10)
@@ -1705,7 +1732,7 @@ func _attack_fx() -> void:
 			G.fx.breath_burst(o, Vector3.UP, 16)
 			G.fx.breath_sound(-3.0, 1.1)
 		"heavy":
-			G.fx.slash_arc(o, atk_dir, 90.0, 2.0, 150.0, 0.7, Color(0.55, 0.8, 1.0), Color.WHITE, 0, 0.3)
+			G.fx.slash_arc(o, atk_dir, 90.0, 2.0, 150.0, 0.7, _sc(), Color.WHITE, 0, 0.3)
 			var gp := global_position + atk_dir * 2.2 + Vector3.UP * 0.1
 			G.fx.ring(gp, 0.8, Color(0.85, 0.8, 0.65), Color.WHITE, 0.45, 4.0, 0.4)
 			G.fx.dust(gp, 18)
@@ -1718,8 +1745,8 @@ func _attack_fx() -> void:
 			G.sfx.play("clang", -12.0, 1.6)
 		"cross":
 			# крест двумя клинками
-			G.fx.slash_arc(o, atk_dir, 50.0, 1.9, 140.0, 0.5, Color(0.75, 0.85, 1.0), Color.WHITE, 0, 0.22, false)
-			G.fx.slash_arc(o, atk_dir, -50.0, 1.9, 140.0, 0.5, Color(0.75, 0.85, 1.0), Color.WHITE, 0, 0.22, true)
+			G.fx.slash_arc(o, atk_dir, 50.0, 1.9, 140.0, 0.5, _sc(), Color.WHITE, 0, 0.22, false)
+			G.fx.slash_arc(o, atk_dir, -50.0, 1.9, 140.0, 0.5, _sc(), Color.WHITE, 0, 0.22, true)
 			G.sfx.play("clang", -10.0, 1.3)
 		"chain_whirl":
 			G.sfx.play("whoosh_big", -6.0, 1.2)
@@ -1757,31 +1784,31 @@ func _attack_fx() -> void:
 		"bolt_slam":
 			G.sfx.play("whoosh_big", -3.0, 0.8)
 		"slash_long":
-			G.fx.slash_arc(o, atk_dir, a.get("roll", 0.0), 3.0, 160.0, 0.6, Color(0.6, 0.82, 1.0), Color.WHITE, 0, 0.24, a.get("rev", false))
+			G.fx.slash_arc(o, atk_dir, a.get("roll", 0.0), 3.0, 160.0, 0.6, _sc(), Color.WHITE, 0, 0.24, a.get("rev", false))
 		"thrust":
-			G.fx.streak(o + atk_dir * 0.6, o + atk_dir * 4.8, Color(0.85, 0.95, 1.0), 0.22, 0.18)
-			G.fx.ring(o + atk_dir * 4.4, 0.4, Color(0.7, 0.9, 1.0), Color.WHITE, 0.25, 2.5, 0.2, atk_dir)
+			G.fx.streak(o + atk_dir * 0.6, o + atk_dir * 4.8, _sc().lightened(0.4), 0.22, 0.18)
+			G.fx.ring(o + atk_dir * 4.4, 0.4, _sc(), Color.WHITE, 0.25, 2.5, 0.2, atk_dir)
 			G.sfx.play("shing", -10.0, 1.4)
 		"spin_long":
-			G.fx.arc(o, Basis.IDENTITY, 3.4, 0.0, TAU, 0.7, Color(0.6, 0.82, 1.0), Color.WHITE, 0.4, 0, 0.2, 0.2)
+			G.fx.arc(o, Basis.IDENTITY, 3.4, 0.0, TAU, 0.7, _sc(), Color.WHITE, 0.4, 0, 0.2, 0.2)
 		"ball":
 			G.sfx.play("whoosh_big", -4.0, 0.8)
 		"lash":
 			# хлыст: длинная тонкая дуга
-			G.fx.slash_arc(o, atk_dir, a.get("roll", 0.0), 4.2, 150.0, 0.25, Color(0.95, 0.45, 0.7), Color.WHITE, 0, 0.2, a.get("rev", false))
+			G.fx.slash_arc(o, atk_dir, a.get("roll", 0.0), 4.2, 150.0, 0.25, _sc(), Color.WHITE, 0, 0.2, a.get("rev", false))
 			G.sfx.play("crack", -10.0, 1.6)
 		"crack":
 			# щелчок хлыста: удар в землю далеко впереди
 			var reach: float = a.range * 1.9
 			var gp2 := global_position + atk_dir * reach * 0.85 + Vector3.UP * 0.1
-			G.fx.slash_arc(o, atk_dir, 90.0, reach * 0.6, 120.0, 0.3, Color(0.95, 0.45, 0.7), Color.WHITE, 0, 0.25)
-			G.fx.streak(o + atk_dir * 0.5, gp2, Color(1.0, 0.75, 0.9), 0.25, 0.12)
+			G.fx.slash_arc(o, atk_dir, 90.0, reach * 0.6, 120.0, 0.3, _sc(), Color.WHITE, 0, 0.25)
+			G.fx.streak(o + atk_dir * 0.5, gp2, _sc().lightened(0.3), 0.25, 0.12)
 			G.fx.ring(gp2, 0.5, Color(0.85, 0.8, 0.65), Color.WHITE, 0.35, 3.0, 0.3)
 			G.fx.dust(gp2, 10)
 			G.sfx.play("crack", -3.0, 1.3)
 			G.add_shake(0.2)
 		"lash_ring":
-			G.fx.arc(o, Basis.IDENTITY, 2.8 * 1.9 * 0.7, 0.0, TAU, 0.35, Color(0.95, 0.45, 0.7), Color.WHITE, 0.4, 0, 0.2, 0.2)
+			G.fx.arc(o, Basis.IDENTITY, 2.8 * 1.9 * 0.7, 0.0, TAU, 0.35, _sc(), Color.WHITE, 0.4, 0, 0.2, 0.2)
 			G.sfx.play("whoosh_big", -4.0, 1.3)
 
 # Большая форма (первая форма, контрудар): у каждого стиля — свой вид, как в аниме.
@@ -2554,7 +2581,8 @@ func _effects(dt: float) -> void:
 		sprint_fx_t -= dt
 		if sprint_fx_t <= 0.0:
 			sprint_fx_t = 0.07
-			G.fx.afterimage(model, Color(0.5, 0.75, 1.0), 0.16)
+			G.fx.afterimage(model, _sc(), 0.16)
+			_style_trail()
 	dust_t -= dt
 	if is_on_floor() and sp > 9.0 and dust_t <= 0.0 and state == "move":
 		dust_t = 0.11

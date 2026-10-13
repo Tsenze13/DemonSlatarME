@@ -127,9 +127,10 @@ func ring(pos: Vector3, radius: float, col_a: Color, col_b: Color, life := 0.4, 
 func afterimage(root: Node3D, col: Color, life := 0.28) -> void:
 	var holder := Node3D.new()
 	add_child(holder)
-	var mat := Vox.flat_mat(Color(col.r, col.g, col.b, 0.55), true)
+	# полупрозрачный силуэт, тает к концу жизни
+	var mat: StandardMaterial3D = Vox.flat_mat(Color(col.r, col.g, col.b, 0.4), true).duplicate()
 	_copy_meshes(root, holder, mat)
-	ghosts.append({"n": holder, "life": life, "max": life})
+	ghosts.append({"n": holder, "life": life, "max": life, "mat": mat})
 
 func _copy_meshes(src: Node, holder: Node3D, mat: Material) -> void:
 	for c in src.get_children():
@@ -333,6 +334,9 @@ func _process(dt: float) -> void:
 			ghosts.remove_at(i)
 			continue
 		var f: float = gh.life / gh.max
+		if gh.has("mat"):
+			var gm: StandardMaterial3D = gh.mat
+			gm.albedo_color.a = 0.4 * f
 		if gh.has("thin"):
 			gh.n.scale = Vector3(f, f, 1.0)
 		else:
