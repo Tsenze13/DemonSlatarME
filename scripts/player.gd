@@ -17,7 +17,10 @@ const Flail = preload("res://scripts/flail.gd")
 # --- движение ---
 const RUN_SPEED := 13.5
 const SPRINT_SPEED := 24.0        # бег на дыхании (держать Shift после рывка)
-const SPRINT_COST := 6.0          # дыхания в секунду
+const SPRINT_COST := 10.0         # дыхания на старт быстрого бега (сам бег бесплатный)
+const DASH_COST := 5.0            # дыхания на рывок
+const MOMENTUM_MAX := 3           # разгон: каждый рывок на бегу +1 ступень скорости
+const MOMENTUM_STEP := 0.33
 const ACCEL := 70.0
 const AIR_ACCEL := 30.0
 const JUMP_V := 11.5
@@ -228,6 +231,8 @@ var max_hp := 100.0
 var breath := 100.0
 var max_breath := 100.0
 var dash_charges := 2.0
+var momentum := 0                 # ступень разгона 0..MOMENTUM_MAX
+var momentum_lost_t := 0.0
 var state := "move"
 var state_t := 0.0
 var facing := 0.0
@@ -783,7 +788,7 @@ func _physics_process(dt: float) -> void:
 	dash_charges = minf(2.0, dash_charges + dt * 0.9)
 	for k in cd:
 		cd[k] = maxf(0.0, cd[k] - dt)
-	if state != "breathe" and state != "dead" and not sprinting:
+	if state != "breathe" and state != "dead":
 		breath = minf(max_breath, breath + dt * 5.0)
 	if lock_target and (not is_instance_valid(lock_target) or lock_target.is_dead()):
 		lock_target = null
@@ -891,11 +896,19 @@ func _st_move(dt: float, inp: Vector3) -> void:
 		air_jumps = 1
 	if sprinting:
 		var held := Input.is_action_pressed("dash") or auto_sprint
-		if not held or inp.length() < 0.2 or breath <= 0.0:
+		if not held or inp.length() < 0.2:
 			sprinting = false
 		else:
-			breath = maxf(0.0, breath - SPRINT_COST * dt)
-	var spd := SPRINT_SPEED if sprinting else RUN_SPEED
+			momentum = maxi(momentum, 2)
+	# разгон теряется, если остановился или сильно сбавил
+	var hsp := Vector3(velocity.x, 0, velocity.z).length()
+	if momentum > 0 and (inp.length() < 0.2 or hsp < RUN_SPEED * 0.6):
+		momentum_lost_t += dt
+		if momentum_lost_t > 0.35:
+			momentum = 0
+	else:
+		momentum_lost_t = 0.0
+	var spd := RUN_SPEED * (1.0 + MOMENTUM_STEP * momentum)
 	_hmove(inp * spd, (ACCEL * 1.3 if sprinting else ACCEL) if on_floor else AIR_ACCEL, dt)
 	_gravity(dt)
 	if lock_target and inp.length() < 0.1:
@@ -1319,6 +1332,7 @@ var dash_from := Vector3.ZERO
 
 func _start_dash(inp: Vector3) -> void:
 	dash_charges -= 1.0
+	breath = maxf(0.0, breath - DASH_COST)
 	dash_dir = inp.normalized() if inp.length() > 0.2 else _forward()
 	facing = atan2(dash_dir.x, dash_dir.z)
 	_set_state("dash")
@@ -1373,11 +1387,17 @@ func _st_dash(dt: float, inp: Vector3) -> void:
 		G.fx.afterimage(model, _sc(), 0.22)
 		_style_trail()
 	if state_t >= DASH_TIME:
-		velocity = dash_dir * RUN_SPEED * 1.6
+		# рывок на бегу — ступень разгона выше
+		if _input_dir().length() > 0.2:
+			momentum = mini(MOMENTUM_MAX, momentum + 1)
+			if G.hud and momentum >= 2:
+				G.hud.notify("Разгон ×%.1f" % (1.0 + MOMENTUM_STEP * momentum), 0.8)
+		velocity = dash_dir * maxf(RUN_SPEED * 1.6, RUN_SPEED * (1.0 + MOMENTUM_STEP * momentum))
 		_set_state("move")
 		flash_window = 0.25
-		# держишь Shift — переходишь в бег на дыхании
-		if (Input.is_action_pressed("dash") or auto_sprint) and breath > 5.0:
+		# держишь Shift — быстрый бег: дыхание только на старт
+		if (Input.is_action_pressed("dash") or auto_sprint) and not sprinting and breath >= SPRINT_COST:
+			breath -= SPRINT_COST
 			sprinting = true
 	if state_t > 0.06 and pressed("light"):
 		_set_state("move")
@@ -1387,13 +1407,23 @@ func _st_dash(dt: float, inp: Vector3) -> void:
 var flash_from := Vector3.ZERO
 var flash_to := Vector3.ZERO
 
+# E — перемещение стихией: у каждого стиля свой приём.
+#  Вода «Течение»: скольжение на 14 м. Пламя «Огненный рывок»: полёт на 26 м
+#  низкой дугой с огненным шлейфом. Гром «Громовой шаг»: три вспышки зигзагом на 22 м.
+const FLASH_STYLE := {"water": [14.0, 0.12, 12.0], "flame": [26.0, 0.34, 18.0], "thunder": [22.0, 0.14, 15.0]}
+var flash_dur := 0.07
+var flash_hops: Array = []
+var flash_fx_t := 0.0
+
 func _start_flash() -> void:
-	if breath < 12.0:
+	var fs: Array = FLASH_STYLE.get(G.breath_style, FLASH_STYLE.water)
+	if breath < fs[2]:
 		_no_breath()
 		return
-	breath -= 12.0
+	breath -= fs[2]
+	flash_dur = fs[1]
 	var dir := _forward()
-	var dist := FLASH_DIST
+	var dist: float = fs[0]
 	var tgt: Node = lock_target if lock_target else G.nearest_enemy(global_position, 14.0)
 	var inp := _input_dir()
 	if inp.length() > 0.3 and not lock_target:
@@ -1409,7 +1439,7 @@ func _start_flash() -> void:
 		to.y = 0
 		dir = to.normalized()
 		dist = maxf(0.0, to.length() - (tgt.radius + 1.3))
-	dist = minf(dist, 14.0)
+	dist = minf(dist, fs[0])
 	var from := global_position + Vector3.UP * 0.9
 	var r := _ray(from, from + dir * (dist + 0.5))
 	if r:
@@ -1419,20 +1449,61 @@ func _start_flash() -> void:
 	facing = atan2(dir.x, dir.z)
 	G.fx.afterimage(model, _sc().lightened(0.4), 0.35)
 	_set_state("flash")
-	invuln_t = 0.2
+	invuln_t = flash_dur + 0.15
 	sonic_boom(dir)
 	G.speedlines = 1.0
+	flash_hops.clear()
+	if G.breath_style == "thunder":
+		# точки зигзага
+		var side := dir.cross(Vector3.UP).normalized()
+		for k in 3:
+			var f := float(k + 1) / 3.0
+			flash_hops.append(flash_from.lerp(flash_to, f) + side * (1.6 if k % 2 == 0 else -1.6) * (0.0 if k == 2 else 1.0))
+	elif G.breath_style == "flame":
+		G.fx.breath_sound(0.0, 0.85)
+		G.fx.ring(global_position + Vector3.UP * 0.1, 1.0, Color(1.0, 0.45, 0.1), Color(1.0, 0.9, 0.5), 0.4, 3.0, 0.5)
 
-func _st_flash(_dt: float) -> void:
-	var k := clampf(state_t / 0.07, 0.0, 1.0)
-	var p := flash_from.lerp(flash_to, k)
+func _st_flash(dt: float) -> void:
+	var k := clampf(state_t / flash_dur, 0.0, 1.0)
+	var p := flash_from.lerp(flash_to, Vox.ease_in_out(k) if G.breath_style == "flame" else k)
 	velocity = Vector3.ZERO
-	global_position = Vector3(p.x, global_position.y, p.z)
+	var prev := global_position
+	match G.breath_style:
+		"thunder":
+			# прыжки-вспышки: мгновенно от точки к точке
+			var hop := mini(int(k * 3.0), 2)
+			var target: Vector3 = flash_hops[hop] if flash_hops.size() == 3 else flash_to
+			if prev.distance_to(target) > 0.3:
+				G.fx.lightning(prev + Vector3.UP, target + Vector3.UP, Color(1.0, 0.8, 0.15), 0.35, 0.35, 1, 0.1)
+				G.fx.afterimage(model, Color(1.0, 0.85, 0.3), 0.3)
+				G.sfx.play("thunder", -10.0, 1.5)
+			p = target
+		"flame":
+			# полёт низкой дугой, огненный шлейф
+			p.y = flash_from.y + sin(k * PI) * 1.4
+			flash_fx_t -= dt
+			if flash_fx_t <= 0.0:
+				flash_fx_t = 0.03
+				G.fx.breath_arc(prev + Vector3.UP * 0.9, (flash_to - flash_from).normalized(), randf_range(-30, 30), 1.0, 300.0, 0.7, 0.35)
+				G.fx.embers(prev + Vector3.UP * 0.8, 6, 1.2)
+				G.fx.afterimage(model, Color(1.0, 0.5, 0.15), 0.25)
+		_:
+			flash_fx_t -= dt
+			if flash_fx_t <= 0.0:
+				flash_fx_t = 0.03
+				G.fx.droplets(prev + Vector3.UP * 0.5, Vector3.UP, 4)
+	global_position = Vector3(p.x, p.y if G.breath_style == "flame" else global_position.y, p.z)
 	if k >= 1.0:
-		G.fx.streak(flash_from + Vector3.UP * 0.9, flash_to + Vector3.UP * 0.9, Color(0.8, 0.92, 1.0), 0.3, 0.3)
-		G.fx.burst(flash_to + Vector3.UP * 0.9, Color(0.75, 0.9, 1.0), 10, 6.0, 0.1, 0.3, 0.0)
+		var bb: Dictionary = G.br()
+		G.fx.streak(flash_from + Vector3.UP * 0.9, flash_to + Vector3.UP * 0.9, bb.edge.lightened(0.3), 0.3, 0.3)
+		G.fx.breath_burst(flash_to + Vector3.UP * 0.9, (flash_to - flash_from).normalized(), 12)
+		if G.breath_style == "flame":
+			G.fx.ring(flash_to + Vector3.UP * 0.1, 1.0, Color(1.0, 0.45, 0.1), Color(1.0, 0.9, 0.5), 0.4, 3.5, 0.5)
+			G.add_shake(0.25)
+		elif G.breath_style == "water":
+			G.fx.ring(flash_to + Vector3.UP * 0.05, 0.6, bb.a, bb.b, 0.5, 3.0, 0.15)
 		var d := (flash_to - flash_from).normalized()
-		velocity = d * RUN_SPEED
+		velocity = d * RUN_SPEED * (1.0 + MOMENTUM_STEP * momentum)
 		flash_window = 0.4
 		_set_state("move")
 
@@ -2408,7 +2479,7 @@ func receive_attack(dmg: float, src: Vector3, parryable: bool, attacker: Node = 
 	if hp <= 0.0:
 		hp = 0.0
 		_set_state("dead")
-		velocity = kb * 6.0 + Vector3.UP * 4.0
+		velocity = kb * 2.0
 		G.slowmo(0.3, 1.0)
 		G.impact(0.1, 2)
 		return "hit"
@@ -2797,7 +2868,7 @@ func _animate(dt: float) -> void:
 			lean = 15.0
 	if state == "dash" or state == "flash":
 		# рывок: низкий выпад, толчковая нога вытянута назад, руки и клинок назад
-		lean = 45.0
+		lean = 75.0 if (state == "flash" and G.breath_style == "flame") else 45.0
 		p.arm_r = Vector3(75, 0, -20)
 		p.arm_l = Vector3(75, 0, 20)
 		p.fore_r = Vector3(-10, 0, 0)
@@ -2905,21 +2976,21 @@ func _animate(dt: float) -> void:
 			hips_y = HIP_Y - 0.45 * sit
 		snap = true
 	if state == "dead":
-		# на колени, потом вперёд лицом в землю
+		# падает на колени и остаётся так: голова опущена, клинок упирается в землю
 		var t2 := state_t
-		var kn := Vox.ease_out(t2 / 0.35)
-		var fall := Vox.ease_in_out((t2 - 0.55) / 0.35)
-		p.leg_r = Vector3(-20, 0, -6) * kn
-		p.leg_l = Vector3(-20, 0, 6) * kn
-		p.shin_r = Vector3(110, 0, 0) * kn
-		p.shin_l = Vector3(110, 0, 0) * kn
-		p.torso = Vector3(25, 0, 0) * kn
-		p.head = Vector3(30, 0, 0) * kn
-		p.arm_r = Vector3(10, 0, -10)
-		p.arm_l = Vector3(10, 0, 10)
-		hips_y = lerpf(HIP_Y, 0.45, kn)
-		lean = 80.0 * fall
-		model_y = 0.12 * fall
+		var kn := Vox.ease_out(t2 / 0.4)
+		p.leg_r = Vector3(-15, 0, -6) * kn
+		p.leg_l = Vector3(-75, 0, 6) * kn
+		p.shin_r = Vector3(105, 0, 0) * kn
+		p.shin_l = Vector3(80, 0, 0) * kn
+		p.torso = Vector3(28, 0, 0) * kn
+		p.head = Vector3(35, 0, 0) * kn
+		p.arm_r = Vector3(-35, 0, -8) * kn
+		p.fore_r = Vector3(-20, 0, 0)
+		p.arm_l = Vector3(5, 0, 15)
+		p.sword = Vector3(-30, 0, 0)
+		hips_y = lerpf(HIP_Y, 0.48, kn)
+		lean = 6.0 * kn
 		snap = true
 	if state == "attack" or state == "finisher":
 		var a := atk if state == "attack" else ATK["dslash"]
@@ -3013,6 +3084,22 @@ func _animate(dt: float) -> void:
 		if state == "move" and (not drawn or sp > 9.0):
 			p.arm_r += Vector3(-20, 0, -25) * kk
 			p.arm_l += Vector3(-20, 0, 25) * kk
+	if flip_t > 0.0 and roll_t >= 0.42:
+		# сальто: плотная группировка — колени к груди, руки обхватывают голени, голова вниз
+		var kf := clampf(sin((1.0 - flip_t / 0.42) * PI) * 1.4, 0.0, 1.0)
+		p.leg_r = p.leg_r.lerp(Vector3(-120, 0, -6), kf)
+		p.leg_l = p.leg_l.lerp(Vector3(-115, 0, 6), kf)
+		p.shin_r = p.shin_r.lerp(Vector3(135, 0, 0), kf)
+		p.shin_l = p.shin_l.lerp(Vector3(130, 0, 0), kf)
+		p.torso = p.torso.lerp(Vector3(38, 0, 0), kf)
+		p.head = p.head.lerp(Vector3(30, 0, 0), kf)
+		if not drawn or sword_mode != "katana":
+			p.arm_r = p.arm_r.lerp(Vector3(-40, 0, -15), kf)
+			p.arm_l = p.arm_l.lerp(Vector3(-40, 0, 15), kf)
+			p.fore_r = p.fore_r.lerp(Vector3(-100, 0, 0), kf)
+			p.fore_l = p.fore_l.lerp(Vector3(-100, 0, 0), kf)
+		hips_y -= 0.15 * kf
+		snap = true
 	if roll_t < 0.42:
 		# кувырок: сгруппироваться
 		p.leg_r = Vector3(-110, 0, 0)
@@ -3053,6 +3140,13 @@ func _animate(dt: float) -> void:
 	if flip_t > 0.0:
 		flip = (1.0 - flip_t / 0.42) * TAU * flip_axis
 	model.rotation = Vector3(deg_to_rad(lean_s) + flip, facing + model_spin, deg_to_rad(roll_s))
+	# сальто крутится вокруг центра тела (таза), а не вокруг ступней
+	var pivot := Vector3(0, HIP_Y * 0.85, 0)
+	var off := Vector3.ZERO
+	if flip != 0.0:
+		var bn := Basis.from_euler(Vector3(deg_to_rad(lean_s), facing + model_spin, deg_to_rad(roll_s)))
+		off = bn * pivot - model.basis * pivot
+	model.position = Vector3(off.x, model.position.y + off.y, off.z)
 	if sword_mode == "dual":
 		var sw: Vector3 = J.sword.rotation_degrees
 		sword_l.rotation_degrees = Vector3(sw.x, -sw.y, -sw.z)

@@ -278,7 +278,38 @@ func _run() -> void:
 	p.press("dash")
 	await w(0.7)
 	check(p.sprinting and p.last_speed > 20.0, "быстрый бег (%.1f м/с)" % p.last_speed)
-	check(p.breath < 98.0, "бег тратит дыхание")
+	check(p.breath < 98.0, "старт быстрого бега тратит дыхание")
+	var b_run: float = p.breath
+	await w(0.6)
+	check(p.breath >= b_run - 0.5, "сам быстрый бег дыхание не тратит")
+	p.auto_sprint = false
+	# разгон: рывки на бегу поднимают скорость
+	p.momentum = 0
+	await w(0.5)
+	for k in 3:
+		p.dash_charges = 2.0
+		p.press("dash")
+		await w(0.35)
+	check(p.momentum >= 3 and p.last_speed > 24.0, "разгон рывками (ступень %d, %.1f м/с)" % [p.momentum, p.last_speed])
+	# перемещение стихией (E): у каждого стиля своя дальность
+	p.auto_move = Vector2.ZERO
+	var ok_fl := true
+	for bi in G.BREATH_ORDER.size():
+		p.set_breath(bi)
+		p.global_position = Vector3(0, 0.5, 6)
+		p.velocity = Vector3.ZERO
+		p.facing = 0.0
+		p.breath = 100.0
+		await w(0.3)
+		var fp0: Vector3 = p.global_position
+		p.press("flash")
+		await w(0.6)
+		var fd: float = Vector3(p.global_position.x - fp0.x, 0, p.global_position.z - fp0.z).length()
+		if fd < 8.0:
+			ok_fl = false
+			print("перемещение ", G.breath_style, " ", fd)
+	check(ok_fl, "перемещение стихией на E: вода, огненный рывок, громовой шаг")
+	p.set_breath(0)
 	await shot("03b_sprint")
 	p.auto_sprint = false
 	# хаори не задирается выше плеч

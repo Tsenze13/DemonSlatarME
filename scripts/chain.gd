@@ -57,6 +57,12 @@ func _physics_process(dt: float) -> void:
 	dt = minf(dt, 1.0 / 30.0)
 	if pa.distance_to(pos[0]) > 3.0 or pb.distance_to(pos[n - 1]) > 9.0:
 		reset()
+	# цепь движется вместе с героем (иначе на большой скорости и во вспышках
+	# свободные звенья отстают и цепь растягивается на метры)
+	var carry := pa - pos[0]
+	for i in range(1, n - 1):
+		pos[i] += carry
+		prev[i] += carry
 	var span := pa.distance_to(pb)
 	seg = maxf(length, span * 1.02) / (n - 1)
 	var ratio := dt / prev_dt
@@ -85,6 +91,12 @@ func _physics_process(dt: float) -> void:
 				pos[i].y = 0.03
 	pos[0] = pa
 	pos[n - 1] = pb
+	# защита: если цепь всё же вытянулась вдвое длиннее нужного — уложить заново
+	var total := 0.0
+	for i in n - 1:
+		total += pos[i].distance_to(pos[i + 1])
+	if total > maxf(length, span) * 2.0 + 0.5:
+		reset()
 	_render()
 
 # Звенья одинакового размера раскладываются вдоль ломаной цепи:
