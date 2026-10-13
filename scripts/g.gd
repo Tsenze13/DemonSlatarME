@@ -30,6 +30,23 @@ var autotest := false
 var started := false        # игра началась (нажато «Играть» в главном меню)
 var show_fps := false
 var shake_mult := 1.0
+# Стиль дыхания: вид эффектов форм, цвет мазка, звук и названия форм.
+var breath_style := "water"
+const BREATH_ORDER := ["water", "flame", "thunder"]
+const BREATHS := {
+	"water": {"name": "Прилив", "kind": 1, "a": Color(0.1, 0.35, 0.85), "b": Color(0.92, 0.97, 1.0),
+		"flash": Color(0.6, 0.85, 1.0), "core": Color(0.95, 0.98, 1.0), "edge": Color(0.25, 0.6, 1.0),
+		"forms": ["Веерный срез", "Водоворот", "Тихая гладь"]},
+	"flame": {"name": "Пламя", "kind": 3, "a": Color(0.9, 0.18, 0.04), "b": Color(1.0, 0.93, 0.5),
+		"flash": Color(1.0, 0.6, 0.3), "core": Color(1.0, 0.95, 0.7), "edge": Color(1.0, 0.35, 0.05),
+		"forms": ["Восход пламени", "Огненное колесо", "Тлеющая стойка"]},
+	"thunder": {"name": "Гром", "kind": 4, "a": Color(1.0, 0.74, 0.1), "b": Color(1.0, 1.0, 0.9),
+		"flash": Color(1.0, 0.9, 0.45), "core": Color(1.0, 1.0, 0.9), "edge": Color(1.0, 0.78, 0.1),
+		"forms": ["Удар молнии", "Грозовой вихрь", "Затишье перед бурей"]},
+}
+
+func br() -> Dictionary:
+	return BREATHS.get(breath_style, BREATHS.water)
 var stats := {"kills_total": 0, "best_combo": 0, "play_time": 0.0}
 const SAVE_PATH := "user://save.cfg"
 

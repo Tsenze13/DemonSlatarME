@@ -8,7 +8,7 @@ const SETTINGS_PATH := "user://settings.cfg"
 var main: Node                     # main.gd — пересчёт пиксельного кадра и пр.
 var settings := {
 	"volume": 0.4, "sfx": 1.0, "music": 0.6, "sens": 1.0, "invert_y": false, "fov": 72.0, "cam_dist": 5.2,
-	"shake": 1.0, "auto_cam": true, "pixel": false, "sword": 0, "saya": 0, "tint": 0, "haori": 0,
+	"shake": 1.0, "auto_cam": true, "pixel": false, "sword": 0, "saya": 0, "tint": 0, "haori": 0, "breath": 0,
 	"window": 0, "vsync": true, "fps_limit": 0, "shadows": 2, "render_scale": 1.0, "grass": 1.0, "show_fps": false,
 	"keys": {},
 }
@@ -249,6 +249,10 @@ func _tab_sword() -> void:
 	for h in SwordLib.HAORI:
 		hs.append(h[0])
 	_option(v, "haori", "Хаори", hs, _set_haori)
+	var brs := []
+	for k in G.BREATH_ORDER:
+		brs.append(G.BREATHS[k].name)
+	_option(v, "breath", "Стиль дыхания", brs, _set_breath)
 	_label(v, "Катаны держатся двумя руками и носятся за поясом.\nПарные клинки — на цепи, за спиной в бинтах; ПКМ — бросок на цепи.\nХлыст — дальние хлёсты; ПКМ — щелчок до 7 м.\nНагината — длинные махи и укол; шар на цепи — бьёт по кругу и в землю, ПКМ — бросок на 8 м.", 15).modulate = Color(0.75, 0.82, 1.0)
 
 func _tab_graphics() -> void:
@@ -393,6 +397,11 @@ func _apply_sword() -> void:
 	if G.player:
 		G.player.set_sword(settings.sword)
 
+func _set_breath(i: int) -> void:
+	settings.breath = i
+	if G.player:
+		G.player.set_breath(i)
+
 func _set_haori(i: int) -> void:
 	settings.haori = i
 	if G.player:
@@ -442,6 +451,7 @@ func apply_all() -> void:
 		G.player.blade_tint = settings.tint
 		G.player.set_sword(settings.sword)
 		G.player.set_haori(settings.haori)
+		G.player.set_breath(settings.breath)
 	# элементы меню — по текущим значениям
 	for k in ["volume", "sfx", "music", "sens", "fov", "cam_dist", "shake", "render_scale", "grass"]:
 		(ctrl[k] as HSlider).set_value_no_signal(float(settings[k]))
@@ -451,6 +461,7 @@ func apply_all() -> void:
 	(ctrl.saya as OptionButton).select(clampi(settings.saya, 0, SwordLib.SAYA.size() - 1))
 	(ctrl.tint as OptionButton).select(clampi(settings.tint, 0, SwordLib.TINTS.size() - 1))
 	(ctrl.haori as OptionButton).select(clampi(settings.haori, 0, SwordLib.HAORI.size() - 1))
+	(ctrl.breath as OptionButton).select(clampi(settings.breath, 0, G.BREATH_ORDER.size() - 1))
 	(ctrl.window as OptionButton).select(clampi(settings.window, 0, 2))
 	(ctrl.fps_limit as OptionButton).select(clampi(settings.fps_limit, 0, FPS_LIMITS.size() - 1))
 	(ctrl.shadows as OptionButton).select(clampi(settings.shadows, 0, 2))

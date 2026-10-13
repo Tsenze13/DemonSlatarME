@@ -100,6 +100,20 @@ func _run() -> void:
 		await w(0.03)
 	check(p.haori_cloth_mats.size() >= 3 and p.haori_style == SwordLibT.HAORI.size() - 1, "все узоры хаори ставятся")
 	p.set_haori(0)
+	# стили дыхания: эффекты и названия форм
+	var ok_br := true
+	for bi in G.BREATH_ORDER.size():
+		p.set_breath(bi)
+		var o2: Vector3 = p.global_position + Vector3.UP
+		G.fx.breath_arc(o2, Vector3.FORWARD, 0.0, 2.5, 180.0, 1.0)
+		G.fx.breath_burst(o2, Vector3.UP, 8)
+		p.atk = p.ATK["f1"]
+		p._form_big_fx(o2, p.atk)
+		await w(0.25)
+		if G.hud._form("f1")[1] != G.br().forms[0]:
+			ok_br = false
+	check(ok_br and G.fx.bolts.size() >= 0, "стили дыхания: вода, пламя, гром")
+	p.set_breath(0)
 	p.set_look(0, 0)
 	# парные клинки: цепь, бинты за спиной, размотка при выхвате, намотка обратно, бросок на цепи
 	if SwordLibT.count() >= 8:

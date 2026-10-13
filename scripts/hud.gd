@@ -53,10 +53,20 @@ func big_text(t: String) -> void:
 	big = t
 	big_t = 2.6
 
+# Название формы по текущему стилю дыхания: [подпись, имя].
+func _form(nm: String) -> Array:
+	var b: Dictionary = G.br()
+	var idx := ["f1", "f2", "f3"].find(nm)
+	if idx < 0:
+		return ["", ""]
+	var ord: String = ["ПЕРВАЯ", "ВТОРАЯ", "ТРЕТЬЯ"][idx]
+	return ["%s · %s ФОРМА" % [String(b.name).to_upper(), ord], b.forms[idx]]
+
 func form_title(nm: String) -> void:
-	if FORM_NAMES.has(nm):
-		title = FORM_NAMES[nm][1]
-		title_sub = FORM_NAMES[nm][0]
+	var f := _form(nm)
+	if f[1] != "":
+		title = f[1]
+		title_sub = f[0]
 		title_t = 2.0
 
 func boss_intro(nm: String) -> void:
@@ -153,7 +163,7 @@ func _draw() -> void:
 		if cdv > 0.0:
 			draw_rect(Rect2(r.position, Vector2(r.size.x * cdv / maxcd, r.size.y)), Color(0, 0, 0, 0.55))
 		var ok: bool = p.breath >= cost[i] and cdv <= 0.0
-		_txt(r.position + Vector2(10 * u, 22 * u), "%d  %s" % [i + 1, FORM_NAMES[keys[i]][1]], int(16 * u), Color(0.9, 0.96, 1.0) if ok else Color(0.5, 0.55, 0.65))
+		_txt(r.position + Vector2(10 * u, 22 * u), "%d  %s" % [i + 1, _form(keys[i])[1]], int(16 * u), Color(0.9, 0.96, 1.0) if ok else Color(0.5, 0.55, 0.65))
 		_txt(r.position + Vector2(10 * u, 46 * u), "дыхание %d" % cost[i], int(12 * u), Color(0.55, 0.75, 1.0) if ok else Color(0.4, 0.45, 0.55))
 
 	# --- демон ---
@@ -236,7 +246,7 @@ func _draw() -> void:
 			"F — достать / убрать клинок   ЛКМ из ножен — рывок-выхват   Shift держать — быстрый бег",
 			"Shift — рывок   E — шаг-вспышка к цели   Tab / колесо — захват цели",
 			"ЛКМ — комбо   ПКМ — тяжёлый удар   Q — парирование",
-			"1 / 2 / 3 — формы Прилива   R (держать) — восстановить дыхание",
+			"1 / 2 / 3 — формы дыхания (стиль — Esc → Снаряжение)   R (держать) — восстановить дыхание",
 			"Бег в стену в прыжке — бег по стене   N — день/ночь   − / + — громкость",
 			"Esc — пауза и настройки (клинок, графика, звук, клавиши)   F1 — подсказка",
 		]

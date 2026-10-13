@@ -1,5 +1,8 @@
-// Дуга стихии вокруг удара. style 0 — чистый срез, 1 — волна Прилива
-// (как на японских гравюрах: синее тело, белая пена завитками), 2 — кольцо.
+// Дуга стихии вокруг удара — как в аниме, плоские краски с контуром.
+// style 0 — чистый срез, 1 — вода (гравюра укиё-э: тёмный контур, синие струи
+// вдоль течения, белые завитки пены на гребне), 2 — кольцо, 3 — пламя (языки огня
+// по внешнему краю, жёлто-белая сердцевина, красная кромка), 4 — молния (золотая
+// лента с рваной белой искрой внутри).
 shader_type spatial;
 render_mode unshaded, cull_disabled, blend_mix, depth_draw_never, shadows_disabled;
 
@@ -24,15 +27,57 @@ void fragment() {
 	vec3 c = col_a.rgb;
 	float a = shape * vis;
 	if (style == 1) {
-		// волна: тёмная нижняя часть, светлая середина, пенный гребень
-		float band = smoothstep(0.0, 1.0, y);
-		c = mix(col_a.rgb * 0.7, col_a.rgb * 1.25, band);
-		float curls = sin(x * 46.0 - y * 9.0 + t * 6.0);
-		float foam = step(0.62, y) * step(0.35, curls);
-		float crest = step(0.8, y + hash(floor(vec2(x * 60.0, 0.0))) * 0.15);
-		c = mix(c, col_b.rgb, max(foam, crest));
-		float stripe = step(0.92, fract(x * 14.0 + y * 2.0));
-		c = mix(c, col_b.rgb, stripe * 0.6);
+		// --- вода ---
+		vec3 ink = col_a.rgb * vec3(0.18, 0.25, 0.4);
+		vec3 deep = col_a.rgb * 0.75;
+		vec3 light = mix(col_a.rgb, col_b.rgb, 0.45);
+		// струи вдоль течения: полосы чуть волнистые и бегут вперёд
+		float flow = fract(y * 4.0 + sin(x * 18.0 - t * 5.0) * 0.12);
+		c = mix(deep, col_a.rgb * 1.15, step(0.5, flow));
+		c = mix(c, light, step(0.86, flow));
+		// гребень: ряд завитков пены (как «Большая волна»)
+		if (y > 0.62) {
+			float cx = fract(x * 16.0 - t * 1.5);
+			vec2 q = vec2((cx - 0.5) * 2.0, (y - 0.82) / 0.2);
+			float r = length(q);
+			float curl = step(r, 0.95) * step(0.45, r);
+			float inner = step(r, 0.3);
+			float foam = max(curl, step(0.9, y));
+			c = mix(c, col_b.rgb, foam);
+			c = mix(c, ink, inner * step(0.7, y));
+		}
+		// брызги-«когти» над гребнем
+		float claw = step(0.97, hash(floor(vec2(x * 50.0, y * 10.0)))) * step(0.55, y);
+		c = mix(c, col_b.rgb, claw);
+		// чернильный контур по краям ленты
+		float edge = step(taper - 0.12, w);
+		c = mix(c, ink, edge);
+	} else if (style == 3) {
+		// --- пламя: внешний край — языки огня, рвутся и колышутся ---
+		float fl = fract(x * 13.0 - t * 3.0 + sin(x * 31.0 + t * 7.0) * 0.15);
+		float tongue = 1.0 - abs(fl * 2.0 - 1.0);
+		float outer = taper * (0.55 + 0.45 * tongue * tongue);
+		float lim = y > 0.5 ? outer : taper * 0.85;
+		shape = step(w, lim);
+		a = shape * vis;
+		float k = w / max(lim, 0.001);
+		vec3 yel = col_b.rgb;
+		vec3 org = mix(col_a.rgb, col_b.rgb, 0.45);
+		c = mix(yel, org, smoothstep(0.25, 0.55, k));
+		c = mix(c, col_a.rgb, smoothstep(0.6, 0.85, k));
+		c = mix(c, col_a.rgb * 0.35, step(0.9, k));
+		// завитки огня внутри
+		float swirl = step(0.93, fract(x * 9.0 + y * 3.0 - t * 2.0));
+		c = mix(c, yel, swirl * 0.7);
+	} else if (style == 4) {
+		// --- молния: золотая лента, внутри рваная белая искра ---
+		float zig = abs(fract(x * 22.0 + floor(t * 20.0) * 0.37) * 2.0 - 1.0);
+		float centre = 0.5 + (zig - 0.5) * 0.45 * taper;
+		float spark = step(abs(y - centre), 0.07 * taper);
+		c = mix(col_a.rgb, col_a.rgb * 0.5, step(taper - 0.15, w));
+		c = mix(c, col_b.rgb, spark);
+		// вспышки — лента мерцает
+		a *= 0.6 + 0.4 * step(0.3, hash(vec2(floor(t * 24.0), 1.0)));
 	} else if (style == 0) {
 		c = mix(col_a.rgb, col_b.rgb, smoothstep(0.2, 0.0, w));
 	} else {

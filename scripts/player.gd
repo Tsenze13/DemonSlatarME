@@ -281,6 +281,7 @@ var back_item: Node3D
 var flail
 var fchain
 var ball_impact := false
+var form_from := Vector3.ZERO      # где начался удар (для следа молнии)
 const NAG_H := Vector3(-0.12, 0.04, 0.28)
 const NAG_D := Vector3(0.12, 0.3, 1.0)
 const FL_H := Vector3(-0.3, 0.06, 0.24)
@@ -618,6 +619,15 @@ func _face_anim(dt: float) -> void:
 var haori_box_mat: ShaderMaterial
 var haori_cloth_mats: Array = []
 var haori_style := 0
+
+# Стиль дыхания: цвет мазка клинка (вид эффектов берётся из G.br()).
+func set_breath(i: int) -> void:
+	G.breath_style = G.BREATH_ORDER[clampi(i, 0, G.BREATH_ORDER.size() - 1)]
+	var b: Dictionary = G.br()
+	if trail:
+		trail.set_colors(b.core, b.edge)
+	if trail_l:
+		trail_l.set_colors(b.core, b.edge)
 
 func set_haori(i: int) -> void:
 	haori_style = clampi(i, 0, SwordLib.HAORI.size() - 1)
@@ -1370,8 +1380,9 @@ func _try_form(i: int) -> void:
 			set_drawn(true)
 			G.sfx.play("draw", -3.0)
 		_set_state("stance")
-		G.sfx.play("water", -6.0, 1.3)
-		G.fx.ring(global_position + Vector3.UP * 0.05, 0.6, Color(0.3, 0.6, 1.0), Color(0.9, 0.97, 1.0), 0.6, 3.0, 0.2)
+		G.fx.breath_sound(-6.0, 1.3)
+		var bb: Dictionary = G.br()
+		G.fx.ring(global_position + Vector3.UP * 0.05, 0.6, bb.a, bb.b, 0.6, 3.0, 0.2)
 		return
 	var a: Dictionary = ATK[key]
 	if breath < a.breath:
@@ -1475,9 +1486,10 @@ func _start_attack(nm: String) -> void:
 		velocity.y = atk.jump
 	elif atk.get("air", false):
 		velocity.y = maxf(velocity.y, 2.0)
+	form_from = global_position
 	if atk.has("form"):
-		G.sfx.play("water", -2.0)
-		G.do_flash(0.25, Color(0.6, 0.85, 1.0))
+		G.fx.breath_sound(-2.0)
+		G.do_flash(0.25, G.br().flash)
 		if G.hud:
 			G.hud.form_title(nm)
 	G.sfx.play("whoosh_big" if atk.power >= 2 else "whoosh", -4.0, 1.0)
@@ -1497,6 +1509,10 @@ func _st_attack(dt: float, inp: Vector3) -> void:
 		sp = lunge * (0.4 + 0.6 * Vox.ease_out(t / maxf(0.01, a.hit1)))
 	else:
 		sp = lunge * maxf(0.0, 1.0 - (t - a.hit1) * 6.0) * 0.3
+	if G.breath_style == "thunder" and a.has("form") and t < a.hit1:
+		# Гром: рывок формы быстрее, за героем золотые силуэты
+		sp *= 1.7
+		G.fx.afterimage(model, Color(1.0, 0.85, 0.3), 0.18)
 	var hv := atk_dir * sp
 	if atk_name == "iai":
 		hv = atk_dir * (iai_dist / IAI_TIME) if (t >= 0.02 and t < 0.02 + IAI_TIME) else Vector3.ZERO
@@ -1586,19 +1602,14 @@ func _attack_fx() -> void:
 		"slash":
 			G.fx.slash_arc(o, atk_dir, a.get("roll", 0.0), 1.9, 150.0, 0.55, Color(0.55, 0.8, 1.0), Color.WHITE, 0, 0.22, a.get("rev", false))
 		"wave":
-			G.fx.slash_arc(o, atk_dir, a.get("roll", 0.0), 2.6, 170.0, 1.0, blue, foam, 1, 0.45, a.get("rev", false))
-			G.fx.droplets(o + atk_dir * 1.5, atk_dir, 10)
+			G.fx.breath_arc(o, atk_dir, a.get("roll", 0.0), 2.6, 170.0, 1.0, 0.45, a.get("rev", false))
+			G.fx.breath_burst(o + atk_dir * 1.5, atk_dir, 10)
 		"wave_big":
-			G.fx.slash_arc(o, atk_dir, 4.0, 3.3, 230.0, 1.9, blue, foam, 1, 0.6, a.get("rev", false))
-			G.fx.slash_arc(o + Vector3.UP * 0.3, atk_dir, -6.0, 2.4, 200.0, 0.9, blue.lightened(0.2), foam, 1, 0.5, a.get("rev", false))
-			G.fx.droplets(o + atk_dir * 2.0, atk_dir, 22)
-			G.speedlines = 1.0
-			G.add_shake(0.25)
-			G.sfx.play("water", 0.0, 0.9)
+			_form_big_fx(o, a)
 		"wave_ring":
-			G.fx.arc(o, Basis.IDENTITY, 2.4, 0.0, TAU, 1.0, blue, foam, 0.5, 1, 0.3, 0.2)
-			G.fx.droplets(o, Vector3.UP, 16)
-			G.sfx.play("water", -3.0, 1.1)
+			G.fx.breath_ring_arc(o, Basis.IDENTITY, 2.4, 0.0, TAU, 1.0, 0.5, 0.3, 0.2)
+			G.fx.breath_burst(o, Vector3.UP, 16)
+			G.fx.breath_sound(-3.0, 1.1)
 		"heavy":
 			G.fx.slash_arc(o, atk_dir, 90.0, 2.0, 150.0, 0.7, Color(0.55, 0.8, 1.0), Color.WHITE, 0, 0.3)
 			var gp := global_position + atk_dir * 2.2 + Vector3.UP * 0.1
@@ -1646,12 +1657,46 @@ func _attack_fx() -> void:
 			G.fx.arc(o, Basis.IDENTITY, 2.8 * 1.9 * 0.7, 0.0, TAU, 0.35, Color(0.95, 0.45, 0.7), Color.WHITE, 0.4, 0, 0.2, 0.2)
 			G.sfx.play("whoosh_big", -4.0, 1.3)
 
+# Большая форма (первая форма, контрудар): у каждого стиля — свой вид, как в аниме.
+func _form_big_fx(o: Vector3, a: Dictionary) -> void:
+	var rev: bool = a.get("rev", false)
+	match G.breath_style:
+		"flame":
+			# огненная волна: два слоя пламени и столб искр
+			G.fx.breath_arc(o, atk_dir, 4.0, 3.3, 230.0, 2.1, 0.65, rev)
+			G.fx.breath_arc(o + Vector3.UP * 0.4, atk_dir, -8.0, 2.4, 200.0, 1.1, 0.55, rev)
+			G.fx.embers(o + atk_dir * 2.0, 30, 1.6)
+			G.fx.ring(global_position + Vector3.UP * 0.1, 1.0, Color(1.0, 0.45, 0.1), Color(1.0, 0.9, 0.5), 0.4, 3.5, 0.5)
+		"thunder":
+			# молния: золотой след рывка и разряды вокруг цели
+			var from := form_from + Vector3.UP * 1.0
+			if from.distance_to(o) < 2.0:
+				from = o - atk_dir * 5.0
+			G.fx.lightning(from, o + atk_dir * 3.0, Color(1.0, 0.8, 0.15), 0.6, 0.5, 4, 0.16)
+			G.fx.lightning(from + Vector3.UP * 0.4, o + atk_dir * 2.5 + Vector3.UP * 0.3, Color(1.0, 0.9, 0.4), 0.5, 0.35, 2, 0.08)
+			G.fx.breath_arc(o, atk_dir, 4.0, 3.2, 220.0, 1.6, 0.5, rev)
+			for k in 4:
+				var p := o + atk_dir * randf_range(1.5, 3.5) + Vector3(randf_range(-1.5, 1.5), randf_range(-0.5, 1.5), randf_range(-1.5, 1.5))
+				G.fx.lightning(p + Vector3.UP * 2.5, p, Color(1.0, 0.85, 0.2), 0.25, 0.4, 1, 0.08)
+			G.fx.afterimage(model, Color(1.0, 0.85, 0.3), 0.4)
+		_:
+			# вода: широкая волна-гравюра и вторая поменьше, брызги
+			G.fx.breath_arc(o, atk_dir, 4.0, 3.3, 230.0, 1.9, 0.6, rev)
+			G.fx.breath_arc(o + Vector3.UP * 0.3, atk_dir, -6.0, 2.4, 200.0, 0.9, 0.5, rev)
+			G.fx.droplets(o + atk_dir * 2.0, atk_dir, 22)
+	G.speedlines = 1.0
+	G.add_shake(0.25)
+	G.fx.breath_sound(0.0, 0.9)
+
 func _attack_fx_tick() -> void:
-	# Водоворот: волна вокруг тела на каждом обороте
+	# вторая форма: виток стихии вокруг тела на каждом обороте
 	var o := global_position + Vector3.UP * (0.9 + state_t * 0.5)
 	var b := Basis(Vector3.RIGHT, deg_to_rad(randf_range(-20, 20))) * Basis(Vector3.UP, randf() * TAU)
-	G.fx.arc(o, b, 2.3, 0.0, PI * 1.5, 0.9, Color(0.15, 0.45, 0.95), Color(0.9, 0.97, 1.0), 0.32, 1, 0.0, 0.08)
-	G.fx.droplets(o, Vector3.UP, 5)
+	G.fx.breath_ring_arc(o, b, 2.3, 0.0, PI * 1.5, 0.9, 0.32, 0.0, 0.08)
+	G.fx.breath_burst(o, Vector3.UP, 5)
+	if G.breath_style == "thunder":
+		var d := Vector3(randf_range(-1, 1), 0, randf_range(-1, 1)).normalized()
+		G.fx.lightning(o + d * 0.6, o + d * 2.6 + Vector3.UP * randf_range(-0.5, 0.8), Color(1.0, 0.8, 0.15), 0.12, 0.3, 1, 0.06)
 	G.sfx.play("whoosh", -8.0, 1.2)
 
 # ---------------------------------------------------------------------
@@ -1977,7 +2022,7 @@ func _on_hit(e: Node, res: Dictionary, dir: Vector3) -> void:
 	G.fx.sparks(p, dir, Color(1.0, 0.95, 0.75), 10)
 	G.fx.blood(p, dir, 8 if a.power < 2 else 14)
 	if a.fx in ["wave", "wave_big", "wave_ring", "whirl"]:
-		G.fx.droplets(p, dir, 10)
+		G.fx.breath_burst(p, dir, 10)
 	G.fx.number(p + Vector3.UP * 0.4, str(int(res.get("dmg", a.dmg))), Color(1, 1, 1) if a.power < 2 else Color(0.6, 0.85, 1.0), a.power >= 2)
 	G.sfx.play("hit_heavy" if a.power >= 2 else "hit", -2.0)
 	if a.get("impact", false) and not hit_set.has("_imp"):
@@ -2211,7 +2256,7 @@ func _counter_strike(attacker: Node, src: Vector3) -> void:
 	global_position = Vector3(behind.x, global_position.y, behind.z)
 	facing = atan2(-to.x, -to.z)
 	G.slowmo(0.2, 0.6)
-	G.sfx.play("water", 0.0, 1.2)
+	G.fx.breath_sound(0.0, 1.2)
 	G.sfx.play("shing", -4.0)
 	invuln_t = 0.6
 	_start_attack("counter")
@@ -2246,8 +2291,8 @@ func _start_finisher(e: Node) -> void:
 	if G.cam_rig:
 		G.cam_rig.cinematic(e, 2.2)
 	G.slowmo(0.5, 0.35)
-	G.sfx.play("water", -2.0, 0.8)
-	G.do_flash(0.3, Color(0.6, 0.85, 1.0))
+	G.fx.breath_sound(-2.0, 0.8)
+	G.do_flash(0.3, G.br().flash)
 
 func _st_finisher(dt: float) -> void:
 	velocity = Vector3.ZERO

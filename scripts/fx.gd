@@ -203,7 +203,96 @@ func debris_burst(pos: Vector3, col: Color, n: int, size: float, push: Vector3, 
 func adopt(rb: Node3D, life := 8.0) -> void:
 	debris.append({"n": rb, "life": life})
 
+# --- молнии -----------------------------------------------------------
+var bolts: Array = []
+
+# Молния из a в b: ломаная с отростками, золотая с белой сердцевиной, мерцает.
+func lightning(a: Vector3, b: Vector3, col := Color(1.0, 0.8, 0.15), life := 0.25, jag := 0.35, branches := 2, width := 0.07) -> void:
+	var holder := Node3D.new()
+	add_child(holder)
+	_bolt_path(holder, a, b, col, jag, width)
+	for k in branches:
+		var f := randf_range(0.25, 0.75)
+		var p := a.lerp(b, f)
+		var dirv := (b - a).normalized()
+		var side := dirv.cross(Vector3(randf_range(-1, 1), randf_range(-1, 1), randf_range(-1, 1))).normalized()
+		_bolt_path(holder, p, p + (dirv * 0.6 + side) * a.distance_to(b) * randf_range(0.15, 0.3), col, jag * 0.6, width * 0.6)
+	bolts.append({"n": holder, "life": life})
+
+func _bolt_path(holder: Node3D, a: Vector3, b: Vector3, col: Color, jag: float, width: float) -> void:
+	var n := maxi(3, int(a.distance_to(b) / 0.35))
+	var dirv := (b - a).normalized()
+	var s1 := dirv.cross(Vector3.UP)
+	if s1.length() < 0.1:
+		s1 = dirv.cross(Vector3.RIGHT)
+	s1 = s1.normalized()
+	var s2 := dirv.cross(s1).normalized()
+	var prev := a
+	for i in range(1, n + 1):
+		var f := float(i) / n
+		var p := a.lerp(b, f)
+		if i < n:
+			p += (s1 * randf_range(-1, 1) + s2 * randf_range(-1, 1)) * jag
+		for layer in 2:
+			var mi := MeshInstance3D.new()
+			var bm := BoxMesh.new()
+			var w := width * (1.0 if layer == 0 else 0.4)
+			bm.size = Vector3(w, w, prev.distance_to(p) + w)
+			mi.mesh = bm
+			mi.material_override = Vox.flat_mat(col if layer == 0 else Color(1, 1, 0.95))
+			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			holder.add_child(mi)
+			var z := (p - prev).normalized()
+			var up := Vector3.UP if absf(z.dot(Vector3.UP)) < 0.95 else Vector3.RIGHT
+			mi.global_transform = Transform3D(Basis.looking_at(z, up), (prev + p) * 0.5)
+		prev = p
+
+# Искры огня — поднимаются вверх и гаснут.
+func embers(pos: Vector3, n := 12, spread := 1.0) -> void:
+	burst(pos, Color(1.0, 0.55, 0.1), n, 4.0 * spread, 0.09, 0.8, -6.0, Vector3.UP, 0.8, 1.5)
+	burst(pos, Color(1.0, 0.9, 0.4), n / 2, 3.0 * spread, 0.06, 0.6, -8.0, Vector3.UP, 0.7, 1.5)
+
+# --- эффекты стиля дыхания ---------------------------------------------
+func breath_arc(origin: Vector3, forward: Vector3, roll_deg: float, radius: float, sweep_deg: float,
+		width: float, life := 0.45, reverse := false) -> void:
+	var b: Dictionary = G.br()
+	slash_arc(origin, forward, roll_deg, radius, sweep_deg, width, b.a, b.b, b.kind, life, reverse)
+
+func breath_ring_arc(center: Vector3, basis: Basis, radius: float, a0: float, a1: float, width: float, life := 0.45, grow := 0.0, draw_time := 0.12) -> void:
+	var b: Dictionary = G.br()
+	arc(center, basis, radius, a0, a1, width, b.a, b.b, life, b.kind, grow, draw_time)
+
+# Брызги стиля: вода — капли, пламя — искры, гром — разряды.
+func breath_burst(pos: Vector3, dir: Vector3, n := 10) -> void:
+	match G.breath_style:
+		"flame":
+			embers(pos, n, 1.2)
+		"thunder":
+			sparks(pos, dir, Color(1.0, 0.85, 0.3), n)
+			for k in 2:
+				var d := (dir + Vector3(randf_range(-1, 1), randf_range(-0.3, 1), randf_range(-1, 1))).normalized()
+				lightning(pos, pos + d * randf_range(1.0, 2.0), Color(1.0, 0.8, 0.15), 0.15, 0.25, 0, 0.05)
+		_:
+			droplets(pos, dir, n)
+
+func breath_sound(vol := 0.0, pitch := 1.0) -> void:
+	match G.breath_style:
+		"flame":
+			G.sfx.play("fire", vol, pitch)
+		"thunder":
+			G.sfx.play("thunder", vol, pitch)
+		_:
+			G.sfx.play("water", vol, pitch)
+
 func _process(dt: float) -> void:
+	for i in range(bolts.size() - 1, -1, -1):
+		var bo: Dictionary = bolts[i]
+		bo.life -= dt
+		if bo.life <= 0.0:
+			bo.n.queue_free()
+			bolts.remove_at(i)
+		else:
+			bo.n.visible = randf() > 0.3
 	for i in range(parts.size() - 1, -1, -1):
 		var p: Dictionary = parts[i]
 		p.life -= dt

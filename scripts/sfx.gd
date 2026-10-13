@@ -33,6 +33,8 @@ func _ready() -> void:
 	sounds["step_dirt"] = _make(0.12, _step_dirt)
 	sounds["step_grass"] = _make(0.16, _step_grass)
 	sounds["land"] = _make(0.3, _land)
+	sounds["fire"] = _make(0.7, _fire)
+	sounds["thunder"] = _make(0.9, _thunder)
 
 func play(nm: String, vol_db := 0.0, pitch := 1.0, rnd := 0.08) -> void:
 	if not sounds.has(nm):
@@ -179,3 +181,18 @@ func _land(t: float, d: float, st: Dictionary) -> float:
 	st["ph"] += TAU * (75.0 * exp(-t * 12.0) + 35.0) / RATE
 	var n := _lp(st, "lp", randf_range(-1, 1), 0.2) * exp(-t * 20.0)
 	return (sin(st["ph"]) * exp(-t * 14.0) + n) * 0.9
+
+# Пламя: гул с треском.
+func _fire(t: float, d: float, st: Dictionary) -> float:
+	var env := minf(t / 0.05, 1.0) * pow(1.0 - t / d, 1.4)
+	var roar := _lp(st, "lp", randf_range(-1, 1), 0.06) * 2.2
+	var crackle := randf_range(-1, 1) * (1.0 if randf() < 0.02 else 0.0)
+	st["ph"] += TAU * (60.0 + 20.0 * sin(t * 13.0)) / RATE
+	return (roar + crackle * 0.8 + sin(st["ph"]) * 0.25) * env
+
+# Гром: резкий треск разряда и раскат.
+func _thunder(t: float, d: float, st: Dictionary) -> float:
+	var crack := randf_range(-1, 1) * exp(-t * 35.0) * 1.3
+	var buzz := (1.0 if fmod(t * 120.0, 1.0) < 0.5 else -1.0) * exp(-t * 18.0) * 0.25
+	var rumble := _lp(st, "lp", randf_range(-1, 1), 0.03) * 3.0 * minf(t / 0.08, 1.0) * exp(-t * 3.0)
+	return crack + buzz + rumble
