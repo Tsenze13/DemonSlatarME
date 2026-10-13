@@ -508,6 +508,8 @@ func _run() -> void:
 	# новый демон
 	await w(5.5)
 	check(demon() != null, "новый демон появился")
+	check(G.world.stars != null and G.world.fireflies != null, "звёзды, светлячки, листья")
+	check(G.music.ready_, "музыка и окружение готовы (%d мс)" % G.music.gen_ms)
 	print("\n=== АВТОТЕСТ ===")
 	for l in log_lines:
 		print(l)

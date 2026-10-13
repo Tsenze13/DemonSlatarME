@@ -8,6 +8,7 @@ var fx: Node = null
 var hud: Node = null
 var world: Node = null
 var sfx: Node = null
+var music: Node = null
 var post_mat: ShaderMaterial = null
 var enemies: Array = []
 

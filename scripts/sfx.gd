@@ -30,6 +30,9 @@ func _ready() -> void:
 	sounds["sonic"] = _make(0.9, _sonic)
 	sounds["draw"] = _make(0.5, _draw)
 	sounds["sheathe"] = _make(0.35, _sheathe)
+	sounds["step_dirt"] = _make(0.12, _step_dirt)
+	sounds["step_grass"] = _make(0.16, _step_grass)
+	sounds["land"] = _make(0.3, _land)
 
 func play(nm: String, vol_db := 0.0, pitch := 1.0, rnd := 0.08) -> void:
 	if not sounds.has(nm):
@@ -159,3 +162,20 @@ func _sheathe(t: float, d: float, st: Dictionary) -> float:
 	var scrape := _lp(st, "lp", randf_range(-1, 1), 0.35) * exp(-t * 10.0) * 0.7
 	var click := randf_range(-1, 1) * exp(-maxf(0.0, t - 0.22) * 80.0) * (1.0 if t > 0.22 else 0.0)
 	return scrape + click
+
+# Шаги: по земле — глухой стук с хрустом, по траве — мягкий шорох.
+func _step_dirt(t: float, d: float, st: Dictionary) -> float:
+	st["ph"] += TAU * (90.0 * exp(-t * 30.0) + 50.0) / RATE
+	var thump := sin(st["ph"]) * exp(-t * 45.0) * 0.8
+	var crunch := _lp(st, "lp", randf_range(-1, 1) * (1.0 if randf() < 0.3 else 0.2), 0.5) * exp(-t * 28.0) * 0.9
+	return thump + crunch
+
+func _step_grass(t: float, d: float, st: Dictionary) -> float:
+	var x := randf_range(-1, 1)
+	var hp := x - _lp(st, "lp", x, 0.15)
+	return hp * sin(PI * t / d) * 0.55 + sin(TAU * 70.0 * t) * exp(-t * 50.0) * 0.4
+
+func _land(t: float, d: float, st: Dictionary) -> float:
+	st["ph"] += TAU * (75.0 * exp(-t * 12.0) + 35.0) / RATE
+	var n := _lp(st, "lp", randf_range(-1, 1), 0.2) * exp(-t * 20.0)
+	return (sin(st["ph"]) * exp(-t * 14.0) + n) * 0.9

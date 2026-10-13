@@ -14,6 +14,10 @@ var lantern_lights: Array = []
 var grass_mat: ShaderMaterial
 var grass_mm: MultiMesh
 var moon: MeshInstance3D
+var stars: MultiMeshInstance3D
+var fireflies: CPUParticles3D
+var leaves: CPUParticles3D
+var petals: CPUParticles3D
 var rng := RandomNumberGenerator.new()
 
 func build() -> void:
@@ -27,6 +31,7 @@ func build() -> void:
 	_stone_wall()
 	_shrine()
 	_props()
+	_atmosphere()
 	set_night(true)
 
 func _environment() -> void:
@@ -90,6 +95,9 @@ func set_night(on: bool) -> void:
 		sun.light_energy = 1.0
 		sun.rotation_degrees = Vector3(-48, -35, 0)
 		moon.visible = true
+		if stars:
+			stars.visible = true
+			fireflies.emitting = true
 		for l in lantern_lights:
 			if is_instance_valid(l):
 				l.visible = true
@@ -105,6 +113,9 @@ func set_night(on: bool) -> void:
 		sun.light_energy = 1.25
 		sun.rotation_degrees = Vector3(-55, 30, 0)
 		moon.visible = false
+		if stars:
+			stars.visible = false
+			fireflies.emitting = false
 		for l in lantern_lights:
 			if is_instance_valid(l):
 				l.visible = false
@@ -400,3 +411,95 @@ func kick_points() -> Array:
 func _process(_dt: float) -> void:
 	if grass_mat and G.player:
 		grass_mat.set_shader_parameter("player_pos", G.player.global_position)
+	# фонари мерцают, частицы летают вокруг героя
+	var t := G.real_time
+	for i in lantern_lights.size():
+		var l: OmniLight3D = lantern_lights[i]
+		if is_instance_valid(l):
+			l.light_energy = 2.2 + sin(t * 9.0 + i * 1.7) * 0.18 + sin(t * 23.0 + i) * 0.1
+	if G.player and fireflies:
+		var pp: Vector3 = G.player.global_position
+		fireflies.global_position = Vector3(pp.x, 0.0, pp.z)
+		leaves.global_position = Vector3(pp.x, 9.0, pp.z)
+		petals.global_position = Vector3(pp.x, 7.0, pp.z)
+
+# Атмосфера: звёзды, светлячки ночью, падающие листья и лепестки.
+func _atmosphere() -> void:
+	# звёзды — мелкие точки на куполе
+	var sm := MultiMesh.new()
+	sm.transform_format = MultiMesh.TRANSFORM_3D
+	var bm := BoxMesh.new()
+	bm.size = Vector3.ONE
+	var smat := StandardMaterial3D.new()
+	smat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	smat.albedo_color = Color(0.9, 0.92, 1.0)
+	smat.set("disable_fog", true)
+	bm.material = smat
+	sm.mesh = bm
+	sm.instance_count = 700
+	for i in sm.instance_count:
+		var d := Vector3(rng.randf_range(-1, 1), rng.randf_range(0.12, 1.0), rng.randf_range(-1, 1)).normalized()
+		var sz := rng.randf_range(0.5, 1.6)
+		sm.set_instance_transform(i, Transform3D(Basis.IDENTITY.scaled(Vector3.ONE * sz), d * 300.0))
+	stars = MultiMeshInstance3D.new()
+	stars.multimesh = sm
+	stars.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(stars)
+	# светлячки
+	fireflies = _particles(Color(0.85, 1.0, 0.4), 2.5, 70, 6.0, Vector3(24, 1.5, 24), Vector3(0, 1.5, 0), 0.05, 0.0)
+	fireflies.direction = Vector3(0, 1, 0)
+	fireflies.spread = 180.0
+	fireflies.initial_velocity_min = 0.1
+	fireflies.initial_velocity_max = 0.5
+	fireflies.gravity = Vector3(0, 0.05, 0)
+	# листья (тёмно-красные и рыжие) и светлые лепестки — медленно кружат вниз
+	leaves = _particles(Color(0.75, 0.3, 0.15), 0.0, 40, 9.0, Vector3(30, 1, 30), Vector3.ZERO, 0.12, 1.0)
+	leaves.gravity = Vector3(0.6, -1.0, 0.3)
+	leaves.color_ramp = _ramp(Color(0.8, 0.35, 0.15), Color(0.6, 0.2, 0.12))
+	petals = _particles(Color(1.0, 0.8, 0.88), 0.0, 25, 9.0, Vector3(26, 1, 26), Vector3.ZERO, 0.07, 1.0)
+	petals.gravity = Vector3(0.8, -0.7, 0.2)
+
+func _particles(col: Color, glow: float, amount: int, life: float, box: Vector3, off: Vector3, size: float, spin: float) -> CPUParticles3D:
+	var p := CPUParticles3D.new()
+	p.amount = amount
+	p.lifetime = life
+	p.preprocess = life
+	p.local_coords = false
+	p.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
+	p.emission_box_extents = box
+	p.position = off
+	var m := BoxMesh.new()
+	m.size = Vector3(size, size * (0.25 if spin > 0.0 else 1.0), size)
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.vertex_color_use_as_albedo = true
+	mat.albedo_color = col
+	if glow > 0.0:
+		mat.emission_enabled = true
+		mat.emission = col * glow
+	m.material = mat
+	p.mesh = m
+	p.color = col
+	p.direction = Vector3(0, -1, 0)
+	p.spread = 30.0
+	p.initial_velocity_min = 0.2
+	p.initial_velocity_max = 0.6
+	if spin > 0.0:
+		p.angular_velocity_min = -180.0
+		p.angular_velocity_max = 180.0
+		p.particle_flag_rotate_y = true
+		p.angle_min = -180.0
+		p.angle_max = 180.0
+	p.damping_min = 0.3
+	p.damping_max = 0.8
+	p.scale_amount_min = 0.6
+	p.scale_amount_max = 1.4
+	p.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(p)
+	return p
+
+func _ramp(a: Color, b: Color) -> Gradient:
+	var g := Gradient.new()
+	g.set_color(0, a)
+	g.set_color(1, b)
+	return g

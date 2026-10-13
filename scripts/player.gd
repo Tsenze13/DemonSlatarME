@@ -683,6 +683,8 @@ func _physics_process(dt: float) -> void:
 			flip_axis = 1.0
 			land_k *= 0.4
 			G.sfx.play("dash", -10.0, 0.8)
+		if landing_vel < -6.0:
+			G.sfx.play("land", lerpf(-16.0, -4.0, land_k), 1.0)
 		if landing_vel < -14.0:
 			G.fx.dust(global_position, 10)
 			G.add_shake(0.08)
@@ -1807,6 +1809,13 @@ func _st_hurt(dt: float) -> void:
 		_set_state("move")
 
 # Сбит с ног: лежит, потом встаёт. Рывок или прыжок — вскочить раньше.
+# Шаг: звук по поверхности (утоптанная поляна и деревня — земля, остальное — трава).
+func _footstep(sp: float) -> void:
+	var p := global_position
+	var dirt := (absf(p.x) < 10.0 and absf(p.z) < 10.0) or state == "wallrun"
+	var vol := lerpf(-22.0, -10.0, clampf(sp / SPRINT_SPEED, 0.0, 1.0))
+	G.sfx.play("step_dirt" if dirt else "step_grass", vol, 1.0 + randf_range(-0.1, 0.1))
+
 func _st_down(dt: float) -> void:
 	var on_floor := is_on_floor()
 	if on_floor:
@@ -2138,8 +2147,11 @@ func _animate(dt: float) -> void:
 			idle_t = 0.0
 			# --- бег ---
 			var k := clampf(sp / RUN_SPEED, 0.0, 1.3)
+			var prev_s := sin(run_phase)
 			run_phase += dt * (5.5 + sp * 0.6)
 			var s := sin(run_phase)
+			if signf(s) != signf(prev_s):
+				_footstep(sp)
 			var c := cos(run_phase)
 			p.leg_r = Vector3(-s * 58 * k, 0, -3)
 			p.leg_l = Vector3(s * 58 * k, 0, 3)
@@ -2221,8 +2233,11 @@ func _animate(dt: float) -> void:
 				hips_y -= 0.1 * kb
 
 	if state == "wallrun":
+		var prev_s2 := sin(run_phase)
 		run_phase += dt * 16.0
 		var s2 := sin(run_phase)
+		if signf(s2) != signf(prev_s2):
+			_footstep(20.0)
 		p.leg_r = Vector3(-s2 * 60, 0, 0)
 		p.leg_l = Vector3(s2 * 60, 0, 0)
 		p.shin_r = Vector3(40 + s2 * 30, 0, 0)

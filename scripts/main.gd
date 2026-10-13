@@ -53,6 +53,10 @@ func _ready() -> void:
 	sfx.set_script(Sfx)
 	add_child(sfx)
 	G.sfx = sfx
+	var mus := Node.new()
+	mus.set_script(load("res://scripts/music.gd"))
+	add_child(mus)
+	G.music = mus
 
 	world = Node3D.new()
 	world.set_script(World)
