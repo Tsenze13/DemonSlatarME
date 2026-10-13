@@ -185,6 +185,13 @@ func _physics_process(dt: float) -> void:
 	if state == "dead":
 		_dead_tick(dt)
 		return
+	if not G.started:
+		# главное меню: демон стоит и ждёт
+		_gravity(dt)
+		_brake(dt)
+		move_and_slide()
+		_animate(dt)
+		return
 	# регенерация
 	for s in ["r", "l"]:
 		if not arms_alive[s]:
@@ -670,7 +677,7 @@ func decapitate(dir: Vector3) -> void:
 			ash_parts.append(m)
 	ash_parts.shuffle()
 	ash_t = 0.0
-	G.kills += 1
+	G.add_kill()
 
 func _dead_tick(dt: float) -> void:
 	# тело оседает на колени и рассыпается пеплом

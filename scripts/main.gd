@@ -18,16 +18,11 @@ var vp: SubViewport
 var world: Node3D
 var hud: Control
 var respawn_t := -1.0
-var menu: Control
-var vol_slider: HSlider
-var sens_slider: HSlider
-var settings := {"volume": 0.4, "sens": 1.0, "pixel": false, "sword": 0, "saya": 0, "tint": 0}
-var saya_opt: OptionButton
-var tint_opt: OptionButton
-var sword_opt: OptionButton
-var pixel_check: CheckBox
-const SETTINGS_PATH := "user://settings.cfg"
+var menu: Control                  # панель паузы (для автотеста)
+var menus                          # menu.gd: главное меню, пауза, настройки
+var settings: Dictionary = {}
 var spawn_points := [Vector3(0, 0.5, -9), Vector3(-8, 0.5, 6), Vector3(10, 0.5, -4), Vector3(4, 0.5, 10)]
+const Menu = preload("res://scripts/menu.gd")
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
@@ -47,6 +42,13 @@ func _ready() -> void:
 	get_viewport().size_changed.connect(_on_resize)
 	_on_resize()
 
+	# шины звука: эффекты и музыка — со своей громкостью
+	for bn in ["SFX", "Music"]:
+		if AudioServer.get_bus_index(bn) < 0:
+			AudioServer.add_bus()
+			var bi := AudioServer.bus_count - 1
+			AudioServer.set_bus_name(bi, bn)
+			AudioServer.set_bus_send(bi, "Master")
 	var sfx := Node.new()
 	sfx.set_script(Sfx)
 	add_child(sfx)
@@ -90,23 +92,41 @@ func _ready() -> void:
 	layer.add_child(hud)
 	G.hud = hud
 
-	_build_menu()
-	_load_settings()
+	var ml := CanvasLayer.new()
+	ml.layer = 10
+	add_child(ml)
+	menus = Control.new()
+	menus.set_script(Menu)
+	menus.main = self
+	ml.add_child(menus)
+	menu = menus.pause_panel
+	settings = menus.settings
+	menus.load_settings()
 	_spawn_demon(spawn_points[0])
 	if not G.autotest:
-		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+		menus.show_title()
 	else:
+		G.started = true
+		menus.title_screen.visible = false
 		var at := Node.new()
 		at.set_script(load("res://scripts/autotest.gd"))
 		add_child(at)
 
 func _on_resize() -> void:
+	if settings.is_empty():
+		return
+	apply_view(settings)
+
+# Пиксельный фильтр, сглаживание и чёткость 3D (из настроек).
+func apply_view(st: Dictionary) -> void:
 	var h := float(get_viewport().get_visible_rect().size.y)
-	var shrink := maxi(1, int(round(h / BASE_H))) if settings.pixel else 1
+	var shrink := maxi(1, int(round(h / BASE_H))) if st.pixel else 1
 	container.stretch_shrink = shrink
-	vp.msaa_3d = Viewport.MSAA_DISABLED if settings.pixel else Viewport.MSAA_4X
+	vp.msaa_3d = Viewport.MSAA_DISABLED if st.pixel else Viewport.MSAA_4X
+	vp.scaling_3d_mode = Viewport.SCALING_3D_MODE_BILINEAR
+	vp.scaling_3d_scale = 1.0 if st.pixel else clampf(float(st.render_scale), 0.5, 1.0)
 	if G.post_mat:
-		G.post_mat.set_shader_parameter("pixel_mode", settings.pixel)
+		G.post_mat.set_shader_parameter("pixel_mode", st.pixel)
 	if hud:
 		hud.px_scale = float(shrink)
 
@@ -120,6 +140,10 @@ func _spawn_demon(p: Vector3) -> void:
 func _process(_dt: float) -> void:
 	if hud:
 		hud.px_scale = float(container.stretch_shrink)
+		hud.visible = G.started
+	if not G.started and G.cam_rig:
+		# главное меню: камера медленно облетает героя
+		G.cam_rig.yaw += G.rdt * 0.12
 	# новый демон после гибели прошлого
 	var alive := 0
 	for e in G.enemies:
@@ -143,7 +167,7 @@ func _process(_dt: float) -> void:
 # Мышь и клавиатуру передаём герою и камере отсюда: SubViewport с миром
 # сам событий мыши не получает.
 func _input(e: InputEvent) -> void:
-	if G.paused:
+	if G.paused or not G.started:
 		return
 	if e is InputEventMouseButton and Input.mouse_mode != Input.MOUSE_MODE_CAPTURED and not G.autotest:
 		return   # этот клик только захватывает мышь, а не бьёт
@@ -158,190 +182,42 @@ func _unhandled_input(e: InputEvent) -> void:
 	elif e is InputEventKey and e.pressed and not e.echo and (e.physical_keycode == KEY_EQUAL or e.physical_keycode == KEY_KP_ADD):
 		_set_volume(settings.volume + 0.1, true)
 	elif e.is_action_pressed("pause"):
+		if menus.capture_action != "":
+			return
+		if not G.started:
+			if menus.is_open():
+				menus.close_menu()
+			return
 		_toggle_pause()
+	elif not G.started:
+		return
 	elif e.is_action_pressed("daynight"):
 		world.set_night(not world.night)
 	elif e.is_action_pressed("help"):
 		hud.help = not hud.help
 		hud.help_t = 0.0
 	elif e is InputEventKey and e.pressed and e.physical_keycode == KEY_F10:
+		menus.save()
 		get_tree().quit()
 	elif e is InputEventKey and e.pressed and e.physical_keycode == KEY_F11:
-		var w := get_window()
-		w.mode = Window.MODE_WINDOWED if w.mode == Window.MODE_FULLSCREEN else Window.MODE_FULLSCREEN
+		settings.window = 0 if settings.window != 0 else 1
+		menus.apply_all()
 	elif e is InputEventMouseButton and e.pressed and not G.paused and Input.mouse_mode != Input.MOUSE_MODE_CAPTURED and not G.autotest:
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
 func _toggle_pause() -> void:
-	G.paused = not G.paused
-	get_tree().paused = G.paused
-	menu.visible = G.paused
-	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE if G.paused else Input.MOUSE_MODE_CAPTURED
-	if not G.paused:
-		_save_settings()
-
-# --- меню паузы: громкость, чувствительность мыши -----------------------
-func _build_menu() -> void:
-	var layer := CanvasLayer.new()
-	layer.layer = 10
-	add_child(layer)
-	menu = Control.new()
-	menu.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	menu.visible = false
-	layer.add_child(menu)
-	var dim := ColorRect.new()
-	dim.color = Color(0, 0, 0.05, 0.5)
-	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	menu.add_child(dim)
-	var center := CenterContainer.new()
-	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	menu.add_child(center)
-	var panel := PanelContainer.new()
-	var sb := StyleBoxFlat.new()
-	sb.bg_color = Color(0.05, 0.07, 0.15, 0.95)
-	sb.border_color = Color(0.4, 0.65, 1.0)
-	sb.set_border_width_all(2)
-	sb.set_content_margin_all(28)
-	panel.add_theme_stylebox_override("panel", sb)
-	center.add_child(panel)
-	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 14)
-	box.custom_minimum_size = Vector2(460, 0)
-	panel.add_child(box)
-	var t := Label.new()
-	t.text = "ПАУЗА"
-	t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	t.add_theme_font_size_override("font_size", 40)
-	box.add_child(t)
-	vol_slider = _slider(box, "Громкость", 0.0, 1.0, 0.05, func(v): _set_volume(v, false))
-	sens_slider = _slider(box, "Чувствительность мыши", 0.2, 3.0, 0.05, func(v): _set_sens(v))
-	var sl := Label.new()
-	sl.text = "Клинок"
-	sl.add_theme_font_size_override("font_size", 20)
-	box.add_child(sl)
-	sword_opt = OptionButton.new()
-	sword_opt.add_theme_font_size_override("font_size", 18)
-	for k in 6:
-		sword_opt.add_item(SwordLib.NAMES[k])
-	sword_opt.add_item("Парные клинки (два меча)")
-	sword_opt.add_item("Гибкий клинок (хлыст)")
-	sword_opt.add_item("Кубический (свой)")
-	sword_opt.item_selected.connect(func(idx): _set_sword(idx))
-	box.add_child(sword_opt)
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 10)
-	box.add_child(row)
-	saya_opt = OptionButton.new()
-	saya_opt.add_theme_font_size_override("font_size", 16)
-	saya_opt.tooltip_text = "Ножны"
-	for st in SwordLib.SAYA:
-		saya_opt.add_item("Ножны: " + st[0])
-	saya_opt.item_selected.connect(func(idx): settings.saya = idx; _apply_look())
-	saya_opt.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	row.add_child(saya_opt)
-	tint_opt = OptionButton.new()
-	tint_opt.add_theme_font_size_override("font_size", 16)
-	for tn in SwordLib.TINTS:
-		tint_opt.add_item("Клинок: " + tn[0])
-	tint_opt.item_selected.connect(func(idx): settings.tint = idx; _apply_look())
-	tint_opt.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	row.add_child(tint_opt)
-	pixel_check = CheckBox.new()
-	pixel_check.text = "Пиксельный фильтр (крупные пиксели)"
-	pixel_check.add_theme_font_size_override("font_size", 18)
-	pixel_check.toggled.connect(func(on): settings.pixel = on; _on_resize())
-	box.add_child(pixel_check)
-	var b1 := Button.new()
-	b1.text = "Продолжить"
-	b1.add_theme_font_size_override("font_size", 22)
-	b1.pressed.connect(_toggle_pause)
-	box.add_child(b1)
-	var b2 := Button.new()
-	b2.text = "Выйти из игры"
-	b2.add_theme_font_size_override("font_size", 22)
-	b2.pressed.connect(func(): _save_settings(); get_tree().quit())
-	box.add_child(b2)
-	var hint := Label.new()
-	hint.text = "Громкость во время игры: клавиши  −  и  +"
-	hint.add_theme_font_size_override("font_size", 15)
-	hint.modulate = Color(0.75, 0.82, 1.0)
-	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	box.add_child(hint)
-
-func _slider(parent: Control, title: String, lo: float, hi: float, step: float, cb: Callable) -> HSlider:
-	var l := Label.new()
-	l.text = title
-	l.add_theme_font_size_override("font_size", 20)
-	parent.add_child(l)
-	var s := HSlider.new()
-	s.min_value = lo
-	s.max_value = hi
-	s.step = step
-	s.custom_minimum_size = Vector2(0, 28)
-	s.value_changed.connect(cb)
-	parent.add_child(s)
-	return s
+	if G.paused:
+		menus.close_menu()
+	else:
+		menus.open_pause()
 
 func _set_volume(v: float, show: bool) -> void:
-	settings.volume = clampf(v, 0.0, 1.0)
-	AudioServer.set_bus_volume_db(0, linear_to_db(maxf(0.0001, settings.volume * settings.volume)))
-	AudioServer.set_bus_mute(0, settings.volume <= 0.001)
-	if vol_slider and absf(vol_slider.value - settings.volume) > 0.001:
-		vol_slider.set_value_no_signal(settings.volume)
-	if show and hud:
-		hud.notify("Громкость: %d%%" % int(round(settings.volume * 100)), 1.2)
-		_save_settings()
-
-func _apply_look() -> void:
-	if G.player:
-		G.player.set_look(settings.saya, settings.tint)
-
-func _set_sword(idx: int) -> void:
-	settings.sword = idx
-	if G.player:
-		G.player.set_sword(idx)
-
-func _set_sens(v: float) -> void:
-	settings.sens = v
-	if G.cam_rig:
-		G.cam_rig.sens_mult = v
-
-func _load_settings() -> void:
-	var cf := ConfigFile.new()
-	if cf.load(SETTINGS_PATH) == OK:
-		settings.volume = float(cf.get_value("main", "volume", 0.4))
-		settings.sens = float(cf.get_value("main", "sens", 1.0))
-		settings.pixel = bool(cf.get_value("main", "pixel", false))
-		settings.sword = int(cf.get_value("main", "sword", 0))
-		settings.saya = int(cf.get_value("main", "saya", 0))
-		settings.tint = int(cf.get_value("main", "tint", 0))
-	_set_volume(settings.volume, false)
-	_set_sens(settings.sens)
-	vol_slider.set_value_no_signal(settings.volume)
-	sens_slider.set_value_no_signal(settings.sens)
-	pixel_check.set_pressed_no_signal(settings.pixel)
-	sword_opt.select(clampi(settings.sword if settings.sword >= 0 else 8, 0, 8))
-	saya_opt.select(clampi(settings.saya, 0, SwordLib.SAYA.size() - 1))
-	tint_opt.select(clampi(settings.tint, 0, SwordLib.TINTS.size() - 1))
-	if G.player:
-		G.player.saya_style = settings.saya
-		G.player.blade_tint = settings.tint
-		G.player.set_sword(settings.sword)
-	_on_resize()
-
-func _save_settings() -> void:
-	var cf := ConfigFile.new()
-	cf.set_value("main", "volume", settings.volume)
-	cf.set_value("main", "sens", settings.sens)
-	cf.set_value("main", "pixel", settings.pixel)
-	cf.set_value("main", "sword", settings.sword)
-	cf.set_value("main", "saya", settings.saya)
-	cf.set_value("main", "tint", settings.tint)
-	cf.save(SETTINGS_PATH)
+	menus.set_volume(v, show)
 
 func _exit_tree() -> void:
+	G.save_stats()
 	SwordLib.cleanup()
 
 func _notification(what: int) -> void:
-	if what == NOTIFICATION_APPLICATION_FOCUS_OUT and not G.paused and not G.autotest:
+	if what == NOTIFICATION_APPLICATION_FOCUS_OUT and not G.paused and G.started and not G.autotest:
 		_toggle_pause()

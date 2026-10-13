@@ -457,8 +457,47 @@ func _run() -> void:
 	check(get_parent().menu.visible, "меню паузы открывается")
 	get_parent()._set_volume(0.2, true)
 	check(AudioServer.get_bus_volume_db(0) < -10.0, "громкость меняется")
+	var mn = get_parent().menus
+	check(mn.tabs.get_tab_count() == 4, "в настройках 4 вкладки")
+	for ti in mn.tabs.get_tab_count():
+		mn.tabs.current_tab = ti
+		await w(0.15)
+		await shot("20_tab%d" % ti)
+	check(AudioServer.get_bus_index("SFX") >= 0 and AudioServer.get_bus_index("Music") >= 0, "отдельные шины эффектов и музыки")
+	# переназначение клавиши и возврат
+	var ek := InputEventKey.new()
+	ek.physical_keycode = KEY_G
+	G.bind_key("draw", ek)
+	check(G.key_text("draw") == "G", "клавиша переназначается (%s)" % G.key_text("draw"))
+	G.reset_keys()
+	check(G.key_text("draw") == "F", "клавиши по умолчанию возвращаются")
+	mn.settings.render_scale = 0.7
+	mn._apply_graphics()
+	check(absf(get_parent().vp.scaling_3d_scale - 0.7) < 0.01, "чёткость 3D меняется")
+	mn.settings.render_scale = 1.0
+	mn.settings.grass = 0.5
+	mn._apply_graphics()
+	check(G.world.grass_mm.visible_instance_count < G.world.grass_mm.instance_count, "густота травы меняется")
+	mn.settings.grass = 1.0
+	mn._apply_graphics()
 	get_parent()._toggle_pause()
 	await w(0.2)
+	# главное меню
+	mn.show_title()
+	await w(0.3)
+	await shot("21_title")
+	check(mn.title_screen.visible and not G.started, "главное меню")
+	mn._start_game()
+	await w(0.2)
+	check(G.started, "игра начинается из меню")
+	# гибель и возрождение
+	p.receive_attack(999.0, p.global_position + Vector3(0, 0, 2), false)
+	await w(2.6)
+	await shot("22_dead")
+	check(p.state == "dead", "герой пал")
+	p.press("jump")
+	await w(0.2)
+	check(p.state != "dead" and p.hp == p.max_hp, "возрождение по Пробелу")
 	# день
 	G.world.set_night(false)
 	p.global_position = Vector3(0, 0.3, 6)

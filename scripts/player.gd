@@ -602,6 +602,31 @@ func _input_dir() -> Vector3:
 var auto_move := Vector2.ZERO   # для автотеста
 var auto_breathe := false
 
+# Смена захваченной цели: следующий демон левее (dir < 0) или правее (dir > 0) на экране.
+func switch_lock(dir: float) -> void:
+	if lock_target == null or G.cam_rig == null:
+		return
+	var cam: Camera3D = G.cam_rig.cam
+	var right := cam.global_transform.basis.x
+	var best: Node = null
+	var bd := 1e9
+	var cur: Vector3 = lock_target.global_position
+	for e in G.enemies:
+		if not is_instance_valid(e) or e == lock_target or e.is_dead():
+			continue
+		if e.global_position.distance_to(global_position) > 30.0:
+			continue
+		var side: float = (e.global_position - cur).dot(right)
+		if side * dir <= 0.0:
+			continue
+		var d: float = absf(side) + (e.global_position - cur).length() * 0.3
+		if d < bd:
+			bd = d
+			best = e
+	if best:
+		lock_target = best
+		G.sfx.play("dash", -14.0, 1.6)
+
 func _forward() -> Vector3:
 	return Vector3(sin(facing), 0, cos(facing))
 
@@ -1804,7 +1829,8 @@ func _st_dead(dt: float) -> void:
 	velocity.x = 0
 	velocity.z = 0
 	_gravity(dt)
-	if state_t > 3.0:
+	# возрождение: само через 4 с или сразу по Пробелу / удару
+	if state_t > 4.0 or (state_t > 1.5 and (pressed("jump") or pressed("light"))):
 		hp = max_hp
 		breath = max_breath
 		clear_cuts()
@@ -1854,8 +1880,6 @@ func receive_attack(dmg: float, src: Vector3, parryable: bool, attacker: Node = 
 		velocity = kb * 6.0 + Vector3.UP * 4.0
 		G.slowmo(0.3, 1.0)
 		G.impact(0.1, 2)
-		if G.hud:
-			G.hud.notify("Ты пал...")
 		return "hit"
 	hurt_dir = kb
 	if dmg >= 18.0:

@@ -176,6 +176,9 @@ func _draw() -> void:
 		elif not e.arms_alive.r or not e.arms_alive.l:
 			_txt(Vector2(bx, 82 * u), "конечность отрастает...", int(13 * u), Color(0.9, 0.6, 0.6))
 	_txt(Vector2(s.x - 28 * u, 34 * u), "Обезглавлено: %d" % G.kills, int(15 * u), Color(0.9, 0.9, 0.95), HORIZONTAL_ALIGNMENT_RIGHT, 0)
+	_txt(Vector2(s.x - 28 * u, 54 * u), "всего за все игры: %d" % int(G.stats.kills_total), int(12 * u), Color(0.7, 0.75, 0.85), HORIZONTAL_ALIGNMENT_RIGHT, 0)
+	if G.show_fps:
+		_txt(Vector2(s.x - 28 * u, 76 * u), "%d кадров/с" % Engine.get_frames_per_second(), int(14 * u), Color(0.6, 1.0, 0.6), HORIZONTAL_ALIGNMENT_RIGHT, 0)
 
 	# --- захват цели ---
 	if p.lock_target and is_instance_valid(p.lock_target) and G.cam_rig:
@@ -235,7 +238,7 @@ func _draw() -> void:
 			"ЛКМ — комбо   ПКМ — тяжёлый удар   Q — парирование",
 			"1 / 2 / 3 — формы Прилива   R (держать) — восстановить дыхание",
 			"Бег в стену в прыжке — бег по стене   N — день/ночь   − / + — громкость",
-			"Esc — пауза и настройки (громкость, мышь, выбор клинка)   F1 — подсказка",
+			"Esc — пауза и настройки (клинок, графика, звук, клавиши)   F1 — подсказка",
 		]
 		var hy := s.y - 270 * u
 		var hx := 28 * u
@@ -243,4 +246,14 @@ func _draw() -> void:
 		for l in lines:
 			_txt(Vector2(hx, hy), l, int(15 * u), Color(0.88, 0.92, 1.0))
 			hy += 24 * u
-	_txt(Vector2(s.x - 16 * u, s.y - 14 * u), "Клинок и Демон · прототип 0.15", int(12 * u), Color(0.7, 0.75, 0.85, 0.6), HORIZONTAL_ALIGNMENT_RIGHT, 0)
+	# --- экран гибели ---
+	if p.state == "dead" and p.state_t > 0.8:
+		var a5 := clampf((p.state_t - 0.8) * 2.0, 0.0, 1.0)
+		draw_rect(Rect2(Vector2.ZERO, s), Color(0.12, 0.0, 0.02, 0.45 * a5))
+		_txt(Vector2(s.x * 0.5, s.y * 0.42), "ТЫ ПАЛ", int(80 * u), Color(1.0, 0.85, 0.82, a5), HORIZONTAL_ALIGNMENT_CENTER, 0, 18)
+		var left := maxf(0.0, 4.0 - p.state_t)
+		var hint := "Снова в бой через %d…" % int(ceil(left))
+		if p.state_t > 1.5:
+			hint += "   Пробел или ЛКМ — сразу"
+		_txt(Vector2(s.x * 0.5, s.y * 0.42 + 54 * u), hint, int(20 * u), Color(0.95, 0.9, 0.9, a5), HORIZONTAL_ALIGNMENT_CENTER, 0)
+	_txt(Vector2(s.x - 16 * u, s.y - 14 * u), "Клинок и Демон · прототип " + str(ProjectSettings.get_setting("application/config/version", "")), int(12 * u), Color(0.7, 0.75, 0.85, 0.6), HORIZONTAL_ALIGNMENT_RIGHT, 0)

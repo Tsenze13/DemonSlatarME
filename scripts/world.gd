@@ -12,6 +12,7 @@ var sky_mat: ProceduralSkyMaterial
 var night := true
 var lantern_lights: Array = []
 var grass_mat: ShaderMaterial
+var grass_mm: MultiMesh
 var moon: MeshInstance3D
 var rng := RandomNumberGenerator.new()
 
@@ -64,6 +65,15 @@ func _environment() -> void:
 	moon.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	moon.position = Vector3(-90, 110, -160)
 	add_child(moon)
+
+# Качество из настроек: тени (0 — нет, 1 — простые, 2 — чёткие) и густота травы.
+func set_quality(shadows: int, grass: float) -> void:
+	if sun:
+		sun.shadow_enabled = shadows > 0
+		sun.directional_shadow_max_distance = 40.0 if shadows == 1 else 60.0
+		RenderingServer.directional_shadow_atlas_set_size(2048 if shadows == 1 else 4096, true)
+	if grass_mm:
+		grass_mm.visible_instance_count = int(grass_mm.instance_count * clampf(grass, 0.0, 1.0))
 
 func set_night(on: bool) -> void:
 	night = on
@@ -159,6 +169,7 @@ func _grass() -> void:
 		var t := Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(s, s * rng.randf_range(0.7, 1.3), s)), p)
 		mm.set_instance_transform(placed, t)
 		placed += 1
+	grass_mm = mm
 	var mmi := MultiMeshInstance3D.new()
 	mmi.multimesh = mm
 	mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF

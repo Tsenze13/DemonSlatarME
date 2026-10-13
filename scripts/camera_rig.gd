@@ -24,11 +24,27 @@ func _ready() -> void:
 	cam.current = true
 
 var sens_mult := 1.0
+var invert_y := false
+var base_fov := 72.0
+var auto_cam := true
+var idle_look := 9.0          # сколько секунд камеру не трогали
+var flick := 0.0              # резкий рывок мышью при захвате — смена цели
+var flick_t := 0.0
 
 func handle_input(e: InputEvent) -> void:
 	if e is InputEventMouseMotion and (Input.mouse_mode == Input.MOUSE_MODE_CAPTURED or G.autotest):
+		var p: Node = G.player
+		if p and p.lock_target:
+			# при захвате мышь не крутит камеру, а резким движением переключает цель
+			flick += e.relative.x
+			if absf(flick) > 260.0:
+				p.switch_lock(signf(flick))
+				flick = 0.0
+			return
 		yaw -= e.relative.x * sens * sens_mult
-		pitch = clampf(pitch - e.relative.y * sens * sens_mult, -1.2, 0.55)
+		pitch = clampf(pitch - e.relative.y * sens * sens_mult * (-1.0 if invert_y else 1.0), -1.2, 0.55)
+		if e.relative.length() > 2.0:
+			idle_look = 0.0
 
 func cinematic(target: Node, dur: float) -> void:
 	cine_target = target
@@ -40,13 +56,33 @@ func _process(_delta: float) -> void:
 	var p: Node3D = G.player
 	if p == null:
 		return
+	idle_look += dt
+	flick = move_toward(flick, 0.0, 900.0 * dt)
+	flick_t -= dt
 	var jx := Input.get_joy_axis(0, JOY_AXIS_RIGHT_X)
 	var jy := Input.get_joy_axis(0, JOY_AXIS_RIGHT_Y)
-	if absf(jx) > 0.15:
-		yaw -= jx * 2.8 * dt
-	if absf(jy) > 0.15:
-		pitch = clampf(pitch - jy * 1.8 * dt, -1.2, 0.55)
+	if p.lock_target:
+		# стик при захвате — смена цели
+		if absf(jx) > 0.8 and flick_t <= 0.0:
+			p.switch_lock(signf(jx))
+			flick_t = 0.4
+	else:
+		if absf(jx) > 0.15:
+			yaw -= jx * 2.8 * sens_mult * dt
+			idle_look = 0.0
+		if absf(jy) > 0.15:
+			pitch = clampf(pitch - jy * 1.8 * sens_mult * (-1.0 if invert_y else 1.0) * dt, -1.2, 0.55)
+			idle_look = 0.0
 	var target := p.global_position + Vector3(0, 1.55, 0)
+	# лёжа и при смерти камера ниже
+	if p.state in ["down", "dead"]:
+		target.y -= 0.7
+	# на бегу камера сама заходит за спину, если её давно не трогали
+	if auto_cam and G.started and idle_look > 1.2 and p.state == "move" and p.last_speed > 4.0:
+		yaw = lerp_angle(yaw, p.facing + PI, 1.0 - exp(-1.4 * dt))
+	# бег по стене: камера отходит от стены, чтобы видеть героя
+	if p.state == "wallrun" and not p.wall_vertical:
+		target += p.wall_n * 0.9 + Vector3.UP * 0.3
 	var lock: Node = p.lock_target
 	if lock and is_instance_valid(lock):
 		var to: Vector3 = lock.global_position - p.global_position
@@ -98,7 +134,7 @@ func _process(_delta: float) -> void:
 	cam.global_position = cur_pos + shake_off
 	if cam.global_position.distance_to(target) > 0.05:
 		cam.look_at(target + shake_off * 0.5, Vector3.UP)
-	var fov := 72.0 + clampf(sp - 12.0, 0.0, 22.0) * 0.8
+	var fov := base_fov + clampf(sp - 12.0, 0.0, 22.0) * 0.8
 	if p.state in ["dash", "flash"]:
 		fov += 8.0
 	cam.fov = lerpf(cam.fov, fov, 1.0 - exp(-8.0 * dt))

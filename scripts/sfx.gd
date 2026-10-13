@@ -11,7 +11,7 @@ func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	for i in 14:
 		var p := AudioStreamPlayer.new()
-		p.bus = "Master"
+		p.bus = "SFX"
 		add_child(p)
 		players.append(p)
 	sounds["whoosh"] = _make(0.22, _whoosh)
