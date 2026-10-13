@@ -414,7 +414,7 @@ func _process(_dt: float) -> void:
 	# фонари мерцают, частицы летают вокруг героя
 	var t := G.real_time
 	for i in lantern_lights.size():
-		var l: OmniLight3D = lantern_lights[i]
+		var l = lantern_lights[i]
 		if is_instance_valid(l):
 			l.light_energy = 2.2 + sin(t * 9.0 + i * 1.7) * 0.18 + sin(t * 23.0 + i) * 0.1
 	if G.player and fireflies:
