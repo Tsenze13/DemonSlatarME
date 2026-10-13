@@ -21,7 +21,7 @@ func _ready() -> void:
 
 # --- частицы ------------------------------------------------------------
 func burst(pos: Vector3, col: Color, count: int, speed: float, size := 0.12,
-		life := 0.5, grav := 9.0, dir := Vector3.ZERO, spread := 1.0, drag := 2.0) -> void:
+		life := 0.5, grav := 9.0, dir := Vector3.ZERO, spread := 1.0, drag := 2.0, stretch := 0.0) -> void:
 	for i in count:
 		if parts.size() >= MAX_PARTS:
 			var old: Dictionary = parts.pop_front()
@@ -37,16 +37,17 @@ func burst(pos: Vector3, col: Color, count: int, speed: float, size := 0.12,
 		var s := size * randf_range(0.6, 1.3)
 		mi.scale = Vector3.ONE * s
 		var l := life * randf_range(0.6, 1.2)
-		parts.append({"n": mi, "v": v, "life": l, "max": l, "g": grav, "drag": drag, "s0": s,
+		parts.append({"n": mi, "v": v, "life": l, "max": l, "g": grav, "drag": drag, "s0": s, "st": stretch,
 			"spin": Vector3(randf_range(-9, 9), randf_range(-9, 9), randf_range(-9, 9))})
 
 func sparks(pos: Vector3, dir: Vector3, col := Color(1.0, 0.95, 0.7), n := 14) -> void:
-	burst(pos, col, n, 14.0, 0.07, 0.25, 12.0, dir, 0.7, 4.0)
-	burst(pos, Color.WHITE, n / 2, 9.0, 0.11, 0.15, 0.0, dir, 0.9, 6.0)
+	burst(pos, col, n, 14.0, 0.07, 0.25, 12.0, dir, 0.7, 4.0, 0.09)
+	burst(pos, Color.WHITE, n / 2, 9.0, 0.11, 0.15, 0.0, dir, 0.9, 6.0, 0.06)
 
 func blood(pos: Vector3, dir: Vector3, n := 12) -> void:
-	burst(pos, Color(0.45, 0.02, 0.1), n, 8.0, 0.14, 0.6, 16.0, dir + Vector3.UP * 0.4, 0.6, 1.5)
-	burst(pos, Color(0.75, 0.05, 0.15), n / 2, 11.0, 0.08, 0.4, 16.0, dir, 0.5, 1.5)
+	# брызги крови вытянуты по полёту, как мазки туши
+	burst(pos, Color(0.45, 0.02, 0.1), n, 8.0, 0.12, 0.6, 16.0, dir + Vector3.UP * 0.4, 0.6, 1.5, 0.12)
+	burst(pos, Color(0.75, 0.05, 0.15), n / 2, 11.0, 0.07, 0.4, 16.0, dir, 0.5, 1.5, 0.1)
 
 func dust(pos: Vector3, n := 10, col := Color(0.75, 0.68, 0.55)) -> void:
 	burst(pos + Vector3.UP * 0.1, col, n, 4.0, 0.22, 0.6, -1.0, Vector3.UP * 0.2, 1.0, 3.0)
@@ -167,6 +168,17 @@ func cut_flash(p: Vector3, line_dir: Vector3, col: Color, length := 1.5) -> void
 	var d := line_dir.normalized()
 	streak(p - d * length, p + d * length, col, 0.2, 0.2)
 	streak(p - d * length * 1.15, p + d * length * 1.15, Color(1, 1, 1), 0.14, 0.07)
+
+# Трещины в земле от сильного удара: тёмные лучи, медленно тают.
+func cracks(p: Vector3, n := 7, length := 1.8) -> void:
+	var g := Vector3(p.x, 0.03, p.z)
+	for i in n:
+		var a := TAU * float(i) / n + randf_range(-0.3, 0.3)
+		var d := Vector3(cos(a), 0, sin(a))
+		var mid := g + d * length * randf_range(0.4, 0.6) + d.cross(Vector3.UP) * randf_range(-0.2, 0.2)
+		var end := g + d * length * randf_range(0.8, 1.2)
+		streak(g, mid, Color(0.12, 0.1, 0.1), 2.5, 0.09)
+		streak(mid, end, Color(0.12, 0.1, 0.1), 2.5, 0.06)
 
 # Звезда удара: тонкие лучи во все стороны из точки попадания.
 func hit_star(p: Vector3, col: Color, n := 7, size := 0.9) -> void:
@@ -318,8 +330,16 @@ func _process(dt: float) -> void:
 		p.v *= maxf(0.0, 1.0 - p.drag * dt)
 		var n: MeshInstance3D = p.n
 		n.global_position += p.v * dt
-		n.rotation += p.spin * dt
-		n.scale = Vector3.ONE * p.s0 * clampf(p.life / p.max * 1.5, 0.0, 1.0)
+		var k: float = p.s0 * clampf(p.life / p.max * 1.5, 0.0, 1.0)
+		var vl: float = p.v.length()
+		if p.st > 0.0 and vl > 0.5:
+			# капля вытянута по направлению полёта
+			var z: Vector3 = p.v / vl
+			var up := Vector3.UP if absf(z.dot(Vector3.UP)) < 0.95 else Vector3.RIGHT
+			n.global_transform.basis = Basis.looking_at(z, up).scaled(Vector3(k, k, k * (1.0 + vl * p.st * 3.0)))
+		else:
+			n.rotation += p.spin * dt
+			n.scale = Vector3.ONE * k
 	for i in range(arcs.size() - 1, -1, -1):
 		var a: Dictionary = arcs[i]
 		a.life += dt

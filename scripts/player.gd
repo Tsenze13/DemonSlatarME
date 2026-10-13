@@ -905,6 +905,7 @@ func _st_move(dt: float, inp: Vector3) -> void:
 	if pressed("jump"):
 		if on_floor:
 			velocity.y = JUMP_V
+			takeoff_t = 0.0
 			G.sfx.play("jump", -8.0)
 			G.fx.dust(global_position, 5)
 		elif _try_kickoff(inp):
@@ -1735,6 +1736,7 @@ func _attack_fx() -> void:
 			G.fx.slash_arc(o, atk_dir, 90.0, 2.0, 150.0, 0.7, _sc(), Color.WHITE, 0, 0.3)
 			var gp := global_position + atk_dir * 2.2 + Vector3.UP * 0.1
 			G.fx.ring(gp, 0.8, Color(0.85, 0.8, 0.65), Color.WHITE, 0.45, 4.0, 0.4)
+			G.fx.cracks(gp, 7, 1.8)
 			G.fx.dust(gp, 18)
 			G.fx.burst(gp, Color(0.45, 0.4, 0.35), 10, 9.0, 0.18, 0.7, 20.0, Vector3.UP, 0.6)
 			G.sfx.play("boom", -2.0)
@@ -1903,6 +1905,7 @@ func _thunder_slam() -> void:
 	var a := atk
 	var c := global_position
 	G.fx.ring(c + Vector3.UP * 0.1, 1.2, Color(1.0, 0.8, 0.15), Color(1.0, 1.0, 0.85), 0.5, 6.0, 0.5)
+	G.fx.cracks(c, 10, 3.0)
 	G.fx.dust(c, 20)
 	G.sfx.play("thunder", 3.0, 0.8)
 	G.sfx.play("boom", -2.0)
@@ -2131,6 +2134,7 @@ func _ball_update(t: float) -> void:
 # Удар шаром о землю: волна, пыль и урон вокруг места удара.
 func _ball_impact(p: Vector3) -> void:
 	G.fx.ring(p, 0.8, Color(0.85, 0.8, 0.65), Color.WHITE, 0.45, 4.5, 0.45)
+	G.fx.cracks(p, 8, 2.2)
 	G.fx.dust(p, 22)
 	G.fx.burst(p, Color(0.45, 0.4, 0.35), 14, 10.0, 0.2, 0.7, 20.0, Vector3.UP, 0.6)
 	G.sfx.play("boom", -1.0, 0.9)
@@ -2611,6 +2615,7 @@ var land_t := 9.0
 var land_k := 0.0
 var roll_t := 9.0
 var idle_t := 0.0
+var takeoff_t := 9.0          # с момента толчка в прыжке
 var step_lead := 1.0          # какая нога впереди в ударе (1 — левая, -1 — правая)
 const DOWN_GETUP := 0.85      # сбит с ног: когда начинает вставать
 const DOWN_END := 1.25
@@ -2649,6 +2654,7 @@ func _animate(dt: float) -> void:
 	turn_s = lerpf(turn_s, dfa / maxf(dt, 0.001), 1.0 - exp(-10.0 * dt))
 	land_t += dt
 	roll_t += dt
+	takeoff_t += dt
 	var t_real := G.real_time
 
 	# базовая стойка с клинком: кулаки у живота, клинок вперёд и чуть вверх, лезвие вниз
@@ -2720,6 +2726,13 @@ func _animate(dt: float) -> void:
 			p.hips = Vector3(0, -8, sway * 2.5)
 			p.torso = Vector3(br * 3.0, -8, -sway * 2.0)
 			hips_y = HIP_Y - 0.05 + br * 0.008
+			# поворот на месте — переступает ногами
+			if absf(turn_s) > 2.0:
+				var st2 := sin(t_real * 16.0) * clampf(absf(turn_s) / 6.0, 0.0, 1.0)
+				p.leg_r += Vector3(-maxf(0.0, st2) * 25, 0, 0)
+				p.shin_r += Vector3(maxf(0.0, st2) * 35, 0, 0)
+				p.leg_l += Vector3(-maxf(0.0, -st2) * 25, 0, 0)
+				p.shin_l += Vector3(maxf(0.0, -st2) * 35, 0, 0)
 			if idle_t > 3.0:
 				p.head = Vector3(0, sin(idle_t * 0.45) * 22.0 * clampf((idle_t - 3.0) / 1.5, 0.0, 1.0), 0)
 		else:
@@ -2737,6 +2750,13 @@ func _animate(dt: float) -> void:
 			p.torso = Vector3(10 * apex - 4 * down, 0, 0)
 			p.head = Vector3(-6 * up + 10 * down, 0, 0)
 			lean = clampf(sp * 1.2, 0.0, 18.0) + 10.0 * apex - 6.0 * down
+			if takeoff_t < 0.14:
+				# толчок: опорная нога выпрямлена, маховая резко вверх, руки вверх
+				var kt := 1.0 - takeoff_t / 0.14
+				p.leg_l = p.leg_l.lerp(Vector3(18, 0, 0), kt)
+				p.shin_l = p.shin_l.lerp(Vector3(5, 0, 0), kt)
+				p.leg_r = p.leg_r.lerp(Vector3(-75, 0, 0), kt)
+				p.shin_r = p.shin_r.lerp(Vector3(95, 0, 0), kt)
 			if not drawn or sp > 9.0:
 				p.arm_r = Vector3(30 * up - 25 * down - 30 * apex, 0, -40 * up - 65 * down - 20 * apex)
 				p.arm_l = Vector3(30 * up - 25 * down - 30 * apex, 0, 40 * up + 65 * down + 20 * apex)

@@ -428,6 +428,7 @@ func _land_shock() -> void:
 	G.add_shake(0.55)
 	G.sfx.play("boom", 0.0)
 	G.fx.ring(global_position + Vector3.UP * 0.1, 0.8, Color(0.55, 0.05, 0.1), Color(1.0, 0.5, 0.35), 0.5, 4.5, 0.5)
+	G.fx.cracks(global_position, 9, 2.6)
 	G.fx.dust(global_position, 20)
 	G.fx.debris_burst(global_position, Color(0.4, 0.33, 0.25), 6, 0.25, Vector3.UP * 4.0, 4.0)
 	var p: Node3D = G.player
