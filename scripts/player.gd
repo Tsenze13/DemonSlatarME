@@ -689,6 +689,9 @@ func _haori_mat(col: Color, h: float, v0: float, v1: float, u_c: float, u_span: 
 	m.set_shader_parameter("tex_mul", Vector2(u_span / w * (-1.0 if flip else 1.0), (v1 - v0) / h))
 	m.set_shader_parameter("tex_offset", Vector2(u_c, (v0 + v1) * 0.5))
 	m.set_shader_parameter("tex_flat_top", true)
+	# в тени узор не проваливается в чёрное (ночью теневая сторона кокетки и рукавов
+	# выглядела «сломанной» чёрной заплаткой)
+	m.set_shader_parameter("shade_floor", 0.38)
 	haori_box_mats.append(m)
 	return m
 var haori_cloth_mats: Array = []

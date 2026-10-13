@@ -22,6 +22,6 @@ void fragment() {
 
 void light() {
 	float nl = clamp(dot(NORMAL, LIGHT), 0.0, 1.0) * ATTENUATION;
-	float l = nl > 0.5 ? 1.0 : (nl > 0.08 ? 0.6 : 0.0);
+	float l = nl > 0.5 ? 1.0 : (nl > 0.08 ? 0.6 : 0.38);   // тень не чёрная — узор читается
 	DIFFUSE_LIGHT += l * LIGHT_COLOR;
 }
