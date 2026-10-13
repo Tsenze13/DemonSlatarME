@@ -362,6 +362,37 @@ func _run() -> void:
 	await w(0.3)
 	await shot("08_form3")
 	await w(1.2)
+	# формы Пламени и Грома — свои движения и попадают по демону
+	var ok_forms := true
+	for bi in [1, 2]:
+		p.set_breath(bi)
+		for fi in 3:
+			d = demon()
+			if d == null:
+				break
+			d.hp = d.max_hp
+			d.atk_cd = 3.0
+			if d.state in ["leap_wind", "leap", "windup", "swing", "spikes", "air", "down"]:
+				d._set_state("chase")
+			p.global_position = d.global_position + Vector3(0, 0, 3.0)
+			p.velocity = Vector3.ZERO
+			p.hp = p.max_hp
+			p.breath = 100.0
+			p.cd = {"f1": 0.0, "f2": 0.0, "f3": 0.0}
+			await w(0.25)
+			var h0: int = p.hits_total
+			p.press("form%d" % (fi + 1))
+			await w(0.08)
+			var want: String = p.FORMS[G.breath_style][fi]
+			if p.atk_name != want:
+				ok_forms = false
+				print("форма ", G.breath_style, " ", fi + 1, ": ", p.atk_name, " вместо ", want)
+			await w(1.2)
+			if p.hits_total <= h0:
+				ok_forms = false
+				print("форма ", want, " не попала")
+	check(ok_forms, "формы Пламени и Грома свои и попадают")
+	p.set_breath(0)
 	# парирование: ждём замах демона
 	var parried := false
 	var tt := 0.0

@@ -153,13 +153,13 @@ func _draw() -> void:
 	var fx0 := s.x * 0.5 - fw * 1.5 - 12 * u
 	var fy := s.y - 92 * u
 	var keys := ["f1", "f2", "f3"]
-	var cost := [25, 30, 15]
+	var cost := [int(p.form_cost(1)), int(p.form_cost(2)), int(p.form_cost(3))]
 	for i in 3:
 		var r := Rect2(fx0 + i * (fw + 12 * u), fy, fw, 58 * u)
 		draw_rect(r.grow(2), Color(0.02, 0.02, 0.05, 0.85))
 		draw_rect(r, Color(0.08, 0.14, 0.3, 0.85))
 		var cdv: float = p.cd[keys[i]]
-		var maxcd: float = 2.5 if i == 0 else (4.0 if i == 1 else 3.0)
+		var maxcd: float = p.form_cd(i + 1)
 		if cdv > 0.0:
 			draw_rect(Rect2(r.position, Vector2(r.size.x * cdv / maxcd, r.size.y)), Color(0, 0, 0, 0.55))
 		var ok: bool = p.breath >= cost[i] and cdv <= 0.0

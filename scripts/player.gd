@@ -68,12 +68,44 @@ const ATK := {
 	"f1": {"dur": 0.66, "hit0": 0.16, "hit1": 0.34, "dmg": 30, "range": 5.6, "arc": 220, "lunge": 24.0,
 		"power": 2, "stagger": 1.0, "hitstop": 0.12, "shake": 0.5, "next": "",
 		"arm0": Vector3(-90, -130, 0), "arm1": Vector3(-85, 125, 0), "fore0": -10, "fore1": 0, "tw0": -60, "tw1": 60,
-		"fx": "wave_big", "breath": 25.0, "cd": 2.5, "form": true, "impact": true, "knock": 10.0},
+		"fx": "wave_big", "breath": 25.0, "cd": 2.5, "form": true, "fi": 1, "impact": true, "knock": 10.0},
 	# вторая форма — Водоворот: прыжок с вращением, много ударов
 	"f2": {"dur": 0.95, "hit0": 0.12, "hit1": 0.78, "dmg": 8, "range": 4.4, "arc": 360, "lunge": 6.0,
 		"power": 2, "stagger": 0.4, "hitstop": 0.04, "shake": 0.14, "next": "",
 		"arm0": Vector3(-95, -90, 0), "arm1": Vector3(-95, -90, 0), "fore0": 0, "fore1": 0, "tw0": 0, "tw1": 0,
-		"spin": 2.5, "fx": "whirl", "breath": 30.0, "cd": 4.0, "form": true, "multi": 0.11, "jump": 10.0},
+		"spin": 2.5, "fx": "whirl", "breath": 30.0, "cd": 4.0, "form": true, "fi": 2, "multi": 0.11, "jump": 10.0},
+	# --- Пламя: свои формы ---
+	# 1. Восход пламени — восходящий срез с прыжком, подбрасывает демона вверх
+	"ff1": {"dur": 0.7, "hit0": 0.12, "hit1": 0.26, "dmg": 26, "range": 3.8, "arc": 150, "lunge": 10.0,
+		"power": 2, "stagger": 0.8, "hitstop": 0.11, "shake": 0.4, "next": "",
+		"arm0": Vector3(-5, -40, 0), "arm1": Vector3(-190, 20, 0), "fore0": -20, "fore1": 0, "tw0": -20, "tw1": 15,
+		"fx": "flame_rise", "breath": 25.0, "cd": 2.5, "form": true, "fi": 1, "launch": true, "jump": 11.0, "wr": 180.0, "impact": true},
+	# 2. Огненное колесо — кувырок вперёд через голову, вертикальное огненное колесо, несколько ударов по пути
+	"ff2": {"dur": 0.8, "hit0": 0.1, "hit1": 0.58, "dmg": 9, "range": 3.4, "arc": 140, "lunge": 0.0,
+		"power": 1, "stagger": 0.4, "hitstop": 0.04, "shake": 0.15, "next": "",
+		"arm0": Vector3(-170, 0, 0), "arm1": Vector3(-170, 0, 0), "fore0": -10, "fore1": -10, "tw0": 0, "tw1": 0,
+		"fx": "flame_wheel", "breath": 30.0, "cd": 4.0, "form": true, "fi": 2, "multi": 0.12, "wheel": 15.0, "wr": 0.0},
+	# 3. Пламенный тигр — долгий замах, удар сверху: огненная волна по земле на 9 м
+	"ff3": {"dur": 1.05, "hit0": 0.52, "hit1": 0.66, "dmg": 40, "range": 9.0, "arc": 34, "lunge": 4.0,
+		"power": 2, "stagger": 1.2, "hitstop": 0.14, "shake": 0.6, "next": "",
+		"arm0": Vector3(-205, 0, 0), "arm1": Vector3(-25, 0, 0), "fore0": -40, "fore1": 0, "tw0": -15, "tw1": 10,
+		"fx": "flame_tiger", "breath": 35.0, "cd": 6.0, "form": true, "fi": 3, "knock": 11.0, "wr": 0.0, "impact": true},
+	# --- Гром: свои формы ---
+	# 1. Удар молнии — выхват-рывок на 12 м насквозь, режет всех на линии
+	"tf1": {"dur": 0.5, "hit0": 0.04, "hit1": 0.2, "dmg": 30, "range": 3.0, "arc": 360, "lunge": 0.0,
+		"power": 2, "stagger": 0.9, "hitstop": 0.12, "shake": 0.45, "next": "",
+		"arm0": Vector3(-10, 75, 25), "arm1": Vector3(-88, -125, 0), "fore0": -30, "fore1": 0, "tw0": 55, "tw1": -55,
+		"fx": "bolt_dash", "breath": 25.0, "cd": 2.5, "form": true, "fi": 1, "dash_line": 12.0, "rev": true, "impact": true},
+	# 2. Шестикратный разряд — шесть вспышек-шагов вокруг цели, удар на каждом
+	"tf2": {"dur": 0.85, "hit0": 0.08, "hit1": 0.7, "dmg": 8, "range": 3.0, "arc": 360, "lunge": 0.0,
+		"power": 1, "stagger": 0.35, "hitstop": 0.04, "shake": 0.16, "next": "",
+		"arm0": Vector3(-80, 110, 0), "arm1": Vector3(-85, -115, 0), "fore0": -10, "fore1": 0, "tw0": 40, "tw1": -40,
+		"fx": "bolt_six", "breath": 30.0, "cd": 4.0, "form": true, "fi": 2, "multi": 0.1, "six": true, "rev": true},
+	# 3. Раскат грома — прыжок и удар сверху, молнии бьют во всех демонов вокруг
+	"tf3": {"dur": 1.0, "hit0": 0.32, "hit1": 0.95, "dmg": 24, "range": 9.0, "arc": 360, "lunge": 3.0,
+		"power": 2, "stagger": 1.0, "hitstop": 0.12, "shake": 0.6, "next": "",
+		"arm0": Vector3(-200, 0, 0), "arm1": Vector3(-30, 0, 0), "fore0": -30, "fore1": 0, "tw0": -10, "tw1": 10,
+		"fx": "bolt_slam", "breath": 35.0, "cd": 6.0, "form": true, "fi": 3, "jump": 12.0, "slam": true, "wr": 0.0, "knock": 8.0},
 	# добивающий / контр-удар
 	"counter": {"dur": 0.5, "hit0": 0.02, "hit1": 0.12, "dmg": 32, "range": 3.6, "arc": 200, "lunge": 0.0,
 		"power": 2, "stagger": 1.2, "hitstop": 0.12, "shake": 0.5, "next": "",
@@ -282,6 +314,7 @@ var flail
 var fchain
 var ball_impact := false
 var form_from := Vector3.ZERO      # где начался удар (для следа молнии)
+var form_flag := 0                 # шаги формы (кувырки колеса, вспышки, приземление)
 const NAG_H := Vector3(-0.12, 0.04, 0.28)
 const NAG_D := Vector3(0.12, 0.3, 1.0)
 const FL_H := Vector3(-0.3, 0.06, 0.24)
@@ -1376,12 +1409,24 @@ func _st_flash(_dt: float) -> void:
 		_set_state("move")
 
 # ---------------------------------------------------------------------
+# Формы каждого стиля дыхания (третья у Прилива — стойка-контратака).
+const FORMS := {"water": ["f1", "f2", "stance"], "flame": ["ff1", "ff2", "ff3"], "thunder": ["tf1", "tf2", "tf3"]}
+
+func form_cost(i: int) -> float:
+	var k: String = FORMS.get(G.breath_style, FORMS.water)[i - 1]
+	return 15.0 if k == "stance" else float(ATK[k].breath)
+
+func form_cd(i: int) -> float:
+	var k: String = FORMS.get(G.breath_style, FORMS.water)[i - 1]
+	return 3.0 if k == "stance" else float(ATK[k].cd)
+
 func _try_form(i: int) -> void:
 	var key := "f%d" % i
 	if cd[key] > 0.0:
 		G.sfx.play("clang", -18.0, 2.0)
 		return
-	if i == 3:
+	var fk: String = FORMS.get(G.breath_style, FORMS.water)[i - 1]
+	if fk == "stance":
 		if breath < 15.0:
 			_no_breath()
 			return
@@ -1395,13 +1440,13 @@ func _try_form(i: int) -> void:
 		var bb: Dictionary = G.br()
 		G.fx.ring(global_position + Vector3.UP * 0.05, 0.6, bb.a, bb.b, 0.6, 3.0, 0.2)
 		return
-	var a: Dictionary = ATK[key]
+	var a: Dictionary = ATK[fk]
 	if breath < a.breath:
 		_no_breath()
 		return
 	breath -= a.breath
 	cd[key] = a.cd
-	_start_attack(key)
+	_start_attack(fk)
 
 func _no_breath() -> void:
 	G.sfx.play("hurt", -14.0, 1.6)
@@ -1498,11 +1543,17 @@ func _start_attack(nm: String) -> void:
 	elif atk.get("air", false):
 		velocity.y = maxf(velocity.y, 2.0)
 	form_from = global_position
+	form_flag = 0
 	if atk.has("form"):
 		G.fx.breath_sound(-2.0)
 		G.do_flash(0.25, G.br().flash)
 		if G.hud:
-			G.hud.form_title(nm)
+			G.hud.form_title("f%d" % int(atk.get("fi", 1)))
+	if atk.has("dash_line"):
+		# Удар молнии: до демона и сквозь него, или на полную длину
+		iai_dist = atk.dash_line
+		invuln_t = 0.35
+		sonic_boom(atk_dir)
 	G.sfx.play("whoosh_big" if atk.power >= 2 else "whoosh", -4.0, 1.0)
 
 func _st_attack(dt: float, inp: Vector3) -> void:
@@ -1520,11 +1571,37 @@ func _st_attack(dt: float, inp: Vector3) -> void:
 		sp = lunge * (0.4 + 0.6 * Vox.ease_out(t / maxf(0.01, a.hit1)))
 	else:
 		sp = lunge * maxf(0.0, 1.0 - (t - a.hit1) * 6.0) * 0.3
-	if G.breath_style == "thunder" and a.has("form") and t < a.hit1:
-		# Гром: рывок формы быстрее, за героем золотые силуэты
-		sp *= 1.7
-		G.fx.afterimage(model, Color(1.0, 0.85, 0.3), 0.18)
 	var hv := atk_dir * sp
+	if a.has("dash_line"):
+		# молния: рывок за 0.12 с, золотые силуэты
+		hv = atk_dir * (iai_dist / 0.12) if (t >= 0.04 and t < 0.16) else Vector3.ZERO
+		if t < 0.16:
+			G.fx.afterimage(model, Color(1.0, 0.85, 0.3), 0.25)
+			G.speedlines = 1.0
+	if a.has("wheel"):
+		# огненное колесо: катится вперёд, кувыркаясь
+		hv = atk_dir * (a.wheel if t >= a.hit0 and t <= a.hit1 else 2.0)
+		if t >= a.hit0 and form_flag == 0:
+			form_flag = 1
+			flip_t = 0.42
+			flip_axis = 1.0
+		if t > a.hit0 + 0.42 and form_flag == 1 and t < a.hit1 - 0.1:
+			form_flag = 2
+			flip_t = 0.42
+	if a.has("slam"):
+		hv = atk_dir * (a.lunge if t < a.hit0 else 0.0)
+		if t >= a.hit0 and form_flag == 0:
+			form_flag = 1
+			velocity.y = -34.0
+		if form_flag == 1 and t > a.hit0 + 0.02 and is_on_floor():
+			form_flag = 2
+			_thunder_slam()
+	if a.has("six"):
+		hv = Vector3.ZERO
+	if atk_name == "ff3" and t < a.hit0:
+		# замах тигра: вокруг собирается огонь
+		if randf() < 0.5:
+			G.fx.embers(global_position + Vector3(randf_range(-1, 1), 0.3, randf_range(-1, 1)), 2, 0.8)
 	if atk_name == "iai":
 		hv = atk_dir * (iai_dist / IAI_TIME) if (t >= 0.02 and t < 0.02 + IAI_TIME) else Vector3.ZERO
 		if t < 0.02 + IAI_TIME:
@@ -1563,6 +1640,12 @@ func _st_attack(dt: float, inp: Vector3) -> void:
 					G.fx.arc(oo, Basis(Vector3.RIGHT, deg_to_rad(randf_range(-12, 12))), 2.6, 0.0, PI * 1.6, 0.3,
 						Color(0.6, 0.65, 0.75), Color.WHITE, 0.25, 0, 0.0, 0.06)
 					G.sfx.play("whoosh", -8.0, 1.5)
+				elif a.has("six"):
+					_six_step()
+				elif a.has("wheel"):
+					G.fx.breath_arc(global_position + Vector3.UP * 1.0, atk_dir, 90.0, 1.6, 300.0, 0.8, 0.3)
+					G.fx.embers(global_position + Vector3.UP, 6, 1.0)
+					G.sfx.play("fire", -10.0, 1.3)
 				else:
 					_attack_fx_tick()
 		if not hit_set.has("_fx"):
@@ -1640,6 +1723,39 @@ func _attack_fx() -> void:
 			G.sfx.play("clang", -10.0, 1.3)
 		"chain_whirl":
 			G.sfx.play("whoosh_big", -6.0, 1.2)
+		"flame_rise":
+			# столб огня вверх и огненное кольцо у ног
+			G.fx.breath_arc(o, atk_dir, -90.0, 2.4, 170.0, 1.6, 0.6, true)
+			G.fx.ring(global_position + Vector3.UP * 0.1, 1.0, Color(1.0, 0.4, 0.08), Color(1.0, 0.9, 0.5), 0.45, 3.0, 0.5)
+			for k in 3:
+				G.fx.embers(global_position + atk_dir * 1.5 + Vector3.UP * (0.5 + k), 10, 1.4)
+			G.fx.breath_sound(0.0, 0.9)
+			G.add_shake(0.3)
+		"flame_wheel":
+			G.fx.breath_sound(-3.0, 1.1)
+		"flame_tiger":
+			# огромный удар сверху и огненная волна по земле до 9 м
+			G.fx.breath_arc(o, atk_dir, 90.0, 3.2, 170.0, 2.2, 0.7)
+			for k in 5:
+				var gp3 := global_position + atk_dir * (1.8 + k * 1.7) + Vector3.UP * 0.6
+				G.fx.breath_arc(gp3, atk_dir, 90.0, 1.2 + k * 0.1, 140.0, 1.0, 0.55 + k * 0.05)
+				G.fx.embers(gp3, 10, 1.3)
+			G.fx.ring(global_position + atk_dir * 4.5, 1.2, Color(1.0, 0.4, 0.08), Color(1.0, 0.9, 0.5), 0.5, 4.0, 0.6)
+			G.fx.breath_sound(2.0, 0.75)
+			G.sfx.play("boom", -2.0, 0.9)
+			G.speedlines = 1.0
+			G.add_shake(0.6)
+		"bolt_dash":
+			# золотая молния вдоль всего рывка
+			var to := global_position + atk_dir * iai_dist + Vector3.UP
+			G.fx.lightning(global_position + Vector3.UP, to, Color(1.0, 0.8, 0.15), 0.6, 0.45, 4, 0.16)
+			G.fx.lightning(global_position + Vector3.UP * 1.3, to + Vector3.UP * 0.3, Color(1.0, 0.92, 0.5), 0.5, 0.3, 2, 0.08)
+			G.fx.breath_sound(1.0, 1.0)
+			G.sfx.play("sonic", -2.0)
+		"bolt_six":
+			G.fx.breath_sound(-2.0, 1.2)
+		"bolt_slam":
+			G.sfx.play("whoosh_big", -3.0, 0.8)
 		"slash_long":
 			G.fx.slash_arc(o, atk_dir, a.get("roll", 0.0), 3.0, 160.0, 0.6, Color(0.6, 0.82, 1.0), Color.WHITE, 0, 0.24, a.get("rev", false))
 		"thrust":
@@ -1709,6 +1825,75 @@ func _attack_fx_tick() -> void:
 		var d := Vector3(randf_range(-1, 1), 0, randf_range(-1, 1)).normalized()
 		G.fx.lightning(o + d * 0.6, o + d * 2.6 + Vector3.UP * randf_range(-0.5, 0.8), Color(1.0, 0.8, 0.15), 0.12, 0.3, 1, 0.06)
 	G.sfx.play("whoosh", -8.0, 1.2)
+
+# --- формы Грома ---
+# Удар по всем на линии рывка (Удар молнии).
+func _line_hits() -> void:
+	var a := atk
+	var p0 := form_from + Vector3.UP
+	var p1 := global_position + Vector3.UP
+	for e in G.enemies:
+		if not is_instance_valid(e) or e.is_dead() or hit_set.has(e.get_instance_id()):
+			continue
+		var r: Array = seg_seg(p0, p1, e.global_position + Vector3.UP * 0.3, e.global_position + Vector3.UP * 2.3)
+		if r[0] > e.radius + 1.3:
+			continue
+		hit_set[e.get_instance_id()] = true
+		var res: Dictionary = e.take_hit(a.dmg, atk_dir, a)
+		_on_hit(e, res, atk_dir)
+		G.fx.lightning(e.global_position + Vector3.UP * 4.0, e.global_position + Vector3.UP, Color(1.0, 0.85, 0.2), 0.25, 0.35, 1, 0.1)
+
+# Шестикратный разряд: следующий шаг-вспышка вокруг цели и удар.
+func _six_step() -> void:
+	var prev := global_position
+	var tgt := _aim_target(10.0)
+	var n := form_flag
+	form_flag += 1
+	var np: Vector3
+	if tgt:
+		var to: Vector3 = global_position - tgt.global_position
+		to.y = 0
+		if to.length() < 0.1:
+			to = -atk_dir
+		var ang := (1.0 if n % 2 == 0 else -1.0) * (2.2 + n * 0.25)
+		np = tgt.global_position + to.normalized().rotated(Vector3.UP, ang) * (tgt.radius + 1.4)
+		np.y = global_position.y
+		var look: Vector3 = tgt.global_position - np
+		look.y = 0
+		facing = atan2(look.x, look.z)
+		atk_dir = look.normalized()
+	else:
+		var side := atk_dir.cross(Vector3.UP) * (1.6 if n % 2 == 0 else -1.6)
+		np = global_position + atk_dir * 2.2 + side
+	global_position = np
+	G.fx.lightning(prev + Vector3.UP, np + Vector3.UP, Color(1.0, 0.8, 0.15), 0.3, 0.3, 1, 0.1)
+	G.fx.afterimage(model, Color(1.0, 0.85, 0.3), 0.3)
+	G.fx.breath_arc(np + Vector3.UP * 1.1, atk_dir, randf_range(-40, 40), 1.8, 150.0, 0.6, 0.25, n % 2 == 1)
+	G.sfx.play("thunder", -8.0, 1.4)
+
+# Раскат грома: при ударе о землю молнии бьют во всех демонов вокруг.
+func _thunder_slam() -> void:
+	var a := atk
+	var c := global_position
+	G.fx.ring(c + Vector3.UP * 0.1, 1.2, Color(1.0, 0.8, 0.15), Color(1.0, 1.0, 0.85), 0.5, 6.0, 0.5)
+	G.fx.dust(c, 20)
+	G.sfx.play("thunder", 3.0, 0.8)
+	G.sfx.play("boom", -2.0)
+	G.add_shake(0.7)
+	G.impact(0.08, 1)
+	for k in 6:
+		var d := Vector3(randf_range(-1, 1), 0, randf_range(-1, 1)).normalized() * randf_range(2.0, 7.0)
+		G.fx.lightning(c + d + Vector3.UP * 9.0, c + d, Color(1.0, 0.85, 0.2), 0.35, 0.5, 2, 0.12)
+	for e in G.enemies:
+		if not is_instance_valid(e) or e.is_dead():
+			continue
+		var to: Vector3 = e.global_position - c
+		to.y = 0
+		if to.length() > a.range + e.radius:
+			continue
+		G.fx.lightning(e.global_position + Vector3.UP * 10.0, e.global_position + Vector3.UP * 1.2, Color(1.0, 0.9, 0.3), 0.45, 0.6, 3, 0.18)
+		var res: Dictionary = e.take_hit(a.dmg, to.normalized() if to.length() > 0.1 else atk_dir, a)
+		_on_hit(e, res, to.normalized() if to.length() > 0.1 else atk_dir)
 
 # ---------------------------------------------------------------------
 # Попадание по движению клинка: отрезок лезвия (с «ветром» SWEEP_EXT) в этом
@@ -1984,6 +2169,11 @@ func _check_hits() -> void:
 	var a := atk
 	if atk_name == "chain":
 		_throw_hits()
+		return
+	if a.has("slam"):
+		return            # урон — молниями при приземлении (_thunder_slam)
+	if a.has("dash_line"):
+		_line_hits()
 		return
 	if a.has("ball"):
 		_ball_hits(1.0)
