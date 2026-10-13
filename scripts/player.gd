@@ -293,20 +293,29 @@ func _build_model() -> void:
 	Vox.box(torso, Vector3(0.44, 0.5, 0.25), Vector3(0, 0.26, 0), uni, true, 0.0, "cloth", true)
 	Vox.box(torso, Vector3(0.45, 0.08, 0.26), Vector3(0, 0.03, 0), belt)
 	Vox.box(torso, Vector3(0.1, 0.22, 0.02), Vector3(0, 0.37, 0.127), Color(0.85, 0.85, 0.82), false)  # ворот
+	# пуговицы формы
+	for k in 3:
+		Vox.box(torso, Vector3(0.035, 0.035, 0.02), Vector3(0, 0.15 + k * 0.08, 0.128), Color(0.85, 0.7, 0.3), false, 0.2)
 	var head := Vox.pivot(torso, Vector3(0, 0.52, 0), "head")
 	Vox.box(head, Vector3(0.12, 0.08, 0.12), Vector3(0, 0.02, 0), skin)
 	Vox.box(head, Vector3(0.3, 0.3, 0.3), Vector3(0, 0.2, 0), skin)
-	Vox.box(head, Vector3(0.06, 0.07, 0.02), Vector3(-0.07, 0.19, 0.151), Color(0.1, 0.05, 0.08), false)
-	Vox.box(head, Vector3(0.06, 0.07, 0.02), Vector3(0.07, 0.19, 0.151), Color(0.1, 0.05, 0.08), false)
-	Vox.box(head, Vector3(0.03, 0.035, 0.021), Vector3(-0.06, 0.205, 0.154), Color(0.5, 0.85, 1.0), false, 0.6)
-	Vox.box(head, Vector3(0.03, 0.035, 0.021), Vector3(0.08, 0.205, 0.154), Color(0.5, 0.85, 1.0), false, 0.6)
-	Vox.box(head, Vector3(0.08, 0.02, 0.02), Vector3(0, 0.1, 0.151), Color(0.6, 0.35, 0.32), false)   # рот
-	# волосы: шапка, чёлка прядями, виски, затылок
+	for sx in [-1.0, 1.0]:
+		Vox.box(head, Vector3(0.03, 0.07, 0.05), Vector3(0.163 * sx, 0.19, 0.0), skin.darkened(0.08))   # уши
+	_build_face(head, skin, hair)
+	# волосы: шапка с торчащими прядями, чёлка, виски, затылок
 	Vox.box(head, Vector3(0.34, 0.1, 0.34), Vector3(0, 0.39, -0.01), hair)
 	Vox.box(head, Vector3(0.32, 0.07, 0.06), Vector3(0, 0.335, 0.15), hair)
-	Vox.box(head, Vector3(0.06, 0.12, 0.05), Vector3(-0.11, 0.27, 0.155), hair)
-	Vox.box(head, Vector3(0.06, 0.09, 0.05), Vector3(0.02, 0.285, 0.16), hair)
-	Vox.box(head, Vector3(0.05, 0.08, 0.05), Vector3(0.12, 0.28, 0.155), hair_tip)
+	var bangs := [[-0.12, 0.27, 0.12, 8.0], [-0.055, 0.28, 0.1, -4.0], [0.01, 0.275, 0.11, 6.0], [0.075, 0.285, 0.09, -8.0], [0.13, 0.275, 0.1, 10.0]]
+	for i in bangs.size():
+		var bg: Array = bangs[i]
+		var strand := Vox.box(head, Vector3(0.06, bg[2], 0.05), Vector3(bg[0], bg[1], 0.157), hair_tip if i == 4 else hair)
+		strand.rotation_degrees = Vector3(0, 0, bg[3])
+	var spikes := [[Vector3(0, 0.45, -0.06), Vector3(-25, 0, 0)], [Vector3(-0.1, 0.44, 0.02), Vector3(-10, 0, 25)],
+		[Vector3(0.1, 0.44, 0.02), Vector3(-10, 0, -25)], [Vector3(-0.09, 0.42, -0.14), Vector3(-45, 0, 20)],
+		[Vector3(0.09, 0.42, -0.14), Vector3(-45, 0, -20)], [Vector3(0, 0.36, -0.21), Vector3(-70, 0, 0)]]
+	for sp in spikes:
+		var spk := Vox.box(head, Vector3(0.09, 0.11, 0.09), sp[0], hair)
+		spk.rotation_degrees = sp[1]
 	Vox.box(head, Vector3(0.34, 0.28, 0.08), Vector3(0, 0.22, -0.16), hair)
 	Vox.box(head, Vector3(0.04, 0.24, 0.28), Vector3(-0.165, 0.24, -0.01), hair)
 	Vox.box(head, Vector3(0.04, 0.24, 0.28), Vector3(0.165, 0.24, -0.01), hair)
@@ -327,7 +336,10 @@ func _build_model() -> void:
 		sl1.material_override = hm
 		var fore := Vox.pivot(arm, Vector3(0, -0.27, 0), "fore_" + nm)
 		Vox.box(fore, Vector3(0.14, 0.25, 0.14), Vector3(0, -0.12, 0), uni)
-		Vox.box(fore, Vector3(0.13, 0.1, 0.13), Vector3(0, -0.28, 0), skin)
+		# кулак: ладонь, ряд костяшек спереди, большой палец к телу
+		Vox.box(fore, Vector3(0.12, 0.1, 0.12), Vector3(0, -0.28, 0), skin)
+		Vox.box(fore, Vector3(0.125, 0.065, 0.04), Vector3(0, -0.3, 0.058), skin.darkened(0.06))
+		Vox.box(fore, Vector3(0.035, 0.055, 0.05), Vector3(-0.06 * side, -0.265, 0.04), skin)
 		var sl2 := Vox.box(fore, Vector3(0.26, 0.2, 0.27), Vector3(0.01 * side, -0.05, -0.01), hcol)
 		sl2.material_override = hm
 		arms[nm] = [arm, fore]
@@ -357,10 +369,16 @@ func _build_model() -> void:
 		Vox.box(leg, Vector3(0.19, 0.42, 0.2), Vector3(0, -0.2, 0), uni, true, 0.0, "cloth", true)
 		var shin := Vox.pivot(leg, Vector3(0, -0.42, 0), "shin_" + nm)
 		Vox.box(shin, Vector3(0.17, 0.24, 0.18), Vector3(0, -0.1, 0), uni, true, 0.0, "cloth", true)
-		Vox.box(shin, Vector3(0.165, 0.16, 0.175), Vector3(0, -0.3, 0), belt)   # обмотки
-		Vox.box(shin, Vector3(0.16, 0.07, 0.26), Vector3(0, -0.42, 0.04), Color(0.2, 0.15, 0.12))
+		Vox.box(shin, Vector3(0.165, 0.15, 0.175), Vector3(0, -0.27, 0), belt)   # обмотки
+		Vox.box(shin, Vector3(0.17, 0.025, 0.18), Vector3(0, -0.22, 0), belt.darkened(0.15), false)
+		# стопа: таби и сандалии-варадзи на ремешках, гнётся в голеностопе
+		var foot := Vox.pivot(shin, Vector3(0, -0.36, 0.0), "foot_" + nm)
+		Vox.box(foot, Vector3(0.15, 0.08, 0.22), Vector3(0, -0.04, 0.04), Color(0.9, 0.89, 0.84))
+		Vox.box(foot, Vector3(0.165, 0.03, 0.255), Vector3(0, -0.09, 0.045), Color(0.62, 0.48, 0.3))
+		Vox.box(foot, Vector3(0.155, 0.02, 0.03), Vector3(0, -0.035, 0.11), Color(0.25, 0.18, 0.14), false)
+		Vox.box(foot, Vector3(0.155, 0.02, 0.03), Vector3(0, -0.035, -0.02), Color(0.25, 0.18, 0.14), false)
 
-	for n in ["hips", "torso", "head", "arm_r", "fore_r", "arm_l", "fore_l", "leg_r", "shin_r", "leg_l", "shin_l", "sword"]:
+	for n in ["hips", "torso", "head", "arm_r", "fore_r", "arm_l", "fore_l", "leg_r", "shin_r", "leg_l", "shin_l", "sword", "foot_r", "foot_l"]:
 		J[n] = model.find_child(n, true, false)
 		rest[n] = Vector3.ZERO
 
@@ -421,6 +439,110 @@ func _build_model() -> void:
 	model.add_child(ribbon)
 	ribbon.setup()
 	cloths.append(ribbon)
+	# пряди у висков — на физике
+	for sx in [-1.0, 1.0]:
+		var lock = MeshInstance3D.new()
+		lock.set_script(Cloth)
+		lock.attach = head
+		lock.anchors = [Vector3(0.155 * sx, 0.3, 0.1)]
+		lock.cols = 1
+		lock.rows = 3
+		lock.seg = 0.065
+		lock.mode = "chain"
+		lock.chain_size = Vector3(0.05, 0.05, 0.065)
+		lock.chain_col = hair
+		lock.chain_taper = 0.75
+		lock.gravity = 8.0
+		model.add_child(lock)
+		lock.setup()
+		cloths.append(lock)
+
+# Лицо: глаза (белок, радужка, зрачок, блик, веко), брови, нос, рот. Мимика — _face_anim.
+var eyes: Array = []
+var brows: Array = []
+var mouth: Node3D
+var mouth_open: Node3D
+var blink_t := 3.0
+var face_brow := 0.0
+var face_open := 0.0
+var face_squint := 0.0
+
+func _build_face(head: Node3D, skin: Color, hair: Color) -> void:
+	var face := Vox.pivot(head, Vector3(0, 0.2, 0.151), "face")
+	var white := Color(0.97, 0.96, 0.94)
+	var iris := Color(0.3, 0.55, 0.95)
+	var dark := Color(0.08, 0.05, 0.08)
+	for sx in [-1.0, 1.0]:
+		var eye := Vox.pivot(face, Vector3(0.068 * sx, -0.012, 0))
+		Vox.box(eye, Vector3(0.075, 0.068, 0.006), Vector3.ZERO, white, false)
+		Vox.box(eye, Vector3(0.044, 0.066, 0.008), Vector3(-0.01 * sx, -0.002, 0.001), iris, false, 0.35)
+		Vox.box(eye, Vector3(0.024, 0.034, 0.01), Vector3(-0.01 * sx, -0.012, 0.002), dark, false)
+		Vox.box(eye, Vector3(0.014, 0.016, 0.012), Vector3(-0.002 * sx, 0.014, 0.003), Color.WHITE, false, 1.0)
+		Vox.box(eye, Vector3(0.084, 0.016, 0.012), Vector3(0, 0.036, 0.002), dark, false)    # верхнее веко с ресницами
+		eyes.append(eye)
+		var brow := Vox.pivot(face, Vector3(0.07 * sx, 0.058, 0.004))
+		Vox.box(brow, Vector3(0.082, 0.02, 0.012), Vector3.ZERO, hair, false)
+		brows.append(brow)
+	Vox.box(face, Vector3(0.022, 0.03, 0.008), Vector3(0, -0.05, 0.0), skin.darkened(0.12), false)   # нос
+	mouth = Vox.pivot(face, Vector3(0, -0.098, 0.001))
+	Vox.box(mouth, Vector3(0.07, 0.016, 0.006), Vector3.ZERO, Color(0.55, 0.3, 0.3), false)
+	mouth_open = Vox.pivot(face, Vector3(0, -0.1, 0.002))
+	Vox.box(mouth_open, Vector3(0.06, 0.045, 0.006), Vector3.ZERO, Color(0.3, 0.06, 0.1), false)
+	Vox.box(mouth_open, Vector3(0.05, 0.01, 0.008), Vector3(0, 0.014, 0.001), Color(0.95, 0.95, 0.92), false)  # зубы
+	mouth_open.scale = Vector3(1, 0.05, 1)
+
+# Мимика: в бою — сдвинутые брови и крик на ударе, от боли — зажмуривается,
+# на дыхании — прикрытые глаза, без сознания — закрыты. Моргает сам.
+func _face_anim(dt: float) -> void:
+	if eyes.is_empty():
+		return
+	var brow := 0.0          # >0 — злые (внутренние концы вниз), <0 — испуг
+	var open := 0.0          # рот открыт
+	var squint := 0.0        # прищур / закрытые глаза
+	match state:
+		"attack", "finisher":
+			brow = 1.0
+			var a := atk if state == "attack" else ATK["dslash"]
+			if state_t >= a.hit0 - 0.04 and state_t <= a.hit1 + 0.1:
+				open = 1.0
+			squint = 0.25
+		"dash", "flash", "wallrun", "draw", "parry", "stance":
+			brow = 0.8
+			squint = 0.2
+		"hurt", "down":
+			brow = -1.0
+			open = 0.7
+			squint = 0.85
+		"breathe":
+			squint = 0.6
+			open = 0.25
+		"dead":
+			squint = 1.0
+			brow = -0.5
+		_:
+			if sprinting:
+				brow = 0.7
+				open = 0.3
+			elif drawn:
+				brow = 0.35
+	blink_t -= dt
+	if blink_t < 0.0:
+		if blink_t > -0.12:
+			squint = maxf(squint, 1.0)
+		else:
+			blink_t = randf_range(2.5, 5.0)
+	var r := 1.0 - exp(-18.0 * dt)
+	face_brow = lerpf(face_brow, brow, r)
+	face_open = lerpf(face_open, open, r)
+	face_squint = lerpf(face_squint, squint, 1.0 - exp(-30.0 * dt))
+	for i in 2:
+		var sx := -1.0 if i == 0 else 1.0
+		(eyes[i] as Node3D).scale = Vector3(1, maxf(0.08, 1.0 - face_squint * 0.92), 1)
+		var b: Node3D = brows[i]
+		b.rotation_degrees = Vector3(0, 0, 18.0 * sx * face_brow)
+		b.position.y = 0.058 - 0.012 * maxf(0.0, face_brow) + 0.01 * maxf(0.0, -face_brow)
+	mouth_open.scale = Vector3(1, maxf(0.05, face_open), 1)
+	mouth.visible = face_open < 0.3
 
 func _make_cloth(attach: Node3D, anchors: Array, rows: int, seg: float):
 	var c = MeshInstance3D.new()
@@ -540,6 +662,7 @@ func _physics_process(dt: float) -> void:
 			G.fx.dust(global_position, 10)
 			G.add_shake(0.08)
 	_separate_from_enemies()
+	_update_cuts(dt)
 	_effects(dt)
 	_animate(dt)
 	if sword_mode == "whip":
@@ -1684,6 +1807,7 @@ func _st_dead(dt: float) -> void:
 	if state_t > 3.0:
 		hp = max_hp
 		breath = max_breath
+		clear_cuts()
 		global_position = spawn_pos
 		velocity = Vector3.ZERO
 		invuln_t = 1.5
@@ -1712,6 +1836,7 @@ func receive_attack(dmg: float, src: Vector3, parryable: bool, attacker: Node = 
 				G.hud.add_combo("dodge", 15)
 		return "dodge"
 	hp -= dmg
+	_add_cut(src)
 	G.hurt_fx = 1.0
 	G.add_shake(0.35)
 	G.hitstop(0.06)
@@ -1743,6 +1868,56 @@ func receive_attack(dmg: float, src: Vector3, parryable: bool, attacker: Node = 
 	velocity = kb * 9.0 + Vector3.UP * 3.0
 	_set_state("hurt")
 	return "hit"
+
+# Порез на одежде героя: тёмно-красная полоса поперёк ближайшей части тела.
+# Со временем затягивается (cut_life), при возрождении исчезает.
+var cuts: Array = []
+
+func _add_cut(src: Vector3) -> void:
+	var hit_p := global_position + Vector3(randf_range(-0.2, 0.2), randf_range(0.6, 1.5), 0) + (src - global_position).normalized() * 0.2
+	var best: MeshInstance3D = null
+	var bd := 99.0
+	for jn in ["torso", "arm_r", "arm_l", "fore_r", "fore_l", "leg_r", "leg_l", "shin_r", "shin_l", "hips"]:
+		for c in J[jn].get_children():
+			if c is MeshInstance3D and c.mesh is BoxMesh and c.mesh.size.y > 0.15:
+				var dd: float = c.global_position.distance_to(hit_p)
+				if dd < bd:
+					bd = dd
+					best = c
+	if best == null:
+		return
+	var sz: Vector3 = best.mesh.size
+	var w := MeshInstance3D.new()
+	var bm := BoxMesh.new()
+	bm.size = Vector3(sz.x * 1.06, randf_range(0.025, 0.04), sz.z * 1.06)
+	w.mesh = bm
+	w.material_override = Vox.cel_mat(Color(0.5, 0.04, 0.08), false, 0.35)
+	w.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	best.add_child(w)
+	w.position = Vector3(0, randf_range(-sz.y * 0.3, sz.y * 0.3), 0)
+	w.rotation_degrees = Vector3(randf_range(-10, 10), 0, randf_range(-35, 35))
+	cuts.append({"n": w, "life": 25.0})
+	if cuts.size() > 10:
+		var old: Dictionary = cuts.pop_front()
+		if is_instance_valid(old.n):
+			old.n.queue_free()
+
+func _update_cuts(dt: float) -> void:
+	for i in range(cuts.size() - 1, -1, -1):
+		var c: Dictionary = cuts[i]
+		c.life -= dt
+		if not is_instance_valid(c.n) or c.life <= 0.0:
+			if is_instance_valid(c.n):
+				c.n.queue_free()
+			cuts.remove_at(i)
+		elif c.life < 2.0:
+			c.n.scale = Vector3(1, c.life / 2.0, 1)
+
+func clear_cuts() -> void:
+	for c in cuts:
+		if is_instance_valid(c.n):
+			c.n.queue_free()
+	cuts.clear()
 
 func _parry_success(src: Vector3) -> void:
 	G.slowmo(0.25, 0.55)
@@ -2267,6 +2442,15 @@ func _animate(dt: float) -> void:
 		hips_y = HIP_Y - 0.3
 		snap = true
 
+	# стопы: на земле держатся ровно (против наклона ноги и тела), в воздухе — носок вниз
+	for sd in ["r", "l"]:
+		var flat := -((p["leg_" + sd] as Vector3).x + (p["shin_" + sd] as Vector3).x)
+		if on_floor and state not in ["down", "dead"]:
+			flat -= lean
+			p["foot_" + sd] = Vector3(clampf(flat * 0.85, -55.0, 45.0), 0, 0)
+		else:
+			p["foot_" + sd] = Vector3(clampf(flat * 0.3 + 20.0, -30.0, 50.0), 0, 0)
+
 	# --- пружины суставов: плавно, с инерцией и лёгким перехлёстом ---
 	var w := 40.0 if snap else 20.0
 	var zeta := 0.82 if snap else 0.72
@@ -2291,6 +2475,7 @@ func _animate(dt: float) -> void:
 		var sw: Vector3 = J.sword.rotation_degrees
 		sword_l.rotation_degrees = Vector3(sw.x, -sw.y, -sw.z)
 	_apply_ik(dt, sp)
+	_face_anim(dt)
 
 # ---------------------------------------------------------------------
 # Двуручный хват катаны: руки сами тянутся к рукояти (обратная кинематика).

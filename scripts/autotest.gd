@@ -175,6 +175,7 @@ func _run() -> void:
 	p.receive_attack(20.0, p.global_position + Vector3(0, 0, 2), false)
 	await w(0.1)
 	check(p.state == "down", "сильный удар сбивает с ног")
+	check(p.cuts.size() > 0, "на герое виден порез")
 	await w(1.5)
 	check(p.state == "move", "герой поднялся")
 	p.hp = hp0
