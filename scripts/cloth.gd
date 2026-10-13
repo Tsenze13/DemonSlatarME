@@ -27,6 +27,8 @@ var lift_ref: Node3D             # в чьей системе считать «�
                                  # «низ» корпуса смотрит вперёд, и ткань загоняло под живот
 var thick := 0.04                # толщина ткани в режиме "blocks"
 var u_step := 0.25               # сколько текстуры по ширине на одну клетку
+var v_from := 0.0                # какая часть узора по высоте приходится на полотно
+var v_to := 1.0
 var chain_size := Vector3(0.1, 0.1, 0.1)
 var chain_col := Color.BLACK
 var chain_taper := 0.6
@@ -475,8 +477,8 @@ func _cell(a: Vector3, b: Vector3, cc: Vector3, d: Vector3, u0: float, u1: float
 		nb = ns[1] if ns[1] != Vector3.ZERO else n
 		nc = ns[2] if ns[2] != Vector3.ZERO else n
 		nd = ns[3] if ns[3] != Vector3.ZERO else n
-	var v0 := float(r) / (rows - 1)
-	var v1 := float(r + 1) / (rows - 1)
+	var v0 := lerpf(v_from, v_to, float(r) / (rows - 1))
+	var v1 := lerpf(v_from, v_to, float(r + 1) / (rows - 1))
 	var fa := a + na * h
 	var fb := b + nb * h
 	var fc := cc + nc * h

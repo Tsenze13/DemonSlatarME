@@ -311,6 +311,8 @@ var bandage
 var back_swords: Array = []
 var pommel_r := 0.25
 var pommel_l := 0.25
+var pommel_rp := Vector3(0, 0.25, 0)    # точка крепления цепи у навершия (в системе меча)
+var pommel_lp := Vector3(0, 0.25, 0)
 var thrown: Node3D
 var throw_from := Vector3.ZERO
 var throw_to := Vector3.ZERO
@@ -452,8 +454,10 @@ func _build_model() -> void:
 		Vox.box(fore, Vector3(0.12, 0.1, 0.12), Vector3(0, -0.28, 0), skin)
 		Vox.box(fore, Vector3(0.125, 0.065, 0.04), Vector3(0, -0.3, 0.058), skin.darkened(0.06))
 		Vox.box(fore, Vector3(0.035, 0.055, 0.05), Vector3(-0.06 * side, -0.265, 0.04), skin)
-		var sl2 := Vox.box(fore, Vector3(0.26, 0.2, 0.27), Vector3(0.01 * side, -0.05, -0.01), hcol)
-		sl2.material_override = _haori_mat(hcol, 0.2, 0.62, 1.0, uc, 0.3, 0.26, true)
+		# рукав на предплечье — до запястья, раструбом; на конце — тёмное отверстие
+		var sl2 := Vox.box(fore, Vector3(0.27, 0.25, 0.28), Vector3(0.01 * side, -0.075, -0.012), hcol)
+		sl2.material_override = _haori_mat(hcol, 0.25, 0.62, 1.0, uc, 0.3, 0.27, true)
+		Vox.box(fore, Vector3(0.2, 0.012, 0.21), Vector3(0.01 * side, -0.2, -0.012), Color(0.07, 0.05, 0.08), false)
 		# локоть: рукав не рвётся на сгибе — блок поворачивается на половину угла локтя
 		var elb := Vox.pivot(arm, Vector3(0, -0.27, 0), "elbow_" + nm)
 		var ec := Vox.box(elb, Vector3(0.25, 0.14, 0.25), Vector3(0.01 * side, 0.0, -0.005), hcol)
@@ -539,12 +543,16 @@ func _build_model() -> void:
 	# (при поднятой руке — снизу, при опущенной — сзади), за тело не заходит
 	for nm in ["r", "l"]:
 		var fore: Node3D = arms[nm][1]
-		var sl = _make_cloth(torso, [[fore, Vector3(0.0, 0.04, -0.12)], [fore, Vector3(0.0, -0.05, -0.125)], [fore, Vector3(0.0, -0.14, -0.13)]], 3, 0.1)
-		sl.stiff = 0.7
+		# верх кармана спрятан внутри рукава — снаружи он выглядит продолжением рукава вниз
+		var sx := -0.01 if nm == "r" else 0.01
+		var sl = _make_cloth(torso, [[fore, Vector3(sx, 0.02, -0.08)], [fore, Vector3(sx, -0.07, -0.085)], [fore, Vector3(sx, -0.16, -0.09)]], 3, 0.1)
+		sl.stiff = 0.8
 		sl.wind = 0.25
 		sl.gravity = 16.0
-		sl.thick = 0.22           # толщина блока = ширина рукава
-		sl.u_step = 0.12
+		sl.thick = 0.25           # толщина блока = ширина рукава
+		sl.u_step = 0.06          # узор того же масштаба, что на рукаве и полах
+		sl.v_from = 0.76          # низ узора — кайма, как у подола
+		sl.v_to = 1.0
 		sl.max_lift = 2.0         # рука поднимается — карман вместе с ней
 		sl.push_ellipse = Vector2(0.3, 0.2)
 		sl.push_y_max = 0.62
@@ -1087,19 +1095,21 @@ func set_sword(m: int) -> void:
 		scabbard_node.add_child(SwordLib.make_scabbard(m, saya_style))
 	elif m == 6 and n >= 8:
 		sword_mode = "dual"
-		var r := SwordLib.make(6, _tint())
+		var r := SwordLib.make(6, _tint(), true)
 		r.position = Vector3(0, -0.1, 0)
 		sword_vis.add_child(r)
-		var l := SwordLib.make(7, _tint())
+		var l := SwordLib.make(7, _tint(), true)
 		l.position = Vector3(0, -0.1, 0)
 		sword_l_vis.add_child(l)
-		thrown.add_child(SwordLib.make(6, _tint()))
-		pommel_r = SwordLib.info(6).handle
-		pommel_l = SwordLib.info(7).handle
+		thrown.add_child(SwordLib.make(6, _tint(), true))
+		pommel_r = SwordLib.pommel(6)
+		pommel_l = SwordLib.pommel(7)
+		pommel_rp = SwordLib.pommel_point(6)
+		pommel_lp = SwordLib.pommel_point(7)
 		# за спиной — крест-накрест в бинтах, рукояти над плечами
 		var dims := []
 		for k in 2:
-			var bs := SwordLib.make(6 + k, _tint())
+			var bs := SwordLib.make(6 + k, _tint(), true)
 			bs.transform = Transform3D(_back_basis(k), _back_pos(k))
 			back_sheath.add_child(bs)
 			back_swords.append(bs)
@@ -2332,14 +2342,14 @@ func _update_chain() -> void:
 	if chain == null or sword_mode != "dual":
 		return
 	if drawn:
-		chain.pa = sword_l.global_transform * Vector3(0, -0.1 + pommel_l, 0)
+		chain.pa = sword_l_vis.global_transform * (pommel_lp + Vector3(0, -0.1, 0))
 		if thrown.visible:
-			chain.pb = thrown.global_transform * Vector3(0, pommel_r, 0)
+			chain.pb = thrown.global_transform * pommel_rp
 		else:
-			chain.pb = J.sword.global_transform * Vector3(0, -0.1 + pommel_r, 0)
+			chain.pb = sword_vis.global_transform * (pommel_rp + Vector3(0, -0.1, 0))
 	elif back_swords.size() == 2:
-		chain.pb = back_swords[0].global_transform * Vector3(0, pommel_r, 0)
-		chain.pa = back_swords[1].global_transform * Vector3(0, pommel_l, 0)
+		chain.pb = back_swords[0].global_transform * pommel_rp
+		chain.pa = back_swords[1].global_transform * pommel_lp
 
 func _check_hits() -> void:
 	var a := atk

@@ -169,12 +169,20 @@ static var _sword_sh: Shader
 static var _outline_n: Shader
 static var _edges := {}
 
-static func make(i: int, tint := Color(1, 1, 1)) -> Node3D:
+static func make(i: int, tint := Color(1, 1, 1), strip_tail := false) -> Node3D:
 	_ensure()
 	var holder := Node3D.new()
 	var copy: Node3D = _groups[i].duplicate()
 	copy.transform = _info[i].xform
 	holder.add_child(copy)
+	# у тесаков на цепи в модели есть обрывок цепи за навершием — его прячем,
+	# наша цепь крепится прямо к кольцу навершия (pommel)
+	if strip_tail:
+		var pe := pommel(i) + 0.005
+		for mi in copy.find_children("*", "MeshInstance3D", true, false):
+			var bb: AABB = _info[i].xform * (_rel(mi, copy) * (mi as MeshInstance3D).get_aabb())
+			if bb.get_center().y > pe:
+				mi.visible = false
 	if _sword_sh == null:
 		_sword_sh = load("res://shaders/sword.gdshader")
 		_outline_n = load("res://shaders/outline_n.gdshader")
@@ -209,6 +217,45 @@ static func make(i: int, tint := Color(1, 1, 1)) -> Node3D:
 		sm.next_pass = o
 		m.material_override = sm
 	return holder
+
+# Конец рукояти (навершие с кольцом) по оси меча: сплошные блоки подряд от гарды;
+# плоские картинки (обрывок цепи в модели) и всё, что дальше разрыва, не считаем.
+static var _pommels := {}
+static func pommel(i: int) -> float:
+	return pommel_point(i).y
+
+# Точка крепления цепи: торец навершия, по центру рукояти (рукоять бывает смещена от оси).
+static func pommel_point(i: int) -> Vector3:
+	_ensure()
+	if _pommels.has(i):
+		return _pommels[i]
+	var xf: Transform3D = _info[i].xform
+	var hb := []
+	for mi in _groups[i].find_children("*", "MeshInstance3D", true, false):
+		var bb: AABB = xf * (_rel(mi, _groups[i]) * (mi as MeshInstance3D).get_aabb())
+		if bb.get_center().y > 0.0 and minf(bb.size.x, bb.size.z) > 0.004:
+			hb.append(bb)
+	hb.sort_custom(func(a: AABB, b: AABB) -> bool: return a.position.y < b.position.y)
+	var cur := 0.0
+	var cx := 0.0
+	var cz := 0.0
+	for bb in hb:
+		if bb.position.y <= cur + 0.012:
+			if bb.end.y > cur:
+				cx = bb.get_center().x
+				cz = bb.get_center().z
+			cur = maxf(cur, bb.end.y)
+	# центр рукояти — по самому длинному блоку (обмотка рукояти)
+	var longest := 0.0
+	for bb in hb:
+		if bb.size.y > longest and bb.position.y < 0.1:
+			longest = bb.size.y
+			cx = bb.get_center().x
+			cz = bb.get_center().z
+	if cur < 0.05:
+		cur = _info[i].handle
+	_pommels[i] = Vector3(cx, cur, cz)
+	return _pommels[i]
 
 # Блик ярче во время удара: boost 0..1 для всех клинков меча.
 static func set_glint(holder: Node, boost: float) -> void:

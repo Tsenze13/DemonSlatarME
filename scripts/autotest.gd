@@ -137,6 +137,7 @@ func _run() -> void:
 		check(p.bandage.strips.size() == 0, "упавшие бинты исчезли")
 		await shot("00d_dual_stance")
 		check(p.chain.sag() > 0.08, "цепь провисает между руками (%.2f)" % p.chain.sag())
+		check(SwordLibT.pommel(6) < SwordLibT.info(6).handle - 0.02, "цепь крепится к навершию, обрывок цепи модели спрятан")
 		# цепь не растягивается в ударах
 		var ch_pos: Vector3 = p.global_position
 		var ch_face: float = p.facing
