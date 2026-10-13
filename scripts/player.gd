@@ -4,6 +4,7 @@ extends CharacterBody3D
 # три формы дыхания Прилива, восстановление дыхания и добивание.
 
 const Vox = preload("res://scripts/vox.gd")
+const Wounds = preload("res://scripts/wounds.gd")
 const Trail = preload("res://scripts/trail.gd")
 const Cloth = preload("res://scripts/cloth.gd")
 const Tex = preload("res://scripts/tex.gd")
@@ -2495,9 +2496,9 @@ func receive_attack(dmg: float, src: Vector3, parryable: bool, attacker: Node = 
 	_set_state("hurt")
 	return "hit"
 
-# Порез на одежде героя: тёмно-красная полоса поперёк ближайшей части тела.
-# Со временем затягивается (cut_life), при возрождении исчезает.
-var cuts: Array = []
+# Порез на герое: разрез внутри текстуры блока (по вокселям, wounds.gd) —
+# по плоскости удара. Держится 25 с, потом затягивается; при возрождении исчезает.
+var cuts := {}
 
 func _add_cut(src: Vector3) -> void:
 	var hit_p := global_position + Vector3(randf_range(-0.2, 0.2), randf_range(0.6, 1.5), 0) + (src - global_position).normalized() * 0.2
@@ -2505,45 +2506,29 @@ func _add_cut(src: Vector3) -> void:
 	var bd := 99.0
 	for jn in ["torso", "arm_r", "arm_l", "fore_r", "fore_l", "leg_r", "leg_l", "shin_r", "shin_l", "hips"]:
 		for c in J[jn].get_children():
-			if c is MeshInstance3D and c.mesh is BoxMesh and c.mesh.size.y > 0.15:
+			if c is MeshInstance3D and c.mesh is BoxMesh and c.mesh.size.y > 0.15 and Wounds.can_cut(c):
 				var dd: float = c.global_position.distance_to(hit_p)
 				if dd < bd:
 					bd = dd
 					best = c
 	if best == null:
 		return
-	var sz: Vector3 = best.mesh.size
-	var w := MeshInstance3D.new()
-	var bm := BoxMesh.new()
-	bm.size = Vector3(sz.x * 1.06, randf_range(0.025, 0.04), sz.z * 1.06)
-	w.mesh = bm
-	w.material_override = Vox.cel_mat(Color(0.5, 0.04, 0.08), false, 0.35)
-	w.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	best.add_child(w)
-	w.position = Vector3(0, randf_range(-sz.y * 0.3, sz.y * 0.3), 0)
-	w.rotation_degrees = Vector3(randf_range(-10, 10), 0, randf_range(-35, 35))
-	cuts.append({"n": w, "life": 25.0})
-	if cuts.size() > 10:
-		var old: Dictionary = cuts.pop_front()
-		if is_instance_valid(old.n):
-			old.n.queue_free()
+	var fwd := global_position - src
+	fwd.y = 0.0
+	fwd = fwd.normalized() if fwd.length() > 0.01 else -model.global_transform.basis.z
+	var side := fwd.cross(Vector3.UP).normalized()
+	var line := side.rotated(fwd, deg_to_rad(randf_range(-40, 40)))
+	var wp := best.global_position + Vector3(0, randf_range(-0.08, 0.08), 0) - fwd * 0.08
+	Wounds.add(cuts, best, wp, line, fwd, randf_range(0.022, 0.034), 0.3, 25.0)
 
 func _update_cuts(dt: float) -> void:
-	for i in range(cuts.size() - 1, -1, -1):
-		var c: Dictionary = cuts[i]
-		c.life -= dt
-		if not is_instance_valid(c.n) or c.life <= 0.0:
-			if is_instance_valid(c.n):
-				c.n.queue_free()
-			cuts.remove_at(i)
-		elif c.life < 2.0:
-			c.n.scale = Vector3(1, c.life / 2.0, 1)
+	Wounds.update(cuts, dt, 0.0)
+
+func cut_count() -> int:
+	return Wounds.count(cuts)
 
 func clear_cuts() -> void:
-	for c in cuts:
-		if is_instance_valid(c.n):
-			c.n.queue_free()
-	cuts.clear()
+	Wounds.clear(cuts)
 
 func _parry_success(src: Vector3) -> void:
 	G.slowmo(0.25, 0.55)

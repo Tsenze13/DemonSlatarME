@@ -5,6 +5,8 @@ extends CharacterBody3D
 
 const Vox = preload("res://scripts/vox.gd")
 const Cloth = preload("res://scripts/cloth.gd")
+const Wounds = preload("res://scripts/wounds.gd")
+const VoxGrow = preload("res://scripts/voxgrow.gd")
 
 var radius := 0.75
 var max_hp := 240.0
@@ -20,6 +22,9 @@ var eye_mats: Array = []
 var neck_glow: MeshInstance3D
 var arms_alive := {"r": true, "l": true}
 var arm_regrow := {"r": 0.0, "l": 0.0}
+var growers := {}          # рука, отрастающая по вокселям (voxgrow.gd)
+var stumps := {}           # культя: срез мяса с костью
+const GROW_T := 2.4
 var swings_left := 0
 var swing_arm := "r"
 var atk_cd := 1.0
@@ -40,7 +45,7 @@ var hit_this_swing := false
 var run_phase := 0.0
 var exposed_time := 3.5
 var regen_count := 0
-var wounds: Array = []     # порезы: {n, life}
+var wounds := {}          # порезы внутри текстур: {блок: [порезы]} (wounds.gd)
 var hit_dir := Vector3.ZERO     # откуда пришёл последний удар (куда толкнул)
 var hit_react := 0.0            # вздрагивание от удара (1 → 0)
 var air_down := false           # после полёта — упасть на землю
@@ -228,6 +233,8 @@ func _physics_process(dt: float) -> void:
 	for s in ["r", "l"]:
 		if not arms_alive[s]:
 			arm_regrow[s] -= dt
+			if arm_regrow[s] <= GROW_T and not growers.has(s):
+				_start_grow(s)
 			if arm_regrow[s] <= 0.0:
 				_regrow_arm(s)
 	# регенерация: пока бьют — нет, после паузы ~2 с разгоняется до 35 ед/с
@@ -532,7 +539,7 @@ func take_hit(dmg: float, dir: Vector3, atk: Dictionary) -> Dictionary:
 		_expose()
 	return res
 
-# Порез на теле: тёмно-красная полоса на ближайшей части тела, по линии удара.
+# Порез на теле: прорезь внутри текстуры ближайшего блока, по линии удара.
 func _add_wound(p: Vector3, dir: Vector3, atk: Dictionary) -> void:
 	var best: MeshInstance3D = null
 	var bd := 99.0
@@ -547,36 +554,17 @@ func _add_wound(p: Vector3, dir: Vector3, atk: Dictionary) -> void:
 			best = m
 	if best == null:
 		return
-	var sz: Vector3 = best.mesh.size
-	var w := MeshInstance3D.new()
-	var bm := BoxMesh.new()
-	var length := clampf(maxf(sz.x, sz.z) * 1.15, 0.15, 0.6)
-	bm.size = Vector3(length, 0.035 if atk.power < 2 else 0.06, maxf(sz.x, sz.z) * 1.08)
-	w.mesh = bm
-	w.material_override = Vox.cel_mat(Color(0.55, 0.0, 0.08), false, 0.6)
-	w.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	best.add_child(w)
-	w.position = Vector3(0, randf_range(-sz.y * 0.35, sz.y * 0.35), 0)
-	w.rotation_degrees = Vector3(0, randf_range(-30, 30), float(atk.get("roll", 0.0)) + randf_range(-15, 15))
-	wounds.append({"n": w, "s": 1.0})
-	if wounds.size() > 14:
-		var old: Dictionary = wounds.pop_front()
-		if is_instance_valid(old.n):
-			old.n.queue_free()
+	var hd := dir.cross(Vector3.UP).normalized()
+	if hd.length() < 0.1:
+		hd = Vector3.RIGHT
+	var line := hd.rotated(dir.normalized(), deg_to_rad(float(atk.get("roll", 0.0)) + randf_range(-15, 15)))
+	var hp2: Vector3 = best.global_position + (p - best.global_position).normalized() * 0.05
+	var big: bool = atk.get("power", 1) >= 2
+	Wounds.add(wounds, best, hp2, line, dir, 0.05 if big else 0.032, 0.45 if big else 0.3, 60.0)
 
 func _update_wounds(dt: float) -> void:
-	# порезы затягиваются вместе с регенерацией
-	if since_hit < 2.0:
-		return
-	for i in range(wounds.size() - 1, -1, -1):
-		var w: Dictionary = wounds[i]
-		w.s -= dt * 0.5
-		if not is_instance_valid(w.n) or w.s <= 0.0:
-			if is_instance_valid(w.n):
-				w.n.queue_free()
-			wounds.remove_at(i)
-			continue
-		w.n.scale = Vector3(1.0, w.s, w.s)
+	# порезы затягиваются вместе с регенерацией — по вокселю
+	Wounds.update(wounds, dt, 0.45 if since_hit >= 2.0 else 0.0)
 
 func stagger(t: float) -> void:
 	if state in ["exposed", "dead", "locked", "air", "down"]:
@@ -637,6 +625,7 @@ func _cut_arm(side: String, dir: Vector3) -> void:
 	rb.angular_velocity = Vector3(randf_range(-12, 12), randf_range(-12, 12), randf_range(-12, 12))
 	G.fx.adopt(rb, 4.5)
 	arm.visible = false
+	_make_stump(side)
 	G.fx.blood(arm.global_position, dir + Vector3.UP, 24)
 	G.sfx.play("hit_heavy", 0.0, 0.8)
 
@@ -644,9 +633,54 @@ func _regrow_arm(side: String) -> void:
 	arms_alive[side] = true
 	var arm: Node3D = J["fore_" + side]
 	arm.visible = true
-	arm.scale = Vector3.ONE * 0.1
-	G.fx.blood(arm.global_position, Vector3.UP, 10)
+	arm.scale = Vector3.ONE
+	_arm_meshes(side, true)
+	if growers.has(side):
+		if is_instance_valid(growers[side]):
+			growers[side].queue_free()
+		growers.erase(side)
+	if stumps.has(side):
+		if is_instance_valid(stumps[side]):
+			stumps[side].queue_free()
+		stumps.erase(side)
+	# новая рука — без старых порезов
+	for mi in wounds.keys():
+		if is_instance_valid(mi) and arm.is_ancestor_of(mi):
+			wounds.erase(mi)
+			Wounds._upload(mi, [])
+	G.fx.burst(arm.global_position + Vector3(0, -0.3, 0), Color(0.75, 0.1, 0.2), 8, 2.0, 0.05, 0.4, 1.0)
 	G.sfx.play("crack", -6.0, 0.6)
+
+# Культя: срез — тёмное мясо, по краю кожа, в середине кость.
+func _make_stump(side: String) -> void:
+	var upper: Node3D = J["arm_" + side]
+	var st := Node3D.new()
+	upper.add_child(st)
+	st.position = Vector3(0, -0.4, 0)
+	Vox.box(st, Vector3(0.14, 0.03, 0.14), Vector3(0, -0.015, 0), Color(0.55, 0.06, 0.1), false)
+	Vox.box(st, Vector3(0.1, 0.034, 0.1), Vector3(0, -0.016, 0), Color(0.32, 0.02, 0.06), false)
+	Vox.box(st, Vector3(0.04, 0.05, 0.04), Vector3(0, -0.02, 0), Color(0.92, 0.88, 0.78), false)
+	stumps[side] = st
+
+# Видимость блоков предплечья и кисти (пока рука растёт — виден только воксельный рост).
+func _arm_meshes(side: String, on: bool) -> void:
+	for n in [J["fore_" + side], J["hand_" + side]]:
+		for c in n.get_children():
+			if c is MeshInstance3D:
+				c.visible = on
+
+# Рука отрастает: из культи растёт кость с костяными пальцами, на неё — мышцы, сверху кожа.
+func _start_grow(side: String) -> void:
+	var fore: Node3D = J["fore_" + side]
+	fore.visible = true
+	fore.scale = Vector3.ONE
+	_arm_meshes(side, false)
+	var g = VoxGrow.new()
+	g.dur = GROW_T
+	fore.add_child(g)
+	g.build(0.44, 0.13, 0.44, Color(0.5, 0.42, 0.52), Color(0.92, 0.88, 0.78))
+	growers[side] = g
+	G.sfx.play("crack", -10.0, 0.5)
 
 func _expose() -> void:
 	_set_state("exposed")

@@ -219,7 +219,7 @@ func _run() -> void:
 	p.receive_attack(20.0, p.global_position + Vector3(0, 0, 2), false)
 	await w(0.1)
 	check(p.state == "down", "сильный удар сбивает с ног")
-	check(p.cuts.size() > 0, "на герое виден порез")
+	check(p.cut_count() > 0, "на герое виден порез (внутри текстуры)")
 	await w(1.5)
 	check(p.state == "move", "герой поднялся")
 	p.hp = hp0
@@ -358,7 +358,7 @@ func _run() -> void:
 	check(launched, "восходящий срез подбрасывает демона")
 	await w(1.6)
 	check(d.state != "down" and d.state != "air", "демон поднялся (%s)" % d.state)
-	check(d.wounds.size() > 0, "на демоне видны порезы (%d)" % d.wounds.size())
+	check(d.Wounds.count(d.wounds) > 0, "на демоне порезы внутри текстуры (%d)" % d.Wounds.count(d.wounds))
 	# регенерация после паузы
 	var hp_before: float = d.hp
 	var dpos: Vector3 = d.global_position
@@ -366,8 +366,17 @@ func _run() -> void:
 	d.state = "idle"
 	d.hp = d.max_hp * 0.5
 	hp_before = d.hp
-	await w(4.0)
+	# отрубленная рука отрастает по вокселям: культя → кость → мышцы → кожа
+	if d.arms_alive["l"]:
+		d._cut_arm("l", Vector3.RIGHT)
+	check(d.stumps.has("l"), "на месте отрубленной руки — культя")
+	d.arm_regrow["l"] = 2.6
+	await w(0.8)
+	check(d.growers.has("l") and is_instance_valid(d.growers["l"]), "рука растёт по вокселям")
+	await shot("04b_regrow")
+	await w(3.2)
 	check(d.hp > hp_before + 40.0, "демон регенерирует после паузы (+%.0f)" % (d.hp - hp_before))
+	check(d.arms_alive["l"] and not d.growers.has("l") and not d.stumps.has("l"), "рука отросла целиком")
 	d.global_position = dpos
 	await approach(d)
 	p.press("heavy")
