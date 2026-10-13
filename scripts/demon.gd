@@ -92,23 +92,45 @@ func _build_model() -> void:
 	var hips := Vox.pivot(model, Vector3(0, 0.95, 0), "hips")
 	Vox.box(hips, Vector3(0.42, 0.26, 0.28), Vector3.ZERO, robe_d)
 	var torso := Vox.pivot(hips, Vector3(0, 0.1, 0), "torso")
-	Vox.box(torso, Vector3(0.5, 0.56, 0.3), Vector3(0, 0.3, 0), robe)
-	Vox.box(torso, Vector3(0.2, 0.4, 0.04), Vector3(0, 0.36, 0.15), skin_d)   # открытая грудь
+	Vox.box(torso, Vector3(0.5, 0.56, 0.3), Vector3(0, 0.3, 0), robe, true, 0.0, "demon_robe", true)
+	Vox.box(torso, Vector3(0.2, 0.4, 0.04), Vector3(0, 0.36, 0.15), skin_d, true, 0.0, "demon_skin", true)   # открытая грудь
+	# рёбра на груди и верёвочный пояс с узлом
+	for k in 3:
+		Vox.box(torso, Vector3(0.16, 0.025, 0.02), Vector3(0, 0.26 + k * 0.08, 0.172), skin_d.darkened(0.35), false)
 	Vox.box(torso, Vector3(0.52, 0.08, 0.32), Vector3(0, 0.05, 0), Color(0.1, 0.08, 0.1))
+	Vox.box(torso, Vector3(0.1, 0.1, 0.06), Vector3(0.14, 0.03, 0.17), Color(0.18, 0.14, 0.12))
+	Vox.box(torso, Vector3(0.04, 0.18, 0.03), Vector3(0.16, -0.08, 0.18), Color(0.18, 0.14, 0.12))
+	# костяные шипы на плечах
+	for sx2 in [-1.0, 1.0]:
+		for k in 2:
+			var sp := Vox.box(torso, Vector3(0.06, 0.16 - k * 0.04, 0.06), Vector3(0.24 * sx2, 0.62 + k * 0.02, -0.06 + k * 0.1), bone)
+			sp.rotation_degrees = Vector3(-15 + k * 25, 0, -30 * sx2)
 	# рваные полы одежды
 	for i in 4:
 		var x := -0.18 + i * 0.12
 		Vox.box(hips, Vector3(0.1, 0.35 + (i % 2) * 0.12, 0.3), Vector3(x, -0.3, 0), robe if i % 2 == 0 else robe_d)
 	var head := Vox.pivot(torso, Vector3(0, 0.6, 0.05), "head")
 	Vox.box(head, Vector3(0.13, 0.1, 0.13), Vector3(0, 0.02, 0), skin_d)
-	Vox.box(head, Vector3(0.32, 0.34, 0.32), Vector3(0, 0.22, 0), skin)
+	Vox.box(head, Vector3(0.32, 0.34, 0.32), Vector3(0, 0.22, 0), skin, true, 0.0, "demon_skin", true)
 	Vox.box(head, Vector3(0.26, 0.08, 0.06), Vector3(0, 0.1, 0.15), Color(0.15, 0.05, 0.08), false)  # пасть
-	for x in [-0.06, -0.02, 0.02, 0.06]:
-		Vox.box(head, Vector3(0.025, 0.05, 0.02), Vector3(x, 0.12, 0.18), bone, false)
+	# клыки сверху и снизу, два длинных
+	for x in [-0.09, -0.05, -0.015, 0.015, 0.05, 0.09]:
+		var long_f: bool = absf(x) > 0.08
+		Vox.box(head, Vector3(0.022, 0.07 if long_f else 0.045, 0.02), Vector3(x, 0.115 - (0.015 if long_f else 0.0), 0.182), bone, false)
+	for x in [-0.07, -0.03, 0.03, 0.07]:
+		Vox.box(head, Vector3(0.022, 0.04, 0.02), Vector3(x, 0.075, 0.182), bone, false)
+	# метки демона на щеках и злые брови
+	for sx3 in [-1.0, 1.0]:
+		var mk := Vox.box(head, Vector3(0.025, 0.12, 0.012), Vector3(0.12 * sx3, 0.17, 0.162), Color(0.75, 0.08, 0.12), false, 0.6)
+		mk.rotation_degrees = Vector3(0, 0, 15 * sx3)
+		var br := Vox.box(head, Vector3(0.1, 0.025, 0.015), Vector3(0.08 * sx3, 0.29, 0.165), Color(0.1, 0.05, 0.08), false)
+		br.rotation_degrees = Vector3(0, 0, -22 * sx3)
 	for x in [-0.08, 0.08]:
 		var e := Vox.box(head, Vector3(0.08, 0.05, 0.02), Vector3(x, 0.25, 0.165), Color(1.0, 0.85, 0.2), false, 2.5)
 		e.material_override = e.material_override.duplicate()
 		eye_mats.append(e)
+		# зрачок-щель
+		Vox.box(head, Vector3(0.012, 0.05, 0.022), Vector3(x, 0.25, 0.167), Color(0.08, 0.02, 0.02), false)
 	var e3 := Vox.box(head, Vector3(0.05, 0.08, 0.02), Vector3(0, 0.34, 0.165), Color(1.0, 0.3, 0.2), false, 2.5)
 	e3.material_override = e3.material_override.duplicate()
 	eye_mats.append(e3)
@@ -129,18 +151,28 @@ func _build_model() -> void:
 	for side in ["r", "l"]:
 		var sx := -1.0 if side == "r" else 1.0
 		var arm := Vox.pivot(torso, Vector3(0.33 * sx, 0.5, 0), "arm_" + side)
-		Vox.box(arm, Vector3(0.16, 0.42, 0.16), Vector3(0, -0.2, 0), robe)
+		Vox.box(arm, Vector3(0.16, 0.42, 0.16), Vector3(0, -0.2, 0), robe, true, 0.0, "demon_robe", true)
+		# рваный край рукава
+		for k in 3:
+			Vox.box(arm, Vector3(0.06, 0.08 + (k % 2) * 0.06, 0.17), Vector3(-0.05 + k * 0.05, -0.43, 0), robe_d)
 		var fore := Vox.pivot(arm, Vector3(0, -0.4, 0), "fore_" + side)
-		Vox.box(fore, Vector3(0.13, 0.42, 0.13), Vector3(0, -0.2, 0), skin)
+		Vox.box(fore, Vector3(0.13, 0.42, 0.13), Vector3(0, -0.2, 0), skin, true, 0.0, "demon_skin", true)
+		# вздутые вены на предплечье
+		Vox.box(fore, Vector3(0.02, 0.3, 0.02), Vector3(0.03 * sx, -0.18, 0.066), skin_d.darkened(0.3), false)
 		var hand := Vox.pivot(fore, Vector3(0, -0.44, 0), "hand_" + side)
 		Vox.box(hand, Vector3(0.16, 0.12, 0.12), Vector3(0, -0.04, 0), skin_d)
-		for k in 3:
-			var cl := Vox.box(hand, Vector3(0.03, 0.22, 0.03), Vector3(-0.05 + k * 0.05, -0.2, 0.03), bone)
-			cl.rotation_degrees = Vector3(-20, 0, 0)
+		for k in 4:
+			var cl := Vox.box(hand, Vector3(0.03, 0.26, 0.03), Vector3(-0.06 + k * 0.04, -0.21, 0.03), bone)
+			cl.rotation_degrees = Vector3(-24, 0, (k - 1.5) * 6.0)
+			var tip := Vox.box(hand, Vector3(0.022, 0.08, 0.022), Vector3(-0.06 + k * 0.04, -0.35, 0.08), Color(0.6, 0.1, 0.12), false, 0.3)
+			tip.rotation_degrees = Vector3(-35, 0, 0)
 		var leg := Vox.pivot(hips, Vector3(0.12 * sx, -0.08, 0), "leg_" + side)
-		Vox.box(leg, Vector3(0.17, 0.44, 0.18), Vector3(0, -0.2, 0), skin_d)
+		Vox.box(leg, Vector3(0.17, 0.44, 0.18), Vector3(0, -0.2, 0), skin_d, true, 0.0, "demon_skin", true)
 		var shin := Vox.pivot(leg, Vector3(0, -0.42, 0), "shin_" + side)
-		Vox.box(shin, Vector3(0.14, 0.42, 0.15), Vector3(0, -0.2, 0), skin)
+		Vox.box(shin, Vector3(0.14, 0.42, 0.15), Vector3(0, -0.2, 0), skin, true, 0.0, "demon_skin", true)
+		# когти на ногах
+		for k in 3:
+			Vox.box(shin, Vector3(0.025, 0.03, 0.08), Vector3(-0.05 + k * 0.05, -0.43, 0.2), bone)
 		Vox.box(shin, Vector3(0.16, 0.06, 0.26), Vector3(0, -0.42, 0.05), skin_d)
 	for n in ["hips", "torso", "head", "arm_r", "fore_r", "arm_l", "fore_l", "leg_r", "shin_r", "leg_l", "shin_l", "hand_r", "hand_l"]:
 		J[n] = model.find_child(n, true, false)
@@ -717,8 +749,10 @@ func _animate(dt: float) -> void:
 	var model_y := 0.0
 	var sp := Vector3(velocity.x, 0, velocity.z).length()
 	# сутулая стойка, длинные руки висят
-	p.torso = Vector3(20, 0, 0)
-	p.head = Vector3(-15, 0, 0)
+	# сутулое тяжёлое дыхание, голова дёргается, пальцы-когти шевелятся
+	var tr := G.real_time + float(get_instance_id() % 100)
+	p.torso = Vector3(20 + sin(tr * 2.2) * 3.0, 0, 0)
+	p.head = Vector3(-15 + sin(tr * 2.2 + 0.6) * 2.0, sin(tr * 0.9) * 8.0 + (12.0 if fmod(tr, 4.0) < 0.15 else 0.0), sin(tr * 1.3) * 4.0)
 	p.arm_r = Vector3(-10, 0, -12)
 	p.arm_l = Vector3(-10, 0, 12)
 	p.fore_r = Vector3(-20, 0, 0)

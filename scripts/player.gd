@@ -2247,8 +2247,15 @@ func _on_hit(e: Node, res: Dictionary, dir: Vector3) -> void:
 	var p: Vector3 = res.get("point", e.global_position + Vector3.UP * 1.4)
 	G.hitstop(a.hitstop)
 	G.add_shake(a.shake)
-	G.fx.sparks(p, dir, Color(1.0, 0.95, 0.75), 10)
+	G.fx.sparks(p, dir, Color(1.0, 0.95, 0.75), 6)
 	G.fx.blood(p, dir, 8 if a.power < 2 else 14)
+	# вспышка разреза по плоскости удара и звезда попадания
+	var hd := atk_dir.cross(Vector3.UP).normalized()
+	if hd.length() < 0.1:
+		hd = Vector3.RIGHT
+	var line := hd.rotated(atk_dir.normalized(), deg_to_rad(float(a.get("roll", 0.0))))
+	G.fx.cut_flash(p, line, _sc().lightened(0.2), 1.3 if a.power < 2 else 2.0)
+	G.fx.hit_star(p, _sc(), 6 if a.power < 2 else 10, 0.8 if a.power < 2 else 1.3)
 	if a.fx in ["wave", "wave_big", "wave_ring", "whirl"]:
 		G.fx.breath_burst(p, dir, 10)
 	G.fx.number(p + Vector3.UP * 0.4, str(int(res.get("dmg", a.dmg))), Color(1, 1, 1) if a.power < 2 else G.br().flash, a.power >= 2)
@@ -2683,7 +2690,7 @@ func _animate(dt: float) -> void:
 			if sp > 9.0:
 				# быстрый бег: корпус вперёд, руки и клинок назад
 				var kf := minf(1.0, (sp - 9.0) / 5.0)
-				lean = lerpf(lean, 30.0, kf)
+				lean = lerpf(lean, 20.0, kf)
 				p.torso = Vector3(10, s * 8, 0)
 				p.arm_r = Vector3(70 + s * 6, 0, -15)
 				p.fore_r = Vector3(-20, 0, 0)
@@ -2692,9 +2699,9 @@ func _animate(dt: float) -> void:
 				p.fore_l = Vector3(-20, 0, 0)
 				p.head = Vector3(-25, 0, 0)
 				if sprinting:
-					lean = 42.0
-					p.arm_r = Vector3(85, 0, -20)
-					p.arm_l = Vector3(85, 0, 20)
+					lean = 30.0
+					p.arm_r = Vector3(75, 0, -20)
+					p.arm_l = Vector3(75, 0, 20)
 			elif not drawn:
 				# в ножнах: правая рука машет против ноги, левая держит ножны
 				p.arm_r = Vector3(s * 42 * k, 0, -10)

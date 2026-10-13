@@ -32,6 +32,8 @@ static func get_tex(kind: String) -> Texture2D:
 		"haori_butterfly": img = _haori_butterfly()
 		"haori_uroko": img = _haori_uroko()
 		"haori_stripes": img = _haori_stripes()
+		"demon_skin": img = _demon_skin()
+		"demon_robe": img = _demon_robe()
 		"saya_shark": img = _saya_shark()
 		"saya_bolt": img = _saya_bolt()
 		"saya_sakura": img = _saya_sakura()
@@ -517,4 +519,36 @@ static func _haori_stripes() -> Image:
 		for x in 32:
 			var c := Color(0.92, 0.92, 0.9) if ((x + y) / 4) % 2 == 0 else Color(0.1, 0.1, 0.12)
 			im.set_pixel(x, y, c)
+	return im
+
+# --- демон ---
+# Кожа: ровная, с тёмными прожилками-венами.
+static func _demon_skin() -> Image:
+	var r := RandomNumberGenerator.new()
+	r.seed = 666
+	var im := _img()
+	for y in 16:
+		for x in 16:
+			im.set_pixel(x, y, _g(0.86 + r.randf_range(-0.04, 0.04)))
+	for k in 3:
+		var x := r.randi_range(0, 15)
+		for y in 16:
+			im.set_pixel(x, y, _g(0.55))
+			if r.randf() < 0.4:
+				x = (x + (1 if r.randf() < 0.5 else -1) + 16) % 16
+	return im
+
+# Рваное кимоно: полосы ткани и тёмные пятна.
+static func _demon_robe() -> Image:
+	var r := RandomNumberGenerator.new()
+	r.seed = 77
+	var im := _img()
+	for y in 16:
+		for x in 16:
+			var v := 0.85 + r.randf_range(-0.05, 0.05)
+			if x % 5 == 0:
+				v = 0.7
+			if r.randf() < 0.05:
+				v = 0.5
+			im.set_pixel(x, y, _g(v))
 	return im

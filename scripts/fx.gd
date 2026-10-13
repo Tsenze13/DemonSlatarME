@@ -161,6 +161,19 @@ func streak(a: Vector3, b: Vector3, col: Color, life := 0.3, w := 0.25) -> void:
 		mi.look_at(b, Vector3.UP)
 	ghosts.append({"n": mi, "life": life, "max": life, "thin": true})
 
+# Вспышка разреза как в аниме: длинная белая линия поперёк цели по плоскости удара
+# и цветной ореол вокруг неё, тут же истончаются.
+func cut_flash(p: Vector3, line_dir: Vector3, col: Color, length := 1.5) -> void:
+	var d := line_dir.normalized()
+	streak(p - d * length, p + d * length, col, 0.2, 0.2)
+	streak(p - d * length * 1.15, p + d * length * 1.15, Color(1, 1, 1), 0.14, 0.07)
+
+# Звезда удара: тонкие лучи во все стороны из точки попадания.
+func hit_star(p: Vector3, col: Color, n := 7, size := 0.9) -> void:
+	for i in n:
+		var d := Vector3(randf_range(-1, 1), randf_range(-0.6, 1), randf_range(-1, 1)).normalized()
+		streak(p, p + d * size * randf_range(0.5, 1.1), Color(1, 1, 1) if i % 2 == 0 else col, 0.1, 0.05)
+
 func number(pos: Vector3, txt: String, col := Color.WHITE, big := false) -> void:
 	var l := Label3D.new()
 	l.text = txt
