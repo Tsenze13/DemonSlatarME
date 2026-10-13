@@ -98,7 +98,7 @@ func _run() -> void:
 	for hi in SwordLibT.HAORI.size():
 		p.set_haori(hi)
 		await w(0.03)
-	check(p.haori_cloth_mats.size() >= 3 and p.haori_style == SwordLibT.HAORI.size() - 1, "все узоры хаори ставятся")
+	check(p.haori_cloth_mats.size() >= 1 and p.haori_style == SwordLibT.HAORI.size() - 1, "все узоры хаори ставятся")
 	p.set_haori(0)
 	# стили дыхания: эффекты и названия форм
 	var ok_br := true
@@ -360,14 +360,12 @@ func _run() -> void:
 			for q in c.pos:
 				hi = maxf(hi, (torso.global_transform.affine_inverse() * q).y)
 	check(hi < 0.5, "хаори не выше плеч (%.2f)" % hi)
-	# карманы рукавов на бегу остаются под рукой (с нижней стороны предплечья)
-	var in_arm := 0
+	# рукава — цельные блоки с карманом (без физики-ткани — не ломаются)
+	var sleeve_cloth := 0
 	for c in p.cloths:
 		if c.mode == "blocks" and c != p.haori_body:
-			for q in c.pos:
-				if (c.attach.global_transform.affine_inverse() * q).z > -0.07:
-					in_arm += 1
-	check(in_arm == 0, "рукава не залетают в руки на бегу (%d)" % in_arm)
+			sleeve_cloth += 1
+	check(sleeve_cloth == 0, "рукава цельные, ткань-карманы не болтаются")
 	# тяжёлый удар с наклоном корпуса: хаори не тянется и не уходит вперёд, под живот
 	p.auto_move = Vector2.ZERO
 	p.sprinting = false
