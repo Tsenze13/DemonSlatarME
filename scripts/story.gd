@@ -142,9 +142,11 @@ func _reset_view() -> void:
 
 func new_game() -> void:
 	_reset_view()
-	for k in ["ryo", "mastery", "hp", "lungs", "focus", "blade", "chapter"]:
+	for k in ["ryo", "mastery", "hp", "lungs", "focus", "blade", "chapter", "hunts"]:
 		G.prog[k] = 0
 	G.prog.trial = -1
+	G.prog.gift = -1
+	G.prog.onigiri = 2
 	G.prog.finished = false
 	G.prog.started = true
 	G.save_prog()
@@ -324,7 +326,15 @@ func talk(id: String) -> void:
 		"elder":
 			_say("elder", [_elder_line()])
 		"okiku":
-			_say("okiku", [_okiku_line()])
+			if int(G.prog.get("gift", -1)) != chapter:
+				G.prog.gift = chapter
+				G.prog.onigiri = mini(int(G.prog.onigiri) + 1, 9)
+				G.save_prog()
+				_say("okiku", [_okiku_line(), "Вот, возьмите онигири — тёплый ещё. Съешьте в бою, когда тяжко (H)."])
+			else:
+				_say("okiku", [_okiku_line()])
+		"hana":
+			_talk_hana()
 		"taro":
 			_say("taro", [_taro_line()])
 		_:
@@ -362,7 +372,7 @@ func _make_contract() -> Dictionary:
 			var q: Vector2 = pick.call()
 			w2.append(["low", q.x, q.y])
 		if last:
-			var strong := ["hermit", "weaver", "brute"]
+			var strong := ["hermit", "weaver", "brute", "spider"]
 			for k in (1 if n < 4 else 2):
 				var q2: Vector2 = pick.call()
 				w2.append([strong[randi() % strong.size()], q2.x, q2.y])
@@ -490,6 +500,28 @@ func _tetsu_pick(i: int) -> void:
 	elif i == 1:
 		_say("tetsu", ["Клинок, ножны, цвет стали — всё в паузе, раздел «Клинок». Катаны, парные на цепи, хлыст, нагината, шар на цепи.",
 			"А дыхание — в «Снаряжении». Вода течёт, пламя давит, гром бьёт издалека. Пробуй."])
+
+func _talk_hana() -> void:
+	var n = npcs.hana
+	_say("hana", [n.lines[randi() % n.lines.size()], "Онигири — 20 рё штука. У тебя %d рё, в котомке %d." % [int(G.prog.ryo), int(G.prog.onigiri)]],
+		["Купить один (20 рё)", "Купить три (55 рё)", "Не сейчас"], _hana_pick)
+
+func _hana_pick(i: int) -> void:
+	if i >= 2:
+		return
+	var cnt := 1 if i == 0 else 3
+	var cost := 20 if i == 0 else 55
+	if int(G.prog.ryo) < cost:
+		_say("hana", ["Ох, не хватает. Охоться — и приходи, отложу для тебя."])
+		return
+	if int(G.prog.onigiri) + cnt > 9:
+		_say("hana", ["Больше девяти не унесёшь — раздавишь все в котомке!"])
+		return
+	G.prog.ryo = int(G.prog.ryo) - cost
+	G.prog.onigiri = int(G.prog.onigiri) + cnt
+	G.save_prog()
+	G.sfx.play("tick", -6.0, 0.8)
+	_say("hana", ["Держи! Свежие, с умэбоси. Приятного — и удачной охоты!"])
 
 func _elder_line() -> String:
 	var ls := [

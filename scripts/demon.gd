@@ -70,6 +70,9 @@ const TYPES := {
 	"weaver": {"name": "Кровавая ткачиха", "hp": 180.0, "scale": 1.3, "skin": Color(0.84, 0.78, 0.84), "robe": Color(0.34, 0.08, 0.38),
 		"hair": Color(0.08, 0.05, 0.1), "spd": 7.0, "rspd": 8.4, "dmg": 12.0, "leap": 0.0, "ranged": true, "regen": 30.0,
 		"exposed": 3.2, "spears": 5, "horns": 3, "windup": 0.4, "armor": false, "kite": true, "intro": true, "reward": 80},
+	"spider": {"name": "Паучья мать", "hp": 170.0, "scale": 1.25, "skin": Color(0.78, 0.76, 0.74), "robe": Color(0.16, 0.12, 0.14),
+		"hair": Color(0.92, 0.92, 0.95), "spd": 8.2, "rspd": 9.4, "dmg": 11.0, "leap": 0.55, "ranged": true, "regen": 30.0,
+		"exposed": 3.2, "spears": 3, "horns": 6, "windup": 0.4, "armor": false, "kite": false, "intro": true, "reward": 85, "web": true},
 	"shade": {"name": "Тень Кагэцу", "hp": 20.0, "scale": 1.3, "skin": Color(0.12, 0.08, 0.16), "robe": Color(0.05, 0.03, 0.08),
 		"hair": Color(0.45, 0.04, 0.08), "spd": 9.0, "rspd": 9.0, "dmg": 8.0, "leap": 0.0, "ranged": false, "regen": 0.0,
 		"exposed": 1.0, "spears": 0, "horns": 5, "windup": 0.42, "armor": false, "kite": false, "intro": false, "reward": 0, "fragile": true},
@@ -228,6 +231,8 @@ func _build_model() -> void:
 	for n in ["hips", "torso", "head", "arm_r", "fore_r", "arm_l", "fore_l", "leg_r", "shin_r", "leg_l", "shin_l", "hand_r", "hand_l"]:
 		J[n] = model.find_child(n, true, false)
 		rest[n] = Vector3.ZERO
+	if T.get("web", false):
+		_spider_legs()
 	_collect_meshes(model)
 	# длинные белые волосы
 	for i in 3:
@@ -283,9 +288,34 @@ func _horns(head: Node3D, bone: Color, torso: Node3D) -> void:
 			Vox.box(head, Vector3(0.12, 0.03, 0.012), Vector3(0, 0.36, 0.163), Color(1.0, 0.95, 0.7), false, 2.0)
 			Vox.box(head, Vector3(0.03, 0.05, 0.012), Vector3(-0.055, 0.345, 0.163), Color(1.0, 0.95, 0.7), false, 2.0)
 			Vox.box(head, Vector3(0.03, 0.05, 0.012), Vector3(0.055, 0.345, 0.163), Color(1.0, 0.95, 0.7), false, 2.0)
+	if int(T.horns) == 6:
+		# паучиха: шесть красных глаз над бровями
+		for i in 6:
+			var ex := (i % 3 - 1) * 0.07
+			var ey := 0.31 + (i / 3) * 0.045
+			var eb := Vox.box(head, Vector3(0.03, 0.03, 0.012), Vector3(ex, ey, 0.164), Color(1.0, 0.15, 0.2), false, 2.0)
+			eb.material_override = eb.material_override.duplicate()
+			eye_mats.append(eb)
 	if kind == "boss":
 		# красный пояс-оби и белые узоры-луны на кимоно
 		Vox.box(torso, Vector3(0.53, 0.12, 0.33), Vector3(0, 0.08, 0), Color(0.7, 0.05, 0.08))
+
+# Паучьи лапы: по три с каждого бока, колено выше спины.
+var spider_legs: Array = []
+func _spider_legs() -> void:
+	var bone: Color = T.skin.darkened(0.45)
+	for sx in [-1.0, 1.0]:
+		for k in 3:
+			var piv := Vox.pivot(J.hips, Vector3(0.16 * sx, 0.05, -0.08 + k * 0.1))
+			piv.rotation_degrees = Vector3(0, (-30.0 + k * 30.0) * sx, 0)
+			var up := Vox.pivot(piv, Vector3.ZERO)
+			up.rotation_degrees.z = -55.0 * sx
+			Vox.box(up, Vector3(0.08, 0.55, 0.08), Vector3(0, 0.27, 0), bone)
+			var low := Vox.pivot(up, Vector3(0, 0.55, 0))
+			low.rotation_degrees.z = 140.0 * sx
+			Vox.box(low, Vector3(0.06, 0.8, 0.06), Vector3(0, 0.4, 0), bone.darkened(0.2))
+			Vox.box(low, Vector3(0.05, 0.1, 0.05), Vector3(0, 0.83, 0), Color(0.6, 0.1, 0.12))
+			spider_legs.append([piv, (-30.0 + k * 30.0) * sx, k + (3 if sx > 0 else 0)])
 
 func _collect_meshes(n: Node) -> void:
 	for c in n.get_children():
@@ -603,6 +633,9 @@ func _throw_spears(p: Node3D) -> void:
 	if kind == "boss" and randf() < 0.5:
 		_blood_rain(p)
 		return
+	if T.get("web", false):
+		_shoot_webs(p)
+		return
 	for i in int(T.spears):
 		var target: Vector3 = p.global_position + Vector3.UP * 1.0 + Vector3(randf_range(-1.5, 1.5), 0, randf_range(-1.5, 1.5)) * (0.0 if i == 1 else 1.0)
 		var mi := MeshInstance3D.new()
@@ -615,6 +648,22 @@ func _throw_spears(p: Node3D) -> void:
 		var v := (target - mi.global_position).normalized() * 21.0
 		mi.look_at(mi.global_position + v, Vector3.UP)
 		spears.append({"n": mi, "v": v, "life": 2.0, "delay": i * 0.12})
+
+# Паутина: белые комья летят дугой; попадание — герой вязнет (замедление).
+func _shoot_webs(p: Node3D) -> void:
+	G.sfx.play("whoosh", -4.0, 0.6)
+	var origin: Vector3 = J.head.global_position
+	for i in int(T.spears):
+		var target: Vector3 = p.global_position + Vector3.UP * 0.9 + Vector3(randf_range(-1.2, 1.2), 0, randf_range(-1.2, 1.2)) * (0.0 if i == 0 else 1.0)
+		var mi := MeshInstance3D.new()
+		var bm := BoxMesh.new()
+		bm.size = Vector3(0.32, 0.32, 0.32)
+		mi.mesh = bm
+		mi.material_override = Vox.cel_mat(Color(0.95, 0.95, 0.92), true, 0.4)
+		G.fx.add_child(mi)
+		mi.global_position = origin
+		var v := (target - origin).normalized() * 17.0
+		spears.append({"n": mi, "v": v, "life": 2.0, "delay": i * 0.15, "web": true})
 
 func _update_spears(dt: float) -> void:
 	var p: Node3D = G.player
@@ -629,8 +678,12 @@ func _update_spears(dt: float) -> void:
 		if randf() < 0.5:
 			G.fx.burst(n.global_position, Color(0.5, 0.02, 0.08), 1, 0.5, 0.08, 0.3, 4.0)
 		var hit := false
+		if s.get("web", false):
+			n.rotation += Vector3(4, 5, 3) * dt
 		if p and n.global_position.distance_to(p.global_position + Vector3.UP * 1.0) < 0.85:
-			var r: String = p.receive_attack(9.0, n.global_position - s.v.normalized(), true, self)
+			var r: String = p.receive_attack(4.0 if s.get("web", false) else 9.0, n.global_position - s.v.normalized(), true, self)
+			if s.get("web", false) and r == "hit" and p.has_method("webbed"):
+				p.webbed(1.6)
 			if r != "dodge" and r != "none":
 				hit = true
 				if r == "parry" or r == "counter":
@@ -1184,6 +1237,15 @@ func _animate(dt: float) -> void:
 		hips_y -= 0.36
 		var cut_r: bool = not legs_alive.r
 		J["leg_" + ("r" if cut_r else "l")].rotation_degrees.x = -70.0
+	if not spider_legs.is_empty() and state not in ["dead", "air", "down"]:
+		# паучиха ползёт низко, лапы перебирают
+		hips_y -= 0.1
+		lean += 12.0
+		var ph := run_phase * 1.6 + G.real_time * 1.5
+		for sl in spider_legs:
+			var piv: Node3D = sl[0]
+			piv.rotation_degrees.y = float(sl[1]) + sin(ph + float(sl[2]) * 1.7) * (18.0 if sp > 0.8 else 5.0)
+			piv.rotation_degrees.x = cos(ph + float(sl[2]) * 1.7) * (12.0 if sp > 0.8 else 3.0)
 	J.hips.position.y = lerpf(J.hips.position.y, hips_y, rate)
 	model.position.y = lerpf(model.position.y, model_y, rate)
 	for s in ["r", "l"]:

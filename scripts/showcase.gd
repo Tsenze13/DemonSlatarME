@@ -27,6 +27,8 @@ func _ready() -> void:
 		_v39()
 	elif mode == "boss":
 		_boss()
+	elif mode == "kinds":
+		_kinds()
 	else:
 		_shots()
 
@@ -516,4 +518,31 @@ func _boss() -> void:
 	await w(1.8)
 	cam(Vector3(-6, 6.0, -47), Vector3(0, 4.0, -58))
 	await shot("b3_phase3")
+	get_tree().quit()
+
+func _kinds() -> void:
+	await w(0.6)
+	G.hud.help = false
+	G.story._clear_demons()
+	_set_time("sunset")
+	var x := -10.0
+	var sp_d = null
+	for kd in ["low", "weaver", "hermit", "spider", "brute", "boss"]:
+		var dm = CharacterBody3D.new()
+		dm.set_script(load("res://scripts/demon.gd"))
+		dm.kind = kd
+		G.world.add_child(dm)
+		dm.global_position = Vector3(x, 0.5, -2)
+		dm.facing = 0.0
+		dm.set_physics_process(kd == "spider")
+		if kd == "spider":
+			sp_d = dm
+		x += 4.0
+	_place(Vector3(0, 0.5, 60), PI)
+	await w(1.0)
+	G.cam_rig.set_process(false)
+	cam(Vector3(0, 2.6, 10), Vector3(0, 1.4, -2))
+	await shot("k1_lineup")
+	cam(sp_d.global_position + Vector3(2.4, 1.6, 2.6), sp_d.global_position + Vector3(0, 0.8, 0))
+	await shot("k2_spider")
 	get_tree().quit()

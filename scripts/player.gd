@@ -670,6 +670,44 @@ func _mark_on() -> void:
 	if G.hud:
 		G.hud.big_text("МЕТКА ОХОТНИКА")
 
+# Паутина паучихи: герой вязнет (бег медленнее), белые нити на теле.
+var web_t := 0.0
+func webbed(t: float) -> void:
+	web_t = maxf(web_t, t)
+	sprinting = false
+	momentum = 0
+	G.fx.burst(global_position + Vector3.UP * 1.0, Color(0.95, 0.95, 0.92), 14, 3.0, 0.08, 0.6, 2.0)
+	if G.hud:
+		G.hud.notify("Паутина! Рывок — вырваться", 1.4)
+
+# Онигири (H): +40 здоровья, раз в 1,5 с. Покупаются у торговки Ханы, Окику дарит по одному за главу.
+var eat_cd := 0.0
+func _eat_tick(dt: float) -> void:
+	eat_cd -= dt
+	if web_t > 0.0:
+		web_t -= dt
+		if state == "dash":
+			web_t = 0.0          # рывок рвёт паутину
+		elif randf() < dt * 10.0:
+			G.fx.burst(global_position + Vector3(randf_range(-0.3, 0.3), randf_range(0.2, 1.6), randf_range(-0.3, 0.3)), Color(0.95, 0.95, 0.92), 1, 0.5, 0.05, 0.5, 3.0)
+	if pressed("eat") and eat_cd <= 0.0 and state not in ["dead"]:
+		if int(G.prog.onigiri) <= 0:
+			if G.hud:
+				G.hud.notify("Онигири кончились — у торговки Ханы по 20 рё", 2.0)
+			return
+		if hp >= max_hp:
+			if G.hud:
+				G.hud.notify("Ты и так сыт и цел", 1.4)
+			return
+		G.prog.onigiri = int(G.prog.onigiri) - 1
+		hp = minf(max_hp, hp + 40.0)
+		eat_cd = 1.5
+		G.sfx.play("flesh", -14.0, 1.6)
+		G.fx.burst(global_position + Vector3.UP * 1.5, Color(0.95, 0.95, 0.9), 6, 1.5, 0.05, 0.4, 3.0)
+		G.fx.burst(global_position + Vector3.UP * 1.0, Color(0.4, 1.0, 0.5), 10, 2.0, 0.06, 0.6, -1.5, Vector3.UP, 0.6)
+		if G.hud:
+			G.hud.notify("+40 здоровья (онигири: %d)" % int(G.prog.onigiri), 1.6)
+
 func _mark_tick(dt: float) -> void:
 	if pressed("mark") and mark_t <= 0.0 and fury >= 100.0 and mark_unlocked() and state not in ["dead", "down"]:
 		_mark_on()
@@ -832,7 +870,7 @@ func _make_cloth(attach: Node3D, anchors: Array, rows: int, seg: float):
 # =====================================================================
 # ВВОД
 # =====================================================================
-const BUF_ACTIONS := ["jump", "dash", "flash", "light", "heavy", "parry", "form1", "form2", "form3", "lock", "draw", "mark"]
+const BUF_ACTIONS := ["jump", "dash", "flash", "light", "heavy", "parry", "form1", "form2", "form3", "lock", "draw", "mark", "eat"]
 
 # Вызывается из main.gd: события мыши не доходят до пиксельного SubViewport сами.
 func handle_input(e: InputEvent) -> void:
@@ -907,6 +945,7 @@ func _physics_process(dt: float) -> void:
 	state_t += dt
 	invuln_t -= dt
 	_mark_tick(dt)
+	_eat_tick(dt)
 	flash_window -= dt
 	counter_window -= dt
 	flip_t = maxf(0.0, flip_t - dt)
@@ -1042,7 +1081,7 @@ func _st_move(dt: float, inp: Vector3) -> void:
 			momentum = 0
 	else:
 		momentum_lost_t = 0.0
-	var spd := RUN_SPEED * (1.0 + MOMENTUM_STEP * momentum) * (1.3 if mark_t > 0.0 else 1.0)
+	var spd := RUN_SPEED * (1.0 + MOMENTUM_STEP * momentum) * (1.3 if mark_t > 0.0 else 1.0) * (0.4 if web_t > 0.0 else 1.0)
 	_hmove(inp * spd, (ACCEL * 1.3 if sprinting else ACCEL) if on_floor else AIR_ACCEL, dt)
 	_gravity(dt)
 	if lock_target and inp.length() < 0.1:

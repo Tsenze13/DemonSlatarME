@@ -888,6 +888,20 @@ func _run() -> void:
 	st.talk("hana")
 	check(G.dialog, "с прохожим можно поговорить")
 	await _skip_talk()
+	# онигири: подарок Окику, покупка у Ханы, H — лечит
+	var oni0 := int(G.prog.onigiri)
+	G.prog.gift = -1
+	st.talk("okiku")
+	await _skip_talk()
+	check(int(G.prog.onigiri) == oni0 + 1, "Окику дарит онигири")
+	G.prog.ryo = 100
+	st._hana_pick(0)
+	await _skip_talk()
+	check(int(G.prog.onigiri) == oni0 + 2 and int(G.prog.ryo) == 80, "торговка продаёт онигири")
+	p.hp = 30.0
+	p.press("eat")
+	await w(0.2)
+	check(p.hp >= 69.0 and int(G.prog.onigiri) == oni0 + 1, "онигири лечит (+40)")
 	# журнал и большая карта
 	get_parent().menus.refresh_journal()
 	check(get_parent().menus.journal.text.find("Отбор") >= 0, "журнал: главы сюжета")
@@ -924,7 +938,7 @@ func _run() -> void:
 	st._clear_demons()
 	await w(0.2)
 	var kinds_ok := true
-	for kd in ["low", "hermit", "brute", "weaver", "boss"]:
+	for kd in ["low", "hermit", "brute", "weaver", "spider", "boss"]:
 		var dm = CharacterBody3D.new()
 		dm.set_script(load("res://scripts/demon.gd"))
 		dm.kind = kd
@@ -932,7 +946,9 @@ func _run() -> void:
 		dm.global_position = Vector3(randf_range(-6, 6), 0.5, randf_range(-8, -4))
 		if dm.name_ru != dm.TYPES[kd].name or dm.max_hp != dm.TYPES[kd].hp:
 			kinds_ok = false
-	check(kinds_ok, "пять видов демонов: низший, отшельник, громила, ткачиха, Тень")
+	check(kinds_ok, "шесть видов демонов: низший, отшельник, громила, ткачиха, паучиха, Тень")
+	p.webbed(1.0)
+	check(p.web_t > 0.0, "паутина опутывает героя")
 	p.global_position = Vector3(0, 0.5, 4)
 	await w(1.5)
 	await shot("31_demon_kinds")

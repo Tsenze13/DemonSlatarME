@@ -191,10 +191,12 @@ func _process(_dt: float) -> void:
 					_spawn_demon(best + Vector3(randf_range(-3, 3), 0, randf_range(-3, 3)), "low")
 			elif r < 0.55:
 				_spawn_demon(best, "hermit")
-			elif r < 0.75:
+			elif r < 0.7:
 				_spawn_demon(best, "brute")
-			elif r < 0.93:
+			elif r < 0.82:
 				_spawn_demon(best, "weaver")
+			elif r < 0.93:
+				_spawn_demon(best, "spider")
 			else:
 				_spawn_demon(best, "boss")
 

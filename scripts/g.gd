@@ -18,7 +18,7 @@ var cutscene := false       # титры главы / затемнение
 var mode := "free"          # "story" — сюжет, "free" — свободная охота
 
 # Прокачка (сохраняется в save.cfg, раздел [story]).
-var prog := {"ryo": 0, "mastery": 0, "hp": 0, "lungs": 0, "focus": 0, "blade": 0, "chapter": 0, "finished": false, "started": false, "trial": -1, "hunts": 0}
+var prog := {"ryo": 0, "mastery": 0, "hp": 0, "lungs": 0, "focus": 0, "blade": 0, "chapter": 0, "finished": false, "started": false, "trial": -1, "hunts": 0, "onigiri": 2, "gift": -1}
 
 var difficulty := 1          # 0 — лёгкая, 1 — обычная, 2 — тяжёлая (настройки)
 func dmg_out_mult() -> float:
@@ -228,7 +228,7 @@ func _setup_input() -> void:
 		"parry": [KEY_Q], "breathe": [KEY_R], "form1": [KEY_1],
 		"form2": [KEY_2], "form3": [KEY_3], "lock": [KEY_TAB],
 		"daynight": [KEY_N], "pause": [KEY_ESCAPE], "help": [KEY_F1],
-		"light": [KEY_J], "heavy": [KEY_K], "draw": [KEY_F], "mark": [KEY_V], "map": [KEY_M],
+		"light": [KEY_J], "heavy": [KEY_K], "draw": [KEY_F], "mark": [KEY_V], "map": [KEY_M], "eat": [KEY_H],
 	}
 	var mouse := {"light": MOUSE_BUTTON_LEFT, "heavy": MOUSE_BUTTON_RIGHT, "lock": MOUSE_BUTTON_MIDDLE}
 	var pad := {

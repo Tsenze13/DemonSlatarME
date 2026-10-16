@@ -255,7 +255,7 @@ func _draw_story(s: Vector2, u: float) -> void:
 		_txt(Vector2(28 * u, oy - 4 * u), head, int(12 * u), Color(1.0, 0.82, 0.5))
 		_txt(Vector2(28 * u, oy + 22 * u), st.objective, int(17 * u), Color(1, 1, 1))
 	if G.mode == "story" or int(G.prog.ryo) > 0:
-		_txt(Vector2(28 * u, s.y - 118 * u), "%d рё   ·   мастерство %d   ·   %s" % [int(G.prog.ryo), int(G.prog.mastery), st.rank_name()], int(14 * u), Color(1.0, 0.9, 0.65))
+		_txt(Vector2(28 * u, s.y - 118 * u), "%d рё   ·   мастерство %d   ·   %s   ·   онигири %d (H)" % [int(G.prog.ryo), int(G.prog.mastery), st.rank_name(), int(G.prog.onigiri)], int(14 * u), Color(1.0, 0.9, 0.65))
 	# метка цели: ромб над местом, у края экрана — стрелка
 	if st.target != null and G.cam_rig and not G.dialog:
 		var cam: Camera3D = G.cam_rig.cam
