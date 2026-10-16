@@ -24,7 +24,8 @@ const ACTIONS := [
 	["move_f", "Вперёд"], ["move_b", "Назад"], ["move_l", "Влево"], ["move_r", "Вправо"],
 	["jump", "Прыжок"], ["dash", "Рывок / бег (держать)"], ["flash", "Шаг-вспышка"],
 	["light", "Удар"], ["heavy", "Тяжёлый удар"], ["parry", "Парирование"], ["draw", "Достать / убрать клинок"],
-	["breathe", "Восстановить дыхание"], ["form1", "Форма 1"], ["form2", "Форма 2"], ["form3", "Форма 3"], ["form4", "Финальная форма"],
+	["breathe", "Восстановить дыхание"], ["form1", "Форма 1"], ["form2", "Форма 2"], ["form3", "Форма 3"], ["form4", "Форма 4"], ["form5", "Форма 5"],
+	["form6", "Форма 6"], ["form7", "Форма 7"], ["form8", "Форма 8"], ["form9", "Форма 9"], ["form10", "Форма 10"], ["form_page", "Формы 11–16 (страница)"],
 	["lock", "Захват цели"], ["mark", "Метка охотника"], ["eat", "Съесть онигири"], ["map", "Карта"], ["daynight", "День / ночь"], ["help", "Подсказка"],
 ]
 
@@ -300,12 +301,9 @@ func _tab_sword() -> void:
 	_option(v, "haori", "Хаори", hs, _set_haori)
 	var brs := []
 	for k in G.BREATH_ORDER:
-		brs.append(G.BREATHS[k].name + (" (скрытое — после финала)" if k == "dawn" else ""))
+		brs.append("%s — %d форм" % [G.BREATHS[k].name, G.BREATHS[k].forms.size()])
 	_option(v, "breath", "Стиль дыхания", brs, _set_breath)
-	_label(v, "Формы на кнопках 1–3 (новые — у наставника Гэнсая; 4 — финальная, на полной шкале дыхания)", 15).modulate = Color(1.0, 0.85, 0.6)
-	for si in 3:
-		var k := si
-		_option(v, "slot%d" % si, "Кнопка %d" % (si + 1), ["—"], func(i): _set_slot(k, i))
+	_label(v, "Каждая форма — на своей кнопке: 1–0 — формы 1–10, Ё — формы 11–16.\nВ сюжете стили открываются по главам, новые формы учит наставник Гэнсай.", 15).modulate = Color(1.0, 0.85, 0.6)
 	_label(v, "Катаны держатся двумя руками и носятся за поясом.\nПарные клинки — на цепи, за спиной в бинтах; ПКМ — бросок на цепи.\nХлыст — дальние хлёсты; ПКМ — щелчок до 7 м.\nНагината — длинные махи и укол; шар на цепи — бьёт по кругу и в землю, ПКМ — бросок на 8 м.", 15).modulate = Color(0.75, 0.82, 1.0)
 
 # Журнал: главы сюжета, прокачка, ранг и статистика.
@@ -517,25 +515,9 @@ func _apply_sword() -> void:
 	if G.player:
 		G.player.set_sword(settings.sword)
 
-# Выбор формы на кнопку: список — все 6 форм стиля, невыученные недоступны.
-func _set_slot(slot: int, i: int) -> void:
-	if G.player:
-		G.player.set_loadout(slot, i)
-	refresh_slots()
-
+# (выбора форм на кнопки больше нет — у каждой формы своя кнопка)
 func refresh_slots() -> void:
-	if G.player == null or not ctrl.has("slot0"):
-		return
-	var b: Dictionary = G.br()
-	var known: int = G.player.forms_known()
-	var lo: Array = G.player.loadout()
-	for si in 3:
-		var o: OptionButton = ctrl["slot%d" % si]
-		o.clear()
-		for fi in 6:
-			o.add_item("%d. %s%s" % [fi + 1, b.forms[fi], "" if fi < known else "  (не выучена)"])
-			o.set_item_disabled(fi, fi >= known)
-		o.select(int(lo[si]))
+	pass
 
 func _set_breath(i: int) -> void:
 	settings.breath = i

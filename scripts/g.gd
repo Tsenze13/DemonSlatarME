@@ -67,22 +67,24 @@ var show_fps := false
 var shake_mult := 1.0
 # Стиль дыхания: вид эффектов форм, цвет мазка, звук и названия форм.
 var breath_style := "water"
-const BREATH_ORDER := ["water", "flame", "thunder", "dawn"]
-const BREATHS := {
-	"water": {"name": "Прилив", "kind": 1, "a": Color(0.1, 0.35, 0.85), "b": Color(0.92, 0.97, 1.0),
-		"flash": Color(0.6, 0.85, 1.0), "core": Color(0.95, 0.98, 1.0), "edge": Color(0.25, 0.6, 1.0),
-		"forms": ["Веерный срез", "Водоворот", "Тихая гладь", "Ливень", "Водопад", "Течение"], "final": "Бездна"},
-	"flame": {"name": "Пламя", "kind": 3, "a": Color(0.9, 0.18, 0.04), "b": Color(1.0, 0.93, 0.5),
-		"flash": Color(1.0, 0.6, 0.3), "core": Color(1.0, 0.95, 0.7), "edge": Color(1.0, 0.35, 0.05),
-		"forms": ["Восход пламени", "Огненное колесо", "Пламенный тигр", "Кольцо горна", "Огненный выпад", "Огненный метеор"], "final": "Солнце горна"},
-	"thunder": {"name": "Гром", "kind": 4, "a": Color(1.0, 0.74, 0.1), "b": Color(1.0, 1.0, 0.9),
-		"flash": Color(1.0, 0.9, 0.45), "core": Color(1.0, 1.0, 0.9), "edge": Color(1.0, 0.78, 0.1),
-		"forms": ["Удар молнии", "Шестикратный разряд", "Раскат грома", "Гром в облаках", "Цепная молния", "Тысяча вспышек"], "final": "Небесный суд"},
-	# Скрытое корневое дыхание — открывается после победы над Кагэцу. Эффекты — семейства пламени, золото рассвета.
-	"dawn": {"name": "Заря", "kind": 3, "a": Color(1.0, 0.5, 0.08), "b": Color(1.0, 0.97, 0.75), "fx": "flame",
-		"flash": Color(1.0, 0.82, 0.45), "core": Color(1.0, 0.98, 0.85), "edge": Color(1.0, 0.62, 0.1),
-		"forms": ["Восходящий диск", "Шесть лучей", "Солнце в зените", "Ореол", "Луч зари", "Солнечное колесо"], "final": "Танец рассвета"},
-}
+# Стили дыхания и названия форм — из breaths.gd (14 стилей, формы как в аниме и манге).
+const Breaths = preload("res://scripts/breaths.gd")
+var BREATH_ORDER: Array = []
+var BREATHS := {}
+
+func _init() -> void:
+	BREATH_ORDER = Breaths.ORDER.duplicate()
+	for id in Breaths.ORDER:
+		var st: Dictionary = Breaths.STYLES[id]
+		var names: Array = []
+		for f in st.forms:
+			names.append(f[0])
+		BREATHS[id] = {"name": st.name, "kind": st.kind, "a": st.a, "b": st.b, "flash": st.flash, "core": st.core,
+			"edge": st.edge, "fx": st.fx, "forms": names}
+
+# Открыт ли стиль (сюжет — по главам, свободная охота — все).
+func style_open(id: String) -> bool:
+	return Breaths.unlocked(id, prog, mode == "free" or autotest)
 
 func br() -> Dictionary:
 	return BREATHS.get(breath_style, BREATHS.water)
@@ -92,7 +94,7 @@ func fx_style() -> String:
 	return String(br().get("fx", breath_style))
 
 func dawn_unlocked() -> bool:
-	return bool(prog.finished) or autotest
+	return style_open("dawn")
 var stats := {"kills_total": 0, "best_combo": 0, "play_time": 0.0, "perfect": 0, "arms": 0, "legs": 0, "marks": 0, "bosses": 0, "ach": ""}
 
 # Достижения: [ключ, название, условие словами]. Проверяются раз в секунду (`_check_ach`).
@@ -233,7 +235,8 @@ func _setup_input() -> void:
 		"parry": [KEY_Q], "breathe": [KEY_R], "form1": [KEY_1],
 		"form2": [KEY_2], "form3": [KEY_3], "lock": [KEY_TAB],
 		"daynight": [KEY_N], "pause": [KEY_ESCAPE], "help": [KEY_F1],
-		"light": [KEY_J], "heavy": [KEY_K], "draw": [KEY_F], "mark": [KEY_V], "map": [KEY_M], "eat": [KEY_H], "form4": [KEY_4],
+		"light": [KEY_J], "heavy": [KEY_K], "draw": [KEY_F], "mark": [KEY_V], "map": [KEY_M], "eat": [KEY_H], "form4": [KEY_4], "form5": [KEY_5],
+		"form6": [KEY_6], "form7": [KEY_7], "form8": [KEY_8], "form9": [KEY_9], "form10": [KEY_0], "form_page": [KEY_QUOTELEFT],
 	}
 	var mouse := {"light": MOUSE_BUTTON_LEFT, "heavy": MOUSE_BUTTON_RIGHT, "lock": MOUSE_BUTTON_MIDDLE}
 	var pad := {

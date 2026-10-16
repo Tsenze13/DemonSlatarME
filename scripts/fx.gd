@@ -299,6 +299,49 @@ func breath_burst(pos: Vector3, dir: Vector3, n := 10) -> void:
 			for k in 2:
 				var d := (dir + Vector3(randf_range(-1, 1), randf_range(-0.3, 1), randf_range(-1, 1))).normalized()
 				lightning(pos, pos + d * randf_range(1.0, 2.0), Color(1.0, 0.8, 0.15), 0.15, 0.25, 0, 0.05)
+		"water":
+			droplets(pos, dir, n)
+		_:
+			family_burst(G.fx_style(), pos, dir, n)
+
+# Частицы стиля для остальных дыханий: у каждого своё «вещество» стихии.
+func family_burst(fam: String, pos: Vector3, dir: Vector3, n := 10) -> void:
+	var b: Dictionary = G.br()
+	match fam:
+		"wind":
+			# листья и порывы: зелёные пластинки летят вбок, вытягиваются по ветру
+			burst(pos, Color(0.45, 0.8, 0.4), n, 7.0, 0.07, 0.6, 1.0, dir + Vector3.UP * 0.2, 0.9, 1.5, 0.6)
+			burst(pos, Color(0.92, 1.0, 0.94), n / 2, 9.0, 0.05, 0.4, 0.0, dir, 0.6, 1.0, 1.0)
+		"stone":
+			debris_burst(pos, Color(0.5, 0.47, 0.44), maxi(2, n / 3), 0.22, dir * 3.0 + Vector3.UP * 2.0, 2.5)
+			dust(pos, n, Color(0.7, 0.66, 0.6))
+		"mist":
+			burst(pos, Color(0.92, 0.95, 1.0), n, 1.5, 0.35, 0.9, -0.5, dir, 1.0, 3.0)
+		"flower", "love":
+			# лепестки: медленно кружатся и опадают
+			var pc := Color(1.0, 0.7, 0.82) if fam == "flower" else Color(1.0, 0.55, 0.75)
+			burst(pos, pc, n, 3.0, 0.07, 1.2, 1.5, dir + Vector3.UP * 0.6, 1.0, 3.0)
+			burst(pos, Color(1.0, 0.95, 0.97), n / 3, 2.5, 0.05, 1.0, 1.5, Vector3.UP, 1.0, 3.0)
+		"insect":
+			# бабочки: фиолетовые пары крылышек вспархивают вверх
+			burst(pos, Color(0.65, 0.45, 1.0), n, 2.5, 0.08, 1.1, -1.5, Vector3.UP + dir * 0.4, 1.0, 2.5)
+			burst(pos, Color(0.85, 0.95, 1.0), n / 2, 2.0, 0.05, 0.9, -1.0, Vector3.UP, 1.0, 2.5)
+		"serpent":
+			burst(pos, b.a, n, 5.0, 0.08, 0.6, 0.0, dir, 0.5, 2.0, 0.8)
+		"sound":
+			# звук: искры-взрывы и кольцо ударной волны
+			sparks(pos, dir, Color(1.0, 0.75, 0.3), n)
+			ring(pos, 0.3, b.a, b.b, 0.25, 4.0, 0.2, dir)
+		"beast":
+			burst(pos, Color(0.75, 0.8, 0.9), n, 8.0, 0.06, 0.35, 4.0, dir, 1.0, 2.0, 0.8)
+			dust(pos, n / 2)
+		"moon":
+			# луна: маленькие полумесяцы разлетаются от удара
+			for k in maxi(2, n / 4):
+				var d2 := (dir + Vector3(randf_range(-1, 1), randf_range(-0.4, 0.8), randf_range(-1, 1))).normalized()
+				var bs := Basis(Quaternion(Vector3.UP, d2)) * Basis(Vector3.UP, randf() * TAU)
+				arc(pos + d2 * randf_range(0.5, 2.0), bs, randf_range(0.3, 0.7), 0.0, PI * 1.1, 0.1, b.a, b.b, 0.5, 0)
+			burst(pos, b.a, n / 2, 3.0, 0.06, 0.6, 0.0, dir, 1.0, 2.0)
 		_:
 			droplets(pos, dir, n)
 
@@ -308,6 +351,18 @@ func breath_sound(vol := 0.0, pitch := 1.0) -> void:
 			G.sfx.play("fire", vol, pitch)
 		"thunder":
 			G.sfx.play("thunder", vol, pitch)
+		"wind", "beast", "insect":
+			G.sfx.play("whoosh_big", vol, pitch * 1.2)
+		"stone":
+			G.sfx.play("stone", vol, pitch * 0.8)
+			G.sfx.play("boom", vol - 6.0, pitch)
+		"mist", "moon", "serpent":
+			G.sfx.play("whoosh_big", vol - 2.0, pitch * 0.75)
+		"flower", "love":
+			G.sfx.play("shing", vol - 4.0, pitch * 1.3)
+		"sound":
+			G.sfx.play("boom", vol, pitch * 1.2)
+			G.sfx.play("clang", vol - 6.0, pitch * 1.4)
 		_:
 			G.sfx.play("water", vol, pitch)
 

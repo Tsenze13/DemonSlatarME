@@ -498,7 +498,7 @@ func _run() -> void:
 			p.velocity = Vector3.ZERO
 			p.hp = p.max_hp
 			p.breath = 100.0
-			p.cd = {"f1": 0.0, "f2": 0.0, "f3": 0.0, "f4": 0.0}
+			p.cd.clear()
 			await w(0.25)
 			var h0: int = p.hits_total
 			p.press("form%d" % (fi + 1))
@@ -850,58 +850,63 @@ func _run() -> void:
 	check(not p.drawn, "после боя клинок сам уходит в ножны")
 	p.global_position = Vector3(0, 0.5, 4)
 	check(SwordLib_len() > 1.0, "клинок длиннее (%.2f)" % SwordLib_len())
-	# ===== Формы: по 6 на стиль + финальная =====
+	# ===== Формы: все дыхания, столько форм, сколько в аниме =====
+	var canon := {"water": 11, "flame": 9, "thunder": 7, "wind": 9, "stone": 5, "mist": 7, "flower": 7, "insect": 4,
+		"serpent": 5, "love": 6, "sound": 5, "beast": 10, "dawn": 13, "moon": 16}
 	var forms_ok := true
 	var bad := ""
-	for st_name in p.FORMS:
-		var pool: Array = p.FORMS[st_name]
-		if pool.size() != 6 or not p.ATK.has(p.FINAL[st_name]) or G.BREATHS[st_name].forms.size() != 6:
+	for st_name in canon:
+		if p.form_count(st_name) != canon[st_name] or G.BREATHS[st_name].forms.size() != canon[st_name]:
 			forms_ok = false
-			bad += st_name + " "
-		for fk in pool:
-			if fk != "stance" and not p.ATK.has(fk):
-				forms_ok = false
-				bad += fk + " "
-	check(forms_ok, "у каждого стиля 6 форм и финальная %s" % bad)
+			bad += "%s(%d) " % [st_name, p.form_count(st_name)]
+	check(forms_ok and G.BREATH_ORDER.size() == 14, "14 дыханий, формы как в аниме %s" % bad)
 	var dmo = G.enemies[0] if G.enemies.size() > 0 else null
 	if dmo:
 		dmo.global_position = p.global_position + Vector3(0, 0, -3)
 		dmo.hp = 99999.0
 		dmo.max_hp = 99999.0
 	var ran := 0
+	var total_forms := 0
 	for bi in G.BREATH_ORDER.size():
 		p.set_breath(bi)
 		var st_n: String = G.breath_style
-		var keys: Array = p.FORMS[st_n].duplicate()
-		keys.append(p.FINAL[st_n])
-		for fk in keys:
+		for fk in p.FORMS[st_n]:
+			total_forms += 1
 			if fk == "stance":
 				continue
 			p.global_position = Vector3(0, 0.5, 4)
 			p.velocity = Vector3.ZERO
 			p._set_state("move")
 			p._start_attack(fk)
-			await w(minf(float(p.ATK[fk].dur) + 0.15, 2.4))
+			await w(minf(float(p.ATK[fk].dur) * 0.5 + 0.1, 0.9))
 			ran += 1
-	check(ran == 4 * 7 - 1, "все формы всех стилей выполняются (%d)" % ran)
-	# кнопки: на 1 — шестая форма; финальная — только на полной шкале
-	p.set_breath(0)
-	p.set_loadout(0, 5)
-	check(p.slot_key(1) == "wf6", "на кнопку 1 поставлена 6-я форма (%s)" % p.slot_key(1))
-	p.set_loadout(0, 0)
 	p._set_state("move")
-	p.cd["f4"] = 0.0
-	p.breath = 50.0
-	p.press("form4")
-	await w(0.2)
-	check(p.state != "attack" or not p.atk.get("final", false), "финальная форма не идёт без полной шкалы")
+	check(ran == total_forms - 1 and total_forms == 114, "все формы всех дыханий выполняются (%d из %d)" % [ran, total_forms])
+	# кнопки: 0 — десятая форма, Ё — вторая страница (Луна: формы 11–16)
+	p.set_breath(G.BREATH_ORDER.find("moon"))
+	check(p.slot_key(10) == "moon_10", "клавиша 0 — десятая форма (%s)" % p.slot_key(10))
+	p.toggle_form_page()
+	check(p.slot_key(6) == "moon_16" and p.slot_key(7) == "", "Ё — вторая страница: 11–16 (%s)" % p.slot_key(6))
+	p.toggle_form_page()
+	# последняя форма — самая сильная: замедление, неуязвимость
+	p.set_breath(0)
 	p._set_state("move")
 	p.breath = p.max_breath
-	p.press("form4")
-	await w(0.2)
-	check(p.state == "attack" and p.atk.get("final", false) and p.breath < 1.0, "финальная форма тратит всю шкалу")
+	p.cd.clear()
+	p.press("form10")
+	await w(0.15)
+	check(p.state == "attack" and p.atk.get("final", false) == false and p.atk_name == "water_10", "десятая форма Воды — с клавиши 0 (%s)" % p.atk_name)
 	await w(2.0)
 	p._set_state("move")
+	p.set_breath(1)
+	p.breath = p.max_breath
+	p.cd.clear()
+	p.press("form9")
+	await w(0.15)
+	check(p.atk.get("final", false) and p.invuln_t > 0.5, "последняя форма Пламени — финальная, с неуязвимостью")
+	await w(2.0)
+	p._set_state("move")
+	p.set_breath(0)
 	if dmo:
 		dmo.max_hp = 240.0
 		dmo.hp = 240.0

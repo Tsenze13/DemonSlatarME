@@ -478,61 +478,57 @@ func _gensai_pick(i: int) -> void:
 	elif i == 3:
 		_say("gensai", _gensai_lore())
 
-# Обучение формам текущего стиля: 4-я, 5-я, 6-я (3, 4, 5 мастерства) и финальная (6, с 4-й главы).
+# Обучение формам текущего стиля: следующая форма за мастерство (цена растёт с номером).
+func _form_price(n: int) -> int:
+	return 1 + n / 3
+
 func _forms_menu() -> void:
 	var p = G.player
 	var b: Dictionary = G.br()
-	var known: int = int((G.prog.formlv as Dictionary).get(G.breath_style, 3))
-	var fin: bool = bool((G.prog.final as Dictionary).get(G.breath_style, false))
+	var total: int = p.form_count()
+	var known: int = p.forms_known()
 	var ch: Array = []
-	if known < 6:
-		ch.append("Форма %d «%s» — %d мастерства" % [known + 1, b.forms[known], known])
+	if known < total:
+		ch.append("Форма %d «%s» — %d мастерства" % [known + 1, b.forms[known], _form_price(known)])
 	else:
-		ch.append("Все шесть форм «%s» выучены" % b.name)
-	if not fin:
-		ch.append("Финальная форма «%s» — 6 мастерства%s" % [b.final, "" if chapter >= 4 else " (рано: после 3-й главы)"])
-	else:
-		ch.append("Финальная форма «%s» выучена" % b.final)
+		ch.append("Все %d форм «%s» выучены" % [total, b.name])
+	ch.append("Какие стили мне открыты?")
 	ch.append("Хватит")
-	_say("gensai", ["Стиль «%s». Ты знаешь %d форм из шести. Мастерство: %d.\nКакие стоят на кнопках — выбирай в паузе, «Снаряжение»." % [b.name, known, int(G.prog.mastery)]], ch, _forms_pick)
+	_say("gensai", ["Дыхание «%s»: ты знаешь %d форм из %d. Мастерство: %d.\nСтиль меняют в паузе, «Снаряжение». Каждая форма — на своей кнопке, 1–0, Ё — дальше." % [b.name, known, total, int(G.prog.mastery)]], ch, _forms_pick)
 
 func _forms_pick(i: int) -> void:
+	var p = G.player
 	var b: Dictionary = G.br()
 	var st: String = G.breath_style
+	var total: int = p.form_count()
 	var known: int = int((G.prog.formlv as Dictionary).get(st, 3))
 	if i == 0:
-		if known >= 6:
+		if known >= total:
 			_say("gensai", ["Больше форм у этого стиля нет. Ищи свой — так рождаются новые дыхания."])
 			return
-		if int(G.prog.mastery) < known:
-			_say("gensai", ["Мастерства мало. Нужно %d. Руби демонов." % known])
+		var price := _form_price(known)
+		if int(G.prog.mastery) < price:
+			_say("gensai", ["Мастерства мало. Нужно %d. Руби демонов." % price])
 			return
-		G.prog.mastery = int(G.prog.mastery) - known
+		G.prog.mastery = int(G.prog.mastery) - price
 		var d: Dictionary = G.prog.formlv
 		d[st] = known + 1
 		G.prog.formlv = d
 		G.save_prog()
 		G.sfx.play("chime", -6.0)
-		_say("gensai", ["Смотри внимательно. Один раз. …%s. Повтори. Ещё. Ещё! Вот так." % b.forms[known],
-			"Поставь её на кнопку в паузе — «Снаряжение»."], [], Callable(), _forms_menu)
+		_say("gensai", ["Смотри внимательно. Один раз. …«%s». Повтори. Ещё. Ещё! Вот так." % b.forms[known],
+			"Клавиша %d%s." % [(known % 10) + 1 if known < 9 else 0, " (на второй странице — Ё)" if known >= 10 else ""]], [], Callable(), _forms_menu)
 	elif i == 1:
-		if bool((G.prog.final as Dictionary).get(st, false)):
-			_say("gensai", ["Финальную форму ты уже знаешь. Помни: только на полном дыхании. Клавиша 4."])
-			return
-		if chapter < 4:
-			_say("gensai", ["Рано. Твои лёгкие не выдержат. Вернись, когда одолеешь отшельника."])
-			return
-		if int(G.prog.mastery) < 6:
-			_say("gensai", ["Нужно 6 мастерства. Финальная форма — это вся твоя жизнь в одном ударе."])
-			return
-		G.prog.mastery = int(G.prog.mastery) - 6
-		var f: Dictionary = G.prog.final
-		f[st] = true
-		G.prog.final = f
-		G.save_prog()
-		G.sfx.play("gong", -4.0)
-		_say("gensai", ["Вдохни до самого дна. Задержи. И отдай всё — разом. Это «%s»." % b.final,
-			"Клавиша 4, когда шкала дыхания полна. После — пустота в груди. Не промахнись."], [], Callable(), _forms_menu)
+		var open: Array = []
+		var closed: Array = []
+		for id in G.BREATH_ORDER:
+			if G.style_open(id):
+				open.append(G.BREATHS[id].name)
+			else:
+				closed.append(G.BREATHS[id].name)
+		_say("gensai", ["Открыты: %s." % ", ".join(open),
+			"Пока закрыты: %s. Пять основных — после Отбора, производные — когда одолеешь отшельника, Солнце — после Третьей луны, Луна — после Второй." % (", ".join(closed) if not closed.is_empty() else "ничего")],
+			[], Callable(), _forms_menu)
 
 func _train_menu() -> void:
 	_say("gensai", ["Выбирай. Каждая ступень тяжелее прошлой. (мастерство: %d)" % int(G.prog.mastery)], _upgrade_text(), _train_pick)

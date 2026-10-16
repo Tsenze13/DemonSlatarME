@@ -37,6 +37,8 @@ func _ready() -> void:
 		_finals()
 	elif mode == "v46":
 		_v46()
+	elif mode == "styles":
+		_styles()
 	else:
 		_shots()
 
@@ -600,7 +602,8 @@ func _forms() -> void:
 	for bi in G.BREATH_ORDER.size():
 		pl.set_breath(bi)
 		var st: String = G.breath_style
-		var keys: Array = [pl.FORMS[st][3], pl.FORMS[st][4], pl.FORMS[st][5], pl.FINAL[st]]
+		var keys: Array = pl.FORMS[st].slice(3, 6)
+		keys.append(pl.FORMS[st][pl.FORMS[st].size() - 1])
 		for ki in keys.size():
 			var fk: String = keys[ki]
 			_place(Vector3(0, 0.5, 4), PI)
@@ -684,4 +687,37 @@ func _v46() -> void:
 		await get_tree().process_frame
 	cam(pl.global_position + Vector3(-2.0, 2.0, 5.5), pl.global_position + Vector3(0, 1.0, 0))
 	await shot("s3_iai")
+	get_tree().quit()
+
+# Новые дыхания: первая и последняя форма каждого — кадр в разгар удара.
+func _styles() -> void:
+	await w(0.6)
+	G.hud.help = false
+	var pl: Node3D = G.player
+	_set_time("sunset")
+	var d = G.enemies[0]
+	d.max_hp = 99999.0
+	d.hp = 99999.0
+	G.mode = "free"
+	G.cam_rig.set_process(false)
+	for st in (OS.get_environment("KLINOK_STYLES").split(",") if OS.get_environment("KLINOK_STYLES") != "" else ["wind", "stone", "mist", "flower", "insect", "serpent", "love", "sound", "beast", "moon"]):
+		pl.set_breath(G.BREATH_ORDER.find(st))
+		var keys: Array = [pl.FORMS[st][0], pl.FORMS[st][pl.FORMS[st].size() - 1]]
+		for ki in 2:
+			var fk: String = keys[ki]
+			_place(Vector3(0, 0.5, 4), PI)
+			d.global_position = Vector3(0, 0.5, 0.0)
+			d.set_physics_process(false)
+			pl.set_drawn(true)
+			pl._set_state("move")
+			await w(0.2)
+			pl._start_attack(fk)
+			var a: Dictionary = pl.ATK[fk]
+			var tgt: float = float(a.hit0) + 0.1 + (0.25 if a.has("multi") else 0.0)
+			while pl.state == "attack" and pl.state_t < tgt:
+				await get_tree().process_frame
+			cam(Vector3(7.5, 4.0, 6.5), Vector3(0, 1.2, 0.5))
+			await shot("y_%s_%d" % [st, ki])
+			while pl.state == "attack":
+				await get_tree().process_frame
 	get_tree().quit()

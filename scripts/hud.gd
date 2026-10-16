@@ -77,16 +77,17 @@ func big_text(t: String) -> void:
 	big_t = 2.6
 
 # Название формы по текущему стилю дыхания: [подпись, имя].
-# Имя формы по её номеру в стиле: "f1".."f6", "f7" — финальная.
+# Имя формы по её номеру в стиле: "f1".."f16".
+const ORD := ["ПЕРВАЯ", "ВТОРАЯ", "ТРЕТЬЯ", "ЧЕТВЁРТАЯ", "ПЯТАЯ", "ШЕСТАЯ", "СЕДЬМАЯ", "ВОСЬМАЯ", "ДЕВЯТАЯ", "ДЕСЯТАЯ",
+	"ОДИННАДЦАТАЯ", "ДВЕНАДЦАТАЯ", "ТРИНАДЦАТАЯ", "ЧЕТЫРНАДЦАТАЯ", "ПЯТНАДЦАТАЯ", "ШЕСТНАДЦАТАЯ"]
 func _form(nm: String) -> Array:
 	var b: Dictionary = G.br()
-	var idx := ["f1", "f2", "f3", "f4", "f5", "f6", "f7"].find(nm)
-	if idx < 0:
+	if not nm.begins_with("f"):
 		return ["", ""]
-	if idx == 6:
-		return ["%s · ФИНАЛЬНАЯ ФОРМА" % String(b.name).to_upper(), String(b.get("final", ""))]
-	var ord: String = ["ПЕРВАЯ", "ВТОРАЯ", "ТРЕТЬЯ", "ЧЕТВЁРТАЯ", "ПЯТАЯ", "ШЕСТАЯ"][idx]
-	return ["%s · %s ФОРМА" % [String(b.name).to_upper(), ord], b.forms[idx]]
+	var idx := nm.substr(1).to_int() - 1
+	if idx < 0 or idx >= b.forms.size():
+		return ["", ""]
+	return ["%s · %s ФОРМА" % [String(b.name).to_upper(), ORD[idx]], b.forms[idx]]
 
 func form_title(nm: String) -> void:
 	var f := _form(nm)
@@ -390,29 +391,40 @@ func _draw() -> void:
 		_txt(Vector2(x0, y0 + 112 * u), "Полная концентрация...", int(16 * u), Color(0.6, 0.85, 1.0))
 
 	# --- формы дыхания ---
-	var fw := 176.0 * u
-	var has_final: bool = p.final_known()
-	var nb := 4 if has_final else 3
-	var fx0 := s.x * 0.5 - (fw * nb + 12 * u * (nb - 1)) * 0.5
-	var fy := s.y - 92 * u
-	var keys := ["f1", "f2", "f3", "f4"]
+	# панель форм: 10 ячеек (1–0), у стилей с 11+ формами — вторая страница (Ё)
+	var total: int = p.form_count()
+	var known: int = p.forms_known()
+	var page: int = p.form_page
+	var nb := mini(10, total - page * 10)
+	var fw := 118.0 * u
+	var gap := 6.0 * u
+	var fx0 := s.x * 0.5 - (fw * nb + gap * (nb - 1)) * 0.5
+	var fy := s.y - 84 * u
 	for i in nb:
-		var r := Rect2(fx0 + i * (fw + 12 * u), fy, fw, 58 * u)
-		var fin := i == 3
+		var idx := i + page * 10
+		var r := Rect2(fx0 + i * (fw + gap), fy, fw, 50 * u)
+		var learned: bool = idx < known
 		var cost_i := int(p.form_cost(i + 1))
+		var fin: bool = idx == total - 1
 		draw_rect(r.grow(2), Color(0.6, 0.45, 0.15, 0.9) if fin else Color(0.02, 0.02, 0.05, 0.85))
-		draw_rect(r, Color(0.25, 0.15, 0.04, 0.88) if fin else Color(0.08, 0.14, 0.3, 0.85))
-		var cdv: float = p.cd[keys[i]]
+		draw_rect(r, Color(0.25, 0.15, 0.04, 0.85) if fin else Color(0.08, 0.14, 0.3, 0.8))
+		var cdv: float = float(p.cd.get("f%d" % (idx + 1), 0.0))
 		var maxcd: float = p.form_cd(i + 1)
 		if cdv > 0.0:
-			draw_rect(Rect2(r.position, Vector2(r.size.x * cdv / maxcd, r.size.y)), Color(0, 0, 0, 0.55))
-		var ok: bool = (p.breath >= p.max_breath - 0.5 if fin else p.breath >= cost_i) and cdv <= 0.0
-		var nm: String = _form("f%d" % (p.slot_index(i + 1) + 1))[1]
-		var on_col := Color(1.0, 0.9, 0.6) if fin else Color(0.9, 0.96, 1.0)
-		if fin and ok:
-			on_col = on_col.lerp(Color.WHITE, 0.5 + 0.5 * sin(G.real_time * 6.0))
-		_txt(r.position + Vector2(10 * u, 22 * u), "%d  %s" % [i + 1, nm], int(16 * u), on_col if ok else Color(0.5, 0.55, 0.65))
-		_txt(r.position + Vector2(10 * u, 46 * u), "полная шкала" if fin else "дыхание %d" % cost_i, int(12 * u), (Color(1.0, 0.8, 0.4) if fin else Color(0.55, 0.75, 1.0)) if ok else Color(0.4, 0.45, 0.55))
+			draw_rect(Rect2(r.position, Vector2(r.size.x * cdv / maxf(0.1, maxcd), r.size.y)), Color(0, 0, 0, 0.55))
+		var ok: bool = learned and p.breath >= cost_i and cdv <= 0.0
+		var nm: String = _form("f%d" % (idx + 1))[1]
+		if not learned:
+			nm = "не выучена"
+		elif nm.length() > 15:
+			nm = nm.substr(0, 14) + "…"
+		var key_txt := "%d" % ((i + 1) % 10)
+		_txt(r.position + Vector2(7 * u, 19 * u), key_txt, int(14 * u), Color(1.0, 0.9, 0.6) if ok else Color(0.5, 0.52, 0.6))
+		_txt(r.position + Vector2(22 * u, 19 * u), nm, int(11 * u), Color(0.92, 0.96, 1.0) if ok else Color(0.5, 0.55, 0.65))
+		_txt(r.position + Vector2(7 * u, 40 * u), "дых. %d" % cost_i if learned else "у наставника", int(10 * u), Color(0.55, 0.75, 1.0) if ok else Color(0.4, 0.45, 0.55))
+	if total > 10:
+		_txt(Vector2(s.x * 0.5, fy - 10 * u), "формы %s  ·  Ё — %s" % ["1–10" if page == 0 else "11–%d" % total, "дальше" if page == 0 else "назад"], int(12 * u), Color(0.85, 0.85, 0.95), HORIZONTAL_ALIGNMENT_CENTER, 0)
+	_txt(Vector2(fx0, fy - 10 * u), "%s · %d форм" % [G.br().name, total], int(13 * u), Color(1.0, 0.85, 0.6))
 
 	if show_map and G.started:
 		_draw_map(s, u)
@@ -494,7 +506,12 @@ func _draw() -> void:
 	if big_t > 0.0:
 		var a3 := clampf(big_t, 0.0, 1.0)
 		var sc := 1.0 + maxf(0.0, big_t - 2.3) * 2.0
-		_txt(Vector2(s.x * 0.5, s.y * 0.45), big, int(76 * u * sc), Color(1, 0.95, 0.9, a3), HORIZONTAL_ALIGNMENT_CENTER, 0, 18)
+		var fs := int(76 * u * sc)
+		# длинные названия форм — уменьшаем шрифт, чтобы влезли в 90% ширины
+		var tw := font.get_string_size(big, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
+		if tw > s.x * 0.9:
+			fs = int(fs * s.x * 0.9 / tw)
+		_txt(Vector2(s.x * 0.5, s.y * 0.45), big, fs, Color(1, 0.95, 0.9, a3), HORIZONTAL_ALIGNMENT_CENTER, 0, 18)
 
 	# --- уведомления ---
 	var ny := s.y * 0.66
