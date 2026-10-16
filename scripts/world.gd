@@ -15,6 +15,9 @@ const CELL := 2.0                  # размер клетки рельефа (�
 const HALF := 110.0                # край играбельной карты
 const POND := Rect2(-46, -12, 24, 14)     # пруд (x, z, ширина, глубина)
 const SHRINE := Vector3(0, 0, -62)        # святилище на холме
+const TRAIN := Vector3(1500, 0, 0)        # учебная гора — отдельная карта далеко от деревни
+const TrainMap = preload("res://scripts/train_map.gd")
+var train: Node3D = null
 var noise := FastNoiseLite.new()
 var noise2 := FastNoiseLite.new()
 var cedar_pads: Array = []
@@ -45,8 +48,13 @@ func build() -> void:
 	noise.fractal_octaves = 3
 	noise2.seed = 23
 	noise2.frequency = 0.012
+	train = TrainMap.new()
+	train.w = self
+	train.position = TRAIN
+	add_child(train)
 	_environment()
 	_ground()
+	_train_ground()
 	_mountains()
 	_water()
 	_bridge()
@@ -58,6 +66,7 @@ func build() -> void:
 	_stone_wall()
 	_shrine()
 	_props()
+	train.build()
 	_atmosphere()
 	# объединить тысячи статичных блоков в несколько мешей (меньше вызовов отрисовки)
 	baked_count = Vox.bake(self, Callable(self, "_can_bake"))
@@ -287,6 +296,8 @@ func set_night(on: bool) -> void:
 # --- Рельеф -----------------------------------------------------------------
 # Высота клетки (целые метры, уступами). Центр карты плоский — там бой.
 func height_at(x: float, z: float) -> float:
+	if x > 1000.0:
+		return train.h(x - TRAIN.x, z - TRAIN.z)
 	if POND.has_point(Vector2(x, z)):
 		return -1.0
 	# холм святилища: три уступа к площадке
@@ -305,6 +316,8 @@ func height_at(x: float, z: float) -> float:
 
 # Материал верха клетки: 0 трава, 0.5 земля (поляна, тропы), 1 камень.
 func _ground_mat(x: float, z: float, h: float) -> float:
+	if x > 1000.0:
+		return train.mat(x - TRAIN.x, z - TRAIN.z, h)
 	if h < 0.0:
 		return 1.0
 	if h >= 9.0:
@@ -361,6 +374,52 @@ func _ground() -> void:
 		add_child(w)
 
 var _tmat: ShaderMaterial
+# Земля учебной горы: своя коллизия и меш, вокруг — кольцо высоких гор.
+func _train_ground() -> void:
+	var sb := StaticBody3D.new()
+	sb.collision_layer = 1
+	add_child(sb)
+	var step := 0.5
+	var lo := -76.0
+	var n := int(152.0 / step) + 1
+	var data := PackedFloat32Array()
+	data.resize(n * n)
+	var x0 := lo - 0.25
+	for j in n:
+		for i in n:
+			data[j * n + i] = height_at(TRAIN.x + x0 + i * step, x0 + j * step) / step
+	var hm := HeightMapShape3D.new()
+	hm.map_width = n
+	hm.map_depth = n
+	hm.map_data = data
+	var cs := CollisionShape3D.new()
+	cs.shape = hm
+	cs.scale = Vector3.ONE * step
+	cs.position = Vector3(TRAIN.x + x0 + (n - 1) * step * 0.5, 0, x0 + (n - 1) * step * 0.5)
+	sb.add_child(cs)
+	var mi := MeshInstance3D.new()
+	mi.mesh = _terrain_mesh(-100.0, 100.0, CELL, Callable(self, "height_at"), true, TRAIN.x)
+	mi.material_override = _terrain_mat()
+	add_child(mi)
+	var mm := MeshInstance3D.new()
+	mm.mesh = _terrain_mesh(-260.0, 260.0, 6.0, Callable(train, "mountain_h_w"), false, TRAIN.x)
+	mm.material_override = _terrain_mat()
+	mm.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(mm)
+	# невидимые стены по краю
+	for s in [Vector3(1, 0, 0), Vector3(-1, 0, 0), Vector3(0, 0, 1), Vector3(0, 0, -1)]:
+		var wb := StaticBody3D.new()
+		var c2 := CollisionShape3D.new()
+		var b2 := BoxShape3D.new()
+		b2.size = Vector3(2 if s.x != 0 else 160, 90, 2 if s.z != 0 else 160)
+		c2.shape = b2
+		wb.add_child(c2)
+		wb.position = TRAIN + s * 72.0 + Vector3.UP * 30
+		add_child(wb)
+
+func in_train(p: Vector3) -> bool:
+	return p.x > 1000.0
+
 func _terrain_mat() -> ShaderMaterial:
 	if _tmat:
 		return _tmat
@@ -373,7 +432,7 @@ func _terrain_mat() -> ShaderMaterial:
 	return _tmat
 
 # Меш земли из клеток: верх каждой клетки + бока там, где сосед ниже.
-func _terrain_mesh(lo: float, hi: float, cell: float, hf: Callable, mat_fn := true) -> ArrayMesh:
+func _terrain_mesh(lo: float, hi: float, cell: float, hf: Callable, mat_fn := true, ox := 0.0) -> ArrayMesh:
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var n := int((hi - lo) / cell)
@@ -383,7 +442,7 @@ func _terrain_mesh(lo: float, hi: float, cell: float, hf: Callable, mat_fn := tr
 		for i in n + 2:
 			var x := lo + (i - 1 + 0.5) * cell
 			var z := lo + (j - 1 + 0.5) * cell
-			hs[j * (n + 2) + i] = hf.call(x, z)
+			hs[j * (n + 2) + i] = hf.call(x + ox, z)
 	for j in n:
 		for i in n:
 			var h := hs[(j + 1) * (n + 2) + i + 1]
@@ -391,10 +450,11 @@ func _terrain_mesh(lo: float, hi: float, cell: float, hf: Callable, mat_fn := tr
 			var z0 := lo + j * cell
 			var cx := x0 + cell * 0.5
 			var cz := z0 + cell * 0.5
-			var m := _ground_mat(cx, cz, h) if mat_fn else (1.0 if h > 30.0 else 0.0)
+			var m := _ground_mat(cx + ox, cz, h) if mat_fn else (1.0 if h > 30.0 else 0.0)
 			var tint := Color(1, 1, 1, m)
 			if not mat_fn and h > 52.0:
 				tint = Color(1.25, 1.25, 1.3, 1.0)   # снег на вершинах
+			x0 += ox
 			_quad(st, Vector3(x0, h, z0), Vector3(x0 + cell, h, z0), Vector3(x0 + cell, h, z0 + cell), Vector3(x0, h, z0 + cell), Vector3.UP, tint)
 			# бока к более низким соседям
 			var nb := [[1, 0], [-1, 0], [0, 1], [0, -1]]
@@ -557,16 +617,30 @@ func _grass() -> void:
 	flower_mat.shader = grass_mat.shader
 	flower_mat.set_shader_parameter("flower", true)
 	fmesh.surface_set_material(0, flower_mat)
-	var chunk := 24.0
 	var buckets := {}
 	var fbuckets := {}
-	var count := 46000
+	var fcols := [Color(0.95, 0.3, 0.35), Color(1.0, 0.85, 0.3), Color(0.98, 0.97, 0.95), Color(0.7, 0.5, 1.0), Color(1.0, 0.6, 0.75)]
+	# области: карта деревни и учебная гора
+	for reg in [[-100.0, 100.0, -100.0, 100.0, 46000], [TRAIN.x - 40.0, TRAIN.x + 40.0, -76.0, 62.0, 14000]]:
+		_scatter_grass(reg, buckets, fbuckets, fcols)
+	var biggest := 0
+	for key in buckets:
+		var mm := _mm(mesh, buckets[key])
+		grass_mms.append(mm)
+		if mm.instance_count > biggest:
+			biggest = mm.instance_count
+			grass_mm = mm
+	for key in fbuckets:
+		grass_mms.append(_mm(fmesh, fbuckets[key]))
+
+func _scatter_grass(reg: Array, buckets: Dictionary, fbuckets: Dictionary, fcols: Array) -> void:
+	var chunk := 24.0
+	var count: int = reg[4]
 	var placed := 0
 	var tries := 0
-	var fcols := [Color(0.95, 0.3, 0.35), Color(1.0, 0.85, 0.3), Color(0.98, 0.97, 0.95), Color(0.7, 0.5, 1.0), Color(1.0, 0.6, 0.75)]
 	while placed < count and tries < count * 4:
 		tries += 1
-		var p := Vector3(rng.randf_range(-100, 100), 0, rng.randf_range(-100, 100))
+		var p := Vector3(rng.randf_range(reg[0], reg[1]), 0, rng.randf_range(reg[2], reg[3]))
 		var hy := height_at(p.x, p.z)
 		if hy < 0.0 or POND.grow(0.4).has_point(Vector2(p.x, p.z)):
 			continue
@@ -589,15 +663,6 @@ func _grass() -> void:
 				fbuckets[key] = []
 			var ft := Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3.ONE * rng.randf_range(0.8, 1.2)), p + Vector3(rng.randf_range(-0.2, 0.2), 0, rng.randf_range(-0.2, 0.2)))
 			(fbuckets[key] as Array).append([ft, fcols[rng.randi() % fcols.size()]])
-	var biggest := 0
-	for key in buckets:
-		var mm := _mm(mesh, buckets[key])
-		grass_mms.append(mm)
-		if mm.instance_count > biggest:
-			biggest = mm.instance_count
-			grass_mm = mm
-	for key in fbuckets:
-		grass_mms.append(_mm(fmesh, fbuckets[key]))
 
 func _mm(mesh: Mesh, items: Array) -> MultiMesh:
 	var mm := MultiMesh.new()
@@ -1167,6 +1232,13 @@ func _cam_block(size: Vector3, pos: Vector3) -> void:
 
 # Название места (для титров при входе): [имя, подпись].
 func region_at(p: Vector3) -> Array:
+	if p.x > 1000.0:
+		var lz := p.z - TRAIN.z
+		if lz > 38.0:
+			return ["Гора Кирияма", "хижина наставника над облаками"]
+		if lz > -8.0:
+			return ["Тропа ловушек", "наставник не любит лёгких спусков"]
+		return ["Поляна у водопада", "здесь учат дышать"]
 	var v := Vector2(p.x, p.z)
 	if v.length() < 16.0:
 		return ["Поляна у старой стены", "здесь демон ждёт темноты"]
@@ -1189,12 +1261,27 @@ func region_at(p: Vector3) -> Array:
 # Картинка мини-карты: 1 пиксель = 1,5 м, север (−z) сверху.
 var minimap: ImageTexture
 const MAP_SCALE := 1.5
+var train_minimap: ImageTexture
+# Мини-карта той карты, где стоит герой: [текстура, сдвиг по x].
+func map_tex(p: Vector3) -> ImageTexture:
+	return train_minimap if p.x > 1000.0 else minimap
+
+func map_off(p: Vector3) -> float:
+	return TRAIN.x if p.x > 1000.0 else 0.0
+
 func _build_minimap() -> void:
+	train_minimap = _map_image(TRAIN.x, 8.0)
+	var n := int(HALF * 2.0 / MAP_SCALE)
+	var img := _map_image(0.0, 0.0).get_image()
+	_map_dress(img, n)
+	minimap = ImageTexture.create_from_image(img)
+
+func _map_image(ox: float, hk: float) -> ImageTexture:
 	var n := int(HALF * 2.0 / MAP_SCALE)
 	var img := Image.create(n, n, false, Image.FORMAT_RGBA8)
 	for j in n:
 		for i in n:
-			var x := -HALF + (i + 0.5) * MAP_SCALE
+			var x := -HALF + (i + 0.5) * MAP_SCALE + ox
 			var z := -HALF + (j + 0.5) * MAP_SCALE
 			var h := height_at(x, z)
 			var m := _ground_mat(x, z, h)
@@ -1207,7 +1294,12 @@ func _build_minimap() -> void:
 				c = Color(0.72, 0.6, 0.42)
 			else:
 				c = Color(0.42, 0.62, 0.32).darkened(clampf(h * 0.05, 0.0, 0.4))
+			if hk > 0.0 and m > 0.75:
+				c = c.darkened(clampf(h / 40.0, 0.0, 0.5))      # горы — темнее к вершинам
 			img.set_pixel(i, j, c)
+	return ImageTexture.create_from_image(img)
+
+func _map_dress(img: Image, n: int) -> void:
 	# дома, святилище, стена
 	var rects := []
 	for z in [-12.0, -27.0, -42.0, -56.0]:
@@ -1239,7 +1331,7 @@ func _yes(_m: Node) -> bool:
 func _can_bake(m: Node) -> bool:
 	var n := m.get_parent()
 	while n != null and n != self:
-		if n is RigidBody3D or n is CPUParticles3D:
+		if n is RigidBody3D or n is CPUParticles3D or n.is_in_group("nobake"):
 			return false
 		var sc = n.get_script()
 		if sc == Breakable or sc == TreeS:
@@ -1277,9 +1369,10 @@ func _process(_dt: float) -> void:
 			l.light_energy = 2.2 + sin(t * 9.0 + i * 1.7) * 0.18 + sin(t * 23.0 + i) * 0.1
 	if G.player and fireflies:
 		var pp: Vector3 = G.player.global_position
-		fireflies.global_position = Vector3(pp.x, 0.0, pp.z)
-		leaves.global_position = Vector3(pp.x, 9.0, pp.z)
-		petals.global_position = Vector3(pp.x, 7.0, pp.z)
+		var gy := height_at(pp.x, pp.z)
+		fireflies.global_position = Vector3(pp.x, gy, pp.z)
+		leaves.global_position = Vector3(pp.x, gy + 9.0, pp.z)
+		petals.global_position = Vector3(pp.x, gy + 7.0, pp.z)
 
 # Атмосфера: звёзды, светлячки ночью, падающие листья и лепестки.
 func _atmosphere() -> void:

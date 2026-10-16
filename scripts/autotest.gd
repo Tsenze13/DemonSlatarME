@@ -574,7 +574,7 @@ func _run() -> void:
 	# отталкивание от дерева
 	var tree: Node = null
 	for t in get_tree().get_nodes_in_group("kick"):
-		if t.kind == "tree":
+		if t.get("kind") == "tree" and t.global_position.x < 1000.0:
 			tree = t
 			break
 	if tree:
@@ -919,33 +919,77 @@ func _run() -> void:
 	var jun_p0: Vector3 = st.npcs.jun.global_position
 	await _skip_talk()
 	check(st.phase == "tutorial", "пролог: обучение у наставника (%s)" % st.phase)
+	var trm = G.world.train
+	var TT: Vector3 = G.world.TRAIN
+	check(G.world.in_train(p.global_position) and G.world.in_train(st.npcs.gensai.global_position), "обучение — на отдельной карте (гора Кирияма)")
+	check(G.world.height_at(TT.x, 50.0) == 14.0 and G.world.height_at(TT.x, -38.0) == 0.0 and G.world.height_at(TT.x + trm.path_x(19.0), 19.0) < -5.0, "рельеф горы: вершина, поляна, расщелина")
 	p.set_drawn(false)
 	await w(0.1)
 	p.set_drawn(true)
 	await w(0.2)
 	await _skip_talk()
-	p.press("dash")
+	check(st.tut_step == 1 and trm.logs_on, "шаг 2: спуск по тропе, брёвна катятся")
+	# бревно сбивает героя, стоящего на тропе
+	var lz := 31.0
+	st._place(TT + Vector3(trm.path_x(lz), 0, lz), PI)
+	p.invuln_t = 0.0
+	var hp_l: float = p.hp
+	trm.log_t = 0.0
+	var hit_l := false
+	for i in 40:
+		await w(0.1)
+		if p.hp < hp_l:
+			hit_l = true
+			break
+	check(hit_l, "бревно сбивает героя на тропе")
+	# упал в расщелину — обратно на тропу
+	st._place(TT + Vector3(trm.path_x(19.0), -6.0, 19.0), PI)
+	await w(0.4)
+	check(p.global_position.z - TT.z > 25.0 and p.global_position.y > 5.0, "из расщелины — обратно на тропу перед ней")
+	st._place(TT + Vector3(0, 0, -14), PI)
+	await w(0.4)
+	await _skip_talk()
+	check(st.tut_step == 2 and not trm.logs_on and p.breath < p.max_breath * 0.5, "шаг 3: дыхание у водопада (брёвна остановлены)")
+	p.auto_breathe = true
+	p.breath = p.max_breath * 0.96
+	await w(1.0)
+	p.auto_breathe = false
+	await _skip_talk()
+	check(st.tut_step == 3 and st.trial_dummies.size() == 4, "шаг 4: четыре чучела")
+	for dmy in st.trial_dummies:
+		if is_instance_valid(dmy):
+			dmy.slash_hit(dmy.global_position - Vector3.FORWARD, Vector3.FORWARD, 2)
 	await w(0.3)
 	await _skip_talk()
-	for k in 3:
-		p.press("light")
-		await w(0.3)
-	await w(0.3)
-	await _skip_talk()
+	check(st.tut_step == 4, "чучела разрублены — шаг 5: форма")
+	p._set_state("move")
 	p.breath = 100.0
 	p.press("form1")
 	await w(0.4)
-	await _skip_talk()
-	await w(1.0)
-	p.press("parry")
-	await w(0.3)
+	await w(1.6)
 	await _skip_talk()
 	await w(0.3)
-	check(st.phase == "fight" and st.alive.size() == 1, "после обучения ночью приходит первый демон (%s)" % st.phase)
+	check(st.phase == "fight" and st.alive.size() == 1 and trm.cage == null, "ночью из клетки выходит пойманный демон (%s)" % st.phase)
 	await _kill_story_wave()
 	await w(0.8)
 	await _skip_talk()
 	await w(0.6)
+	check(st.phase == "tutorial" and st.tut_step == 6 and trm.boulder and not trm.boulder.split, "полгода спустя — валун (%s, шаг %d)" % [st.phase, st.tut_step])
+	await _skip_talk()
+	var bld = trm.boulder
+	var bhp: int = bld.hp
+	p._set_state("move")
+	bld.slash_hit(p.global_position, Vector3.FORWARD, 1)
+	check(bld.hp == bhp, "лёгкий удар валун не берёт")
+	for i in 12:
+		bld.slash_hit(p.global_position, Vector3.FORWARD, 2)
+	check(bld.split, "тяжёлые удары разрубают валун надвое")
+	await w(1.5)
+	await _skip_talk()
+	await w(0.8)
+	await _skip_talk()
+	await w(0.6)
+	check(not G.world.in_train(p.global_position), "после обучения — в деревню (главная карта)")
 	check(st.chapter == 1 and st.phase == "day", "пролог пройден — день, глава 1 (%d, %s)" % [st.chapter, st.phase])
 	check(st.crow.has_news and st.target != null, "ворон ждёт с заданием, метка на карте")
 	st.talk("crow")

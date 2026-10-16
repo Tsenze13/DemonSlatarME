@@ -726,19 +726,32 @@ func _trial_tick(dt: float) -> void:
 		_say("gensai", ["Медленно. Демон бы уже съел тебя и закусил мной. Ещё раз — когда отдышишься."])
 
 # ---------------------------------------------------------------------
-# Пролог: титры и обучение у наставника
+# Пролог: обучение на горе Кирияма (отдельная карта, train_map.gd).
+# Вершина → тропа ловушек → водопад (дыхание) → чучела → форма → пойманный демон
+# (парирование, первое обезглавливание) → «полгода спустя» — валун, который надо разрубить.
+func _tr() -> Node3D:
+	return G.world.train
+
+func _tw(v: Vector3) -> Vector3:
+	return G.world.TRAIN + v
+
 func _intro() -> void:
 	phase = "intro"
 	G.cutscene = true
 	fade = 1.0
 	fade_to = 1.0
-	_set_time("sunset")
-	# герой лицом к наставнику — камера за спиной, Гэнсай в кадре
-	_place(Vector3(2.5, 0, 3.0), atan2(2.5, 6.0))
+	_set_time("day")
+	_tr().reset_tutorial()
+	for d in trial_dummies:
+		if is_instance_valid(d):
+			d.queue_free()
+	trial_dummies.clear()
+	_gensai_to(Vector3(0, 0, 45.5), 0.0)
+	_place(_tw(_tr().START), PI)
 	var cards := [
 		["Горная провинция Кумо", "начало эпохи Тайсё"],
 		["Ночами из лесов приходят демоны", "их не берёт обычная сталь"],
-		["Старый охотник Гэнсай взял ученика", "сегодня — последний урок"],
+		["Гора Кирияма, над облаками", "здесь старый охотник Гэнсай учит ученика"],
 	]
 	for c in cards:
 		_card(c[0], c[1], 3.2)
@@ -748,29 +761,84 @@ func _intro() -> void:
 	_card("Пролог", "Ученик", 3.0, true)
 	await _w(1.2)
 	_say("gensai", [
-		"Опоздал. Солнце уже садится, а ты только глаза продрал.",
-		"Сегодня последний урок. Потом — Отбор, и я тебе больше не нянька.",
-		"Слушай и делай. Говорю один раз."], [], Callable(), _begin_tutorial)
+		"Проснулся. Полдень, а ты только глаза продрал.",
+		"Сегодня ты пройдёшь всё, чему я учил: тропу, водопад, чучела и форму.",
+		"Пройдёшь — увидишь, зачем всё это. Не пройдёшь — завтра снова с вершины."], [], Callable(), _begin_tutorial)
+
+# Наставник переходит к следующему месту обучения (когда герой далеко — появляется там).
+var gensai_goal = null
+func _gensai_to(local: Vector3, rot: float) -> void:
+	var n = npcs.get("gensai")
+	if n == null:
+		return
+	var pos := _ground(_tw(local)) - Vector3.UP * 0.1
+	n.global_position = pos
+	n.home = pos
+	n.base_rot = rot
+	n.rotation.y = rot
+	n.visible = true
+	gensai_goal = null
+
+func _gensai_later(local: Vector3, rot: float) -> void:
+	gensai_goal = [local, rot]
+
+func _gensai_home() -> void:
+	var n = npcs.get("gensai")
+	if n == null:
+		return
+	var pos := _ground(Vector3(5, 0, 9)) - Vector3.UP * 0.1
+	n.global_position = pos
+	n.home = pos
+	n.base_rot = atan2(-5.0, -9.0)
+	n.rotation.y = n.base_rot
+	gensai_goal = null
 
 func _begin_tutorial() -> void:
 	phase = "tutorial"
 	tut_step = 0
 	tut_attacks = 0
-	_tut_objective()
+	_tut_enter()
 
 const TUT := [
-	["Достань клинок — F (или ЛКМ: удар из ножен)", "Клинок — из ножен. Медленно, как я учил. Или сразу ударом — так быстрее."],
-	["Рывок — Shift", "Ноги — твоя жизнь. Рывок: Shift. Пока летишь — тебя не задеть."],
-	["Серия ударов — ЛКМ три раза", "Теперь руби. Три удара подряд, не останавливайся."],
-	["Форма дыхания — 1", "Вдох — и форма. Клавиша 1. Почувствуй, как воздух становится клинком."],
-	["Парирование — Q", "Демон замахнулся — Q. Поймаешь миг, когда сверкнут когти, — мир замрёт."],
+	["Достань клинок — F (или ЛКМ: удар из ножен)",
+		"Клинок — из ножен. Медленно, как я учил. Или сразу ударом — так быстрее."],
+	["Спустись к поляне. Брёвна — прыжок (Пробел) или рывок (Shift), расщелина — прыжок с разбега",
+		"Спускайся к водопаду. На тропе — мои ловушки. Брёвна перепрыгивай или проскакивай рывком: в рывке тебя не задеть. Расщелину — с разбега."],
+	["Дыхание: у водопада держи R, пока шкала дыхания не наполнится",
+		"Выдохся? Встань у воды и дыши. Держи R. Дыхание — это всё: рывок, бег, формы. Без него ты просто мальчишка с железкой."],
+	["Чучела: разруби все четыре — ЛКМ серия, ПКМ тяжёлый удар",
+		"Чучела у стойки. Серия — ЛКМ, тяжёлый — ПКМ. Рубят не руками — бёдрами."],
+	["Форма дыхания — клавиша 1 (2 и 3 — тоже формы)",
+		"Теперь — форма. Вдох, и клавиша 1. Почувствуй, как вода идёт по клинку. Каждая форма — своя клавиша, от 1 до 0."],
+	["Пойманный демон: парируй его удар (Q), когда шея откроется — руби (ЛКМ)",
+		"Демон замахнулся — Q. Поймаешь миг, когда сверкнут когти, — мир замрёт. Голову — с плеч, когда шея откроется."],
+	["Разруби валун: тяжёлый удар (ПКМ) и формы (1–3). Лёгкие удары его не берут",
+		"Этот камень я поставил здесь двадцать лет назад. Разрубишь — пойдёшь на Отбор. Не разрубишь — будешь рубить, пока не разрубишь."],
 ]
 
-func _tut_objective() -> void:
-	if tut_step < TUT.size():
-		objective = TUT[tut_step][0]
-		target = null
-		npcs.gensai.has_news = false
+func _tut_enter() -> void:
+	var tr := _tr()
+	objective = TUT[tut_step][0] if tut_step < TUT.size() else ""
+	target = null
+	npcs.gensai.has_news = false
+	match tut_step:
+		1:
+			tr.logs_on = true
+			tr.log_t = 1.5
+			target = _tw(Vector3(0, 0, -10))
+			_gensai_later(Vector3(-16, 0, -36), PI * 0.5)
+		2:
+			tr.stop_logs()
+			G.player.breath = G.player.max_breath * 0.12
+			target = _tw(tr.meditate_spot())
+		3:
+			trial_dummies.clear()
+			for d in tr.DUMMIES:
+				trial_dummies.append(_dummy(_ground(_tw(d))))
+			target = _tw(Vector3(15, 0, -30))
+			_gensai_later(Vector3(9, 0, -22), PI * 0.75)
+		4:
+			G.player.breath = G.player.max_breath
 
 func _tut_hint() -> String:
 	return TUT[tut_step][1] if tut_step < TUT.size() else "Хватит болтать. Смотри в лес."
@@ -778,49 +846,109 @@ func _tut_hint() -> String:
 func _tutorial_tick() -> void:
 	var p = G.player
 	var st: String = p.state
+	var tr := _tr()
+	var lp: Vector3 = p.global_position - G.world.TRAIN
+	# наставник переходит к следующему месту, когда герой его не видит
+	if gensai_goal != null:
+		var gp: Vector3 = _tw(gensai_goal[0])
+		if p.global_position.distance_to(npcs.gensai.global_position) > 18.0 and p.global_position.distance_to(gp) > 14.0:
+			_gensai_to(gensai_goal[0], gensai_goal[1])
+	# упал в расщелину — обратно на тропу перед ней
+	if G.world.in_train(p.global_position) and lp.y < -3.0 and lp.z > 10.0 and lp.z < 26.0:
+		_place(_tw(tr.CHECKPOINT), PI)
+		G.hud.notify("Расщелину — прыжком с разбега: Shift + Пробел на краю", 3.0)
+		G.sfx.play("hurt", -8.0)
 	var ok := false
 	match tut_step:
 		0:
 			ok = p.drawn
 		1:
-			ok = st == "dash"
+			ok = lp.z < -9.0 and lp.y < 1.5
 		2:
-			# каждый новый удар серии — смена атаки (или вход в атаку)
-			if st == "attack" and (_last_state != "attack" or p.atk_name != _last_atk):
-				tut_attacks += 1
-			_last_atk = p.atk_name
-			ok = tut_attacks >= 3
+			ok = st == "breathe" and p.breath >= p.max_breath * 0.97
 		3:
-			ok = st == "attack" and bool(p.atk.get("form", false))
+			var left := 0
+			for d in trial_dummies:
+				if is_instance_valid(d) and d.is_inside_tree():
+					left += 1
+			objective = "%s · %d/4" % [TUT[3][0], 4 - left]
+			ok = left == 0
 		4:
-			ok = st == "parry"
+			ok = st == "attack" and bool(p.atk.get("form", false))
+		6:
+			ok = tr.boulder != null and tr.boulder.split
 	_last_state = st
 	if ok:
-		tut_step += 1
-		if G.sfx:
-			G.sfx.play("chime", -10.0, 1.3)
-		if tut_step < TUT.size():
-			_tut_objective()
-			G.hud.notify("Хорошо. Дальше.", 1.6)
-			_say("gensai", [TUT[tut_step][1]])
-		else:
-			phase = "intro"
-			objective = ""
-			_prologue_night()
+		_tut_done()
+
+func _tut_done() -> void:
+	tut_step += 1
+	if G.sfx:
+		G.sfx.play("chime", -10.0, 1.3)
+	if tut_step == 5:
+		phase = "intro"
+		objective = ""
+		_prologue_night()
+		return
+	if tut_step >= TUT.size():
+		phase = "intro"
+		objective = ""
+		_boulder_done()
+		return
+	_tut_enter()
+	G.hud.notify("Хорошо. Дальше.", 1.6)
+	_say("gensai", [TUT[tut_step][1]])
 var _last_atk := ""
 
 func _prologue_night() -> void:
-	_say("gensai", ["…Сносно. Для ученика.", "Тише. Солнце село. Чуешь? Гнилая кровь.", "Это твой первый. Я смотрю. Голову — с плеч, когда шея откроется."], [], Callable(), _first_demon)
+	await _w(1.2)
+	_set_time("sunset")
+	_gensai_to(Vector3(-3, 0, -43), PI)
+	_say("gensai", ["…Сносно. Для ученика.", "Солнце село. Слышишь, как скребётся? Вчера я поймал его у подножия.",
+		"Демон. Слабый, голодный. Как раз для первого раза.", TUT[5][1], "Открываю клетку. Я смотрю."], [], Callable(), _first_demon)
 
 func _first_demon() -> void:
 	_set_time("night")
 	G.sfx.play("gong", -6.0)
-	_start_waves([[["low", -2, -10]]], Vector3(2, 0, 4))
+	_tr().open_cage()
+	var c: Vector3 = _tw(_tr().CAGE)
+	_start_waves([[["low", c.x, c.z]]], _tw(Vector3(0, 0, -36)))
+
+# После первого демона — «полгода спустя»: валун.
+func _boulder_stage() -> void:
+	fade_to = 1.0
+	G.cutscene = true
+	await _w(1.0)
+	_clear_demons()
+	_set_time("sunset")
+	_place(_tw(Vector3(0, 0, -53)), PI)
+	_gensai_to(Vector3(-6, 0, -57), PI * 0.6)
+	G.player.hp = G.player.max_hp
+	G.player.breath = G.player.max_breath
+	_card("Полгода спустя", "каждый день — один и тот же валун", 3.4)
+	await _w(1.6)
+	fade_to = 0.0
+	G.cutscene = false
+	await _w(1.6)
+	phase = "tutorial"
+	tut_step = 6
+	objective = TUT[6][0]
+	target = null
+	_say("gensai", ["Последнее, чему я могу тебя научить, — уже внутри тебя. Дальше — только этот камень.", TUT[6][1]])
+
+func _boulder_done() -> void:
+	await _w(2.4)
+	_say("gensai", ["…", "Разрубил.", "Двадцать лет этот камень ждал ученика, который не сдастся. Дождался.",
+		"Завтра ночью — Отбор, у святилища Кумо в долине. Мой ворон Кагари найдёт тебя в деревне.",
+		"И… молодец, ученик."], [], Callable(), _next_chapter)
 
 # ---------------------------------------------------------------------
 # День в деревне
 func _day() -> void:
 	phase = "day"
+	_gensai_home()
+	if G.world.train:
+		G.world.train.stop_logs()
 	_villagers(true)
 	if G.world.has_method("festival"):
 		G.world.festival(chapter >= 8)
@@ -917,7 +1045,7 @@ func _fight_objective() -> void:
 			left += 1
 	var c: Dictionary = _cur()
 	if chapter == 0 and cur.is_empty():
-		objective = "Убей демона. Когда шея откроется — ЛКМ"
+		objective = TUT[5][0]
 	else:
 		objective = "%s: демоны %d/%d%s" % [c.get("where", ""), wave_total - left, wave_total,
 			"  · волна %d/%d" % [wave + 1, _cur_waves.size()] if _cur_waves.size() > 1 else ""]
@@ -978,8 +1106,7 @@ func _chapter_outro() -> void:
 		return
 	if chapter == 0:
 		_say("gensai", ["Неплохо. Голова отдельно, ты цел. Для первого раза — сойдёт.",
-			"Отдохни. Завтра ночью — Отбор. Мой ворон Кагари найдёт тебя в деревне.",
-			"И… молодец, ученик."], [], Callable(), _next_chapter)
+			"Но меч, что режет только демонов, — полдела. Остался последний урок."], [], Callable(), _boulder_stage)
 	elif chapter == ARC1_END:
 		_ending()
 	elif chapter == CH.size() - 1:

@@ -33,6 +33,8 @@ var big_map := false
 const MAP_LABELS := [["Поляна у старой стены", Vector2(0, 2)], ["Деревня Ивакура", Vector2(32, -32)], ["Святилище Кумо", Vector2(0, -62)],
 	["Пруд Цукими", Vector2(-34, -5)], ["Бамбуковая роща", Vector2(-32, 26)], ["Старый кедровый лес", Vector2(-62, -42)],
 	["Каменная стена", Vector2(0, 50)]]
+const TRAIN_LABELS := [["Хижина наставника", Vector2(1506, 54)], ["Тропа ловушек", Vector2(1500, 16)], ["Водопад", Vector2(1475, -40)],
+	["Чучела", Vector2(1516, -30)], ["Валун", Vector2(1500, -66)]]
 
 const RANKS := [
 	[0.0, "D", "НЕРЯШЛИВО", Color(0.7, 0.7, 0.75)],
@@ -185,17 +187,19 @@ func _draw_map(s: Vector2, u: float) -> void:
 	var r := 78.0 * u
 	var c := Vector2(s.x - r - 26 * u, r + 96 * u)
 	var view := 55.0                       # радиус обзора карты, м
-	var n: float = w.minimap.get_width()
+	var mtex: ImageTexture = w.map_tex(p.global_position)
+	var mox: float = w.map_off(p.global_position)
+	var n: float = mtex.get_width()
 	var pts := PackedVector2Array()
 	var uvs := PackedVector2Array()
 	for i in 40:
 		var a := TAU * i / 40.0
 		var d := Vector2(cos(a), sin(a))
 		pts.append(c + d * r)
-		var wp := Vector2(p.global_position.x, p.global_position.z) + d * view
+		var wp := Vector2(p.global_position.x - mox, p.global_position.z) + d * view
 		uvs.append((wp + Vector2(w.HALF, w.HALF)) / w.MAP_SCALE / n)
 	draw_circle(c, r + 4 * u, Color(0.04, 0.03, 0.06, 0.85))
-	draw_colored_polygon(pts, Color(1, 1, 1, 0.92), uvs, w.minimap)
+	draw_colored_polygon(pts, Color(1, 1, 1, 0.92), uvs, mtex)
 	draw_arc(c, r + 2 * u, 0, TAU, 48, Color(0.95, 0.88, 0.7, 0.9), 2.0 * u)
 	# демоны
 	for e in G.enemies:
@@ -322,11 +326,13 @@ func _draw_big_map(s: Vector2, u: float) -> void:
 	var side := minf(s.x, s.y) * 0.82
 	var r := Rect2(s * 0.5 - Vector2(side, side) * 0.5, Vector2(side, side))
 	var half: float = w.HALF
+	var tr: bool = w.in_train(G.player.global_position)
+	var mox: float = w.map_off(G.player.global_position)
 	var to_px := func(x: float, z: float) -> Vector2:
-		return r.position + Vector2((x + half) / (half * 2.0), (z + half) / (half * 2.0)) * side
+		return r.position + Vector2((x - mox + half) / (half * 2.0), (z + half) / (half * 2.0)) * side
 	draw_rect(r.grow(6 * u), Color(0.75, 0.62, 0.4))
-	draw_texture_rect(w.minimap, r, false)
-	for lb in MAP_LABELS:
+	draw_texture_rect(w.map_tex(G.player.global_position), r, false)
+	for lb in (TRAIN_LABELS if tr else MAP_LABELS):
 		var lp: Vector2 = to_px.call(lb[1].x, lb[1].y)
 		_stxt(lp, lb[0], int(17 * u), Color(1, 0.97, 0.88))
 	if G.story:
@@ -347,7 +353,7 @@ func _draw_big_map(s: Vector2, u: float) -> void:
 	var fd := Vector2(sin(p.facing), cos(p.facing))
 	var sd := Vector2(-fd.y, fd.x)
 	draw_colored_polygon(PackedVector2Array([pp + fd * 12 * u, pp - fd * 7 * u + sd * 8 * u, pp - fd * 3 * u, pp - fd * 7 * u - sd * 8 * u]), Color(1, 1, 1))
-	_stxt(Vector2(s.x * 0.5, r.position.y - 16 * u), "Округа деревни Ивакура", int(30 * u), Color(1, 0.95, 0.85))
+	_stxt(Vector2(s.x * 0.5, r.position.y - 16 * u), "Гора Кирияма" if tr else "Округа деревни Ивакура", int(30 * u), Color(1, 0.95, 0.85))
 	_txt(Vector2(s.x * 0.5, r.end.y + 30 * u), "M — закрыть   ·   ромб — цель задания   ·   жёлтые точки — жители с новостями", int(15 * u), Color(0.85, 0.85, 0.9), HORIZONTAL_ALIGNMENT_CENTER, 0)
 
 func _txt(pos: Vector2, t: String, fsize: int, col: Color, align := HORIZONTAL_ALIGNMENT_LEFT, _w := -1.0, outline := 8) -> void:

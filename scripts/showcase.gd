@@ -39,6 +39,8 @@ func _ready() -> void:
 		_v46()
 	elif mode == "styles":
 		_styles()
+	elif mode == "train":
+		_train()
 	else:
 		_shots()
 
@@ -720,4 +722,78 @@ func _styles() -> void:
 			await shot("y_%s_%d" % [st, ki])
 			while pl.state == "attack":
 				await get_tree().process_frame
+	get_tree().quit()
+
+# Учебная гора: вершина, тропа с брёвнами, расщелина, поляна, водопад, клетка, валун.
+func _train() -> void:
+	await w(0.6)
+	G.hud.help = false
+	var st = G.story
+	st.fast = true
+	st.new_game()
+	await w(2.0)
+	st.fast = false
+	if G.dialog_ui.open:
+		G.dialog_ui.close()
+	if st.phase != "tutorial":
+		st._begin_tutorial()
+	await w(0.2)
+	if G.dialog_ui.open:
+		G.dialog_ui.close()
+	st.card_t = 0.0
+	st.card_t = 0.0
+	st.fade = 0.0
+	st.fade_to = 0.0
+	G.cutscene = false
+	var T: Vector3 = G.world.TRAIN
+	var tr = G.world.train
+	G.cam_rig.set_process(false)
+	await w(1.0)
+	for d in [["day", "a"], ["sunset", "b"]]:
+		_set_time(d[0])
+		await w(0.3)
+		cam(T + Vector3(-3, 17.5, 33), T + Vector3(3, 15, 50))
+		await shot("t1_summit_" + d[1])
+	_set_time("sunset")
+	tr.logs_on = true
+	await w(5.0)
+	G.cam_rig.set_process(true)
+	_place(st._ground(T + Vector3(tr.path_x(26.0), 0, 26.0)) + Vector3.UP * 0.4, 0.0)
+	G.player.facing = 0.0
+	G.cam_rig.yaw = PI
+	await w(1.8)
+	await shot("t2_path")
+	_place(st._ground(T + Vector3(tr.path_x(24.0), 0, 24.0)) + Vector3.UP * 0.4, PI)
+	G.cam_rig.yaw = 0.0
+	await w(1.0)
+	await shot("t3_gap")
+	G.cam_rig.set_process(false)
+	tr.stop_logs()
+	cam(T + Vector3(22, 16, -6), T + Vector3(-4, 0, -44))
+	await shot("t4_clearing")
+	var pl = G.player
+	_place(T + tr.meditate_spot() + Vector3.UP * 0.6, -PI * 0.5)
+	pl.auto_breathe = true
+	await w(1.2)
+	cam(T + Vector3(-12, 4, -33), T + Vector3(-27, 3.5, -40))
+	await shot("t5_waterfall")
+	pl.auto_breathe = false
+	for dd in tr.DUMMIES:
+		st._dummy(st._ground(T + dd))
+	_set_time("night")
+	await w(0.3)
+	cam(T + Vector3(4, 5, -16), T + Vector3(6, 1, -40))
+	await shot("t6_dummies_cage")
+	_set_time("sunset")
+	_place(T + Vector3(0, 0.6, -54), PI)
+	await w(0.5)
+	cam(T + Vector3(9, 5, -48), T + Vector3(0, 2.6, -62))
+	await shot("t7_boulder")
+	tr.boulder._split(Vector3(0, 0, -1))
+	await w(2.2)
+	G.hud.big_t = 0.0
+	cam(T + Vector3(9, 5, -48), T + Vector3(0, 2.6, -62))
+	await shot("t8_split")
+	cam(T + Vector3(-9, 4, -52), T + Vector3(0, 2.6, -62))
+	await shot("t9_split2")
 	get_tree().quit()
