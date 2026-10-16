@@ -25,10 +25,12 @@ var difficulty := 1          # 0 — лёгкая, 1 — обычная, 2 — �
 func dmg_out_mult() -> float:
 	var mt = player.get("mark_t") if player else null
 	var mk := 1.4 if mt != null and float(mt) > 0.0 else 1.0
-	return (1.0 + 0.1 * float(prog.blade)) * [1.3, 1.0, 0.85][clampi(difficulty, 0, 2)] * mk
+	# базовый множитель 1.5: игрок — «урона не хватает»
+	return 1.5 * (1.0 + 0.1 * float(prog.blade)) * [1.3, 1.0, 0.85][clampi(difficulty, 0, 2)] * mk
 
 func dmg_in_mult() -> float:
-	return [0.55, 1.0, 1.4][clampi(difficulty, 0, 2)]
+	# демоны бьют мягче (игрок: «просто запинывают»)
+	return [0.4, 0.7, 1.0][clampi(difficulty, 0, 2)]
 
 func load_prog() -> void:
 	var cf := ConfigFile.new()

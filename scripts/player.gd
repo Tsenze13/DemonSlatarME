@@ -56,10 +56,19 @@ const ATK := {
 		"power": 2, "stagger": 0.6, "hitstop": 0.09, "shake": 0.3, "next": "",
 		"arm0": Vector3(-90, -100, 0), "arm1": Vector3(-90, 100, 0), "fore0": 0, "fore1": 0, "tw0": -30, "tw1": 30,
 		"spin": 1.0, "fx": "wave_ring", "knock": 9.0},
-	"air": {"sweep": true, "dur": 0.38, "hit0": 0.08, "hit1": 0.17, "dmg": 10, "range": 3.3, "arc": 130, "lunge": 4.0,
-		"power": 1, "stagger": 0.35, "hitstop": 0.06, "shake": 0.15, "next": "air",
-		"arm0": Vector3(-200, 0, 0), "arm1": Vector3(-15, 0, 0), "fore0": 0, "fore1": 0, "tw0": 0, "tw1": 0,
-		"fx": "slash", "roll": 90, "air": true, "wr": 0.0},
+	# удары в прыжке — серия: косой срез → обратный горизонтальный → удар вниз с приземлением
+	"air": {"sweep": true, "dur": 0.36, "hit0": 0.07, "hit1": 0.16, "dmg": 10, "range": 3.3, "arc": 130, "lunge": 4.0,
+		"power": 1, "stagger": 0.35, "hitstop": 0.06, "shake": 0.15, "next": "air2",
+		"arm0": Vector3(-170, -60, 0), "arm1": Vector3(-40, 70, 0), "fore0": -10, "fore1": 0, "tw0": -25, "tw1": 25,
+		"fx": "slash", "roll": 50, "air": true},
+	"air2": {"sweep": true, "dur": 0.36, "hit0": 0.07, "hit1": 0.16, "dmg": 11, "range": 3.3, "arc": 150, "lunge": 4.0,
+		"power": 1, "stagger": 0.35, "hitstop": 0.06, "shake": 0.15, "next": "air3",
+		"arm0": Vector3(-80, 110, 0), "arm1": Vector3(-90, -115, 0), "fore0": -10, "fore1": 0, "tw0": 40, "tw1": -40,
+		"fx": "slash", "roll": -6, "rev": true, "air": true},
+	"air3": {"dur": 0.62, "hit0": 0.12, "hit1": 0.58, "dmg": 18, "range": 3.6, "arc": 360, "lunge": 2.0,
+		"power": 2, "stagger": 0.6, "hitstop": 0.09, "shake": 0.35, "next": "",
+		"arm0": Vector3(-205, 0, 0), "arm1": Vector3(-35, 0, 0), "fore0": -30, "fore1": 0, "tw0": -10, "tw1": 10,
+		"fx": "slash", "roll": 90, "slam": true, "knock": 6.0, "wr": 0.0},
 	"dslash": {"dur": 0.42, "hit0": 0.05, "hit1": 0.16, "dmg": 16, "range": 3.6, "arc": 160, "lunge": 26.0,
 		"power": 2, "stagger": 0.5, "hitstop": 0.08, "shake": 0.25, "next": "l3",
 		"arm0": Vector3(-60, 120, 0), "arm1": Vector3(-90, -120, 0), "fore0": -10, "fore1": 0, "tw0": 50, "tw1": -50,
@@ -554,7 +563,7 @@ func _build_model() -> void:
 	var sword := Vox.pivot(fore_r, Vector3(0, -0.29, 0.0), "sword")
 	sword_vis = Vox.pivot(sword, Vector3.ZERO)
 	blade_base = Vox.pivot(sword, Vector3(0, -0.13, 0))
-	blade_tip = Vox.pivot(sword, Vector3(0, -0.95, 0))
+	blade_tip = Vox.pivot(sword, Vector3(0, -0.1 - SwordLib.BLADE_LEN, 0))
 	whip_anchor = Vox.pivot(sword, Vector3(0, -0.1, 0))
 	sword_l = Vox.pivot(arms.l[1], Vector3(0, -0.29, 0), "sword_l")
 	sword_l.rotation_degrees = SWORD_TILT
@@ -760,6 +769,26 @@ func webbed(t: float) -> void:
 	G.fx.burst(global_position + Vector3.UP * 1.0, Color(0.95, 0.95, 0.92), 14, 3.0, 0.08, 0.6, 2.0)
 	if G.hud:
 		G.hud.notify("Паутина! Рывок — вырваться", 1.4)
+
+# После боя клинок сам уходит в ножны (как в аниме: «щёлк» гардой о ножны) —
+# и следующий удар снова начинается рывком-выхватом из ножен.
+var calm_t := 0.0
+func _auto_sheathe(dt: float) -> void:
+	if not drawn or sword_mode not in ["katana", "proc"] or state != "move":
+		calm_t = 0.0
+		return
+	var danger := false
+	for e in G.enemies:
+		if is_instance_valid(e) and not e.is_dead() and e.noticed and e.global_position.distance_to(global_position) < 22.0:
+			danger = true
+			break
+	calm_t = 0.0 if danger else calm_t + dt
+	if calm_t > 4.0:
+		calm_t = 0.0
+		set_drawn(false)
+		G.sfx.play("sheathe", -4.0)
+		if G.hud and not G.autotest:
+			G.hud.notify("Клинок в ножнах — ЛКМ: удар из ножен", 1.6)
 
 # Онигири (H): +40 здоровья, раз в 1,5 с. Покупаются у торговки Ханы, Окику дарит по одному за главу.
 var eat_cd := 0.0
@@ -1027,6 +1056,7 @@ func _physics_process(dt: float) -> void:
 	invuln_t -= dt
 	_mark_tick(dt)
 	_eat_tick(dt)
+	_auto_sheathe(dt)
 	flash_window -= dt
 	counter_window -= dt
 	flip_t = maxf(0.0, flip_t - dt)
@@ -1100,7 +1130,7 @@ func _physics_process(dt: float) -> void:
 		var ds := _dual_side()
 		trail_l.emitting = trail.emitting and ds != "r"
 		trail.emitting = trail.emitting and ds != "l"
-		trail_l.push(sword_l.global_transform * Vector3(0, -0.13, 0), sword_l.global_transform * Vector3(0, -0.95, 0))
+		trail_l.push(sword_l.global_transform * Vector3(0, -0.13, 0), sword_l.global_transform * Vector3(0, -0.1 - SwordLib.BLADE_LEN, 0))
 		if thrown.visible:
 			if state != "attack" or atk_name != "chain":
 				thrown.visible = false
@@ -1230,7 +1260,11 @@ func _common_actions(inp: Vector3) -> bool:
 		elif not drawn:
 			_start_attack("iai")
 		elif not is_on_floor():
-			_start_attack("air")
+			# серия в воздухе продолжается, а не начинается заново
+			if combo_queued in ["air2", "air3"] and G.real_time - last_atk_end < 0.6:
+				_start_attack(combo_queued)
+			else:
+				_start_attack("air")
 		elif combo_queued != "" and G.real_time - last_atk_end < 0.45:
 			_start_attack(combo_queued)
 		else:
@@ -1270,7 +1304,7 @@ func set_sword(m: int) -> void:
 		for c in holder.get_children():
 			c.queue_free()
 	var n := SwordLib.count()
-	var blade_len := 0.85
+	var blade_len := SwordLib.BLADE_LEN
 	if m >= 0 and m <= 5 and m < n:
 		sword_mode = "katana"
 		var vis := SwordLib.make(m, _tint())
@@ -2131,9 +2165,23 @@ func _start_attack(nm: String) -> void:
 			var to2: Vector3 = tg.global_position - global_position
 			to2.y = 0
 			iai_dist = clampf(to2.length() - (tg.radius + 1.1), 0.0, IAI_MAX)
-		invuln_t = 0.2
+		invuln_t = 0.25
 		sonic_boom(atk_dir)
 		G.fx.afterimage(model, _sc().lightened(0.4), 0.35)
+		# заметный выхват: вспышка, стоп-кадр, линия рывка, широкий полумесяц и титр
+		G.impact(0.06, 1)
+		G.do_flash(0.3, G.br().flash)
+		G.speedlines = 1.0
+		var o2 := global_position + Vector3.UP * 1.1
+		G.fx.streak(o2, o2 + atk_dir * (iai_dist + 1.5), _sc().lightened(0.5), 0.35, 0.3)
+		G.fx.slash_arc(o2 + atk_dir * iai_dist, atk_dir, -4.0, 3.0, 175.0, 0.7, G.br().a, G.br().b, G.br().kind, 0.35, true)
+		G.sfx.play("shing", -2.0, 0.9)
+		if G.cam_rig and G.cam_rig.has_method("kick_fov"):
+			G.cam_rig.kick_fov(14.0)
+		if G.hud:
+			G.hud.title = "Удар из ножен"
+			G.hud.title_sub = "ИАЙ · ВЫХВАТ"
+			G.hud.title_t = 1.4
 	ball_impact = false
 	if atk.get("ball", "") == "throw":
 		var dist2: float = atk.range
@@ -2637,7 +2685,11 @@ func _thunder_slam() -> void:
 	G.add_shake(0.7)
 	G.impact(0.08, 1)
 	var st := G.fx_style()
+	if atk_name == "air3":
+		st = "plain"          # обычный удар вниз — без стихийного салюта, только кольцо и трещины
 	match st:
+		"plain":
+			G.sfx.play("hit_heavy", -4.0, 0.8)
 		"thunder":
 			G.sfx.play("thunder", 3.0, 0.8)
 			for k in 6:
@@ -2690,7 +2742,7 @@ func _blade_segments() -> Array:
 		segs.append([a, b + (b - a).normalized() * SWEEP_EXT])
 	if sword_mode == "dual" and side != "r":
 		var a2 := sword_l.global_transform * Vector3(0, -0.13, 0)
-		var b2 := sword_l.global_transform * Vector3(0, -0.95, 0)
+		var b2 := sword_l.global_transform * Vector3(0, -0.1 - SwordLib.BLADE_LEN, 0)
 		segs.append([a2, b2 + (b2 - a2).normalized() * SWEEP_EXT])
 	return segs
 
@@ -2957,7 +3009,7 @@ func _check_hits() -> void:
 	if a.get("sweep", false):
 		_sweep_hits()
 		return
-	var range_: float = a.range * (1.9 if sword_mode == "whip" else 1.0)
+	var range_: float = a.range * (1.9 if sword_mode == "whip" else 1.18)
 	var half := deg_to_rad(a.arc) * 0.5
 	for e in G.enemies:
 		if not is_instance_valid(e) or e.is_dead() or hit_set.has(e.get_instance_id()):

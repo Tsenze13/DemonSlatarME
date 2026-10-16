@@ -58,21 +58,21 @@ var lean_s := 15.0
 #  brute — громила (огромный, не вздрагивает от лёгких ударов, бьёт тяжело),
 #  weaver — кровавая ткачиха (держит дистанцию, веер копий), boss — Кагэцу, Третья Тень.
 const TYPES := {
-	"low": {"name": "Низший демон", "hp": 70.0, "scale": 1.1, "skin": Color(0.46, 0.5, 0.4), "robe": Color(0.32, 0.24, 0.16),
+	"low": {"name": "Низший демон", "hp": 60.0, "scale": 1.1, "skin": Color(0.46, 0.5, 0.4), "robe": Color(0.32, 0.24, 0.16),
 		"hair": Color(0.12, 0.1, 0.1), "spd": 6.6, "rspd": 7.6, "dmg": 9.0, "leap": 0.35, "ranged": false, "regen": 14.0,
-		"exposed": 4.5, "spears": 0, "horns": 1, "windup": 0.5, "armor": false, "kite": false, "intro": false, "reward": 15},
+		"exposed": 4.5, "spears": 0, "horns": 1, "windup": 0.55, "armor": false, "kite": false, "intro": false, "reward": 15, "blood": true},
 	"hermit": {"name": "Демон-отшельник", "hp": 240.0, "scale": 1.35, "skin": Color(0.5, 0.42, 0.52), "robe": Color(0.42, 0.08, 0.1),
 		"hair": Color(0.88, 0.88, 0.92), "spd": 6.2, "rspd": 8.0, "dmg": 15.0, "leap": 0.5, "ranged": true, "regen": 35.0,
 		"exposed": 3.5, "spears": 3, "horns": 2, "windup": 0.45, "armor": false, "kite": false, "intro": true, "reward": 60},
 	"brute": {"name": "Громила с болот", "hp": 420.0, "scale": 1.85, "skin": Color(0.56, 0.27, 0.2), "robe": Color(0.18, 0.16, 0.14),
 		"hair": Color(0.1, 0.08, 0.08), "spd": 4.6, "rspd": 5.8, "dmg": 24.0, "leap": 0.85, "ranged": false, "regen": 30.0,
-		"exposed": 3.0, "spears": 0, "horns": 4, "windup": 0.62, "armor": true, "kite": false, "intro": true, "reward": 90},
+		"exposed": 3.0, "spears": 0, "horns": 4, "windup": 0.68, "armor": true, "kite": false, "intro": true, "reward": 90, "blood": true},
 	"weaver": {"name": "Кровавая ткачиха", "hp": 180.0, "scale": 1.3, "skin": Color(0.84, 0.78, 0.84), "robe": Color(0.34, 0.08, 0.38),
 		"hair": Color(0.08, 0.05, 0.1), "spd": 7.0, "rspd": 8.4, "dmg": 12.0, "leap": 0.0, "ranged": true, "regen": 30.0,
-		"exposed": 3.2, "spears": 5, "horns": 3, "windup": 0.4, "armor": false, "kite": true, "intro": true, "reward": 80},
+		"exposed": 3.2, "spears": 5, "horns": 3, "windup": 0.48, "armor": false, "kite": true, "intro": true, "reward": 80, "blood": true},
 	"spider": {"name": "Паучья мать", "hp": 170.0, "scale": 1.25, "skin": Color(0.78, 0.76, 0.74), "robe": Color(0.16, 0.12, 0.14),
 		"hair": Color(0.92, 0.92, 0.95), "spd": 8.2, "rspd": 9.4, "dmg": 11.0, "leap": 0.55, "ranged": true, "regen": 30.0,
-		"exposed": 3.2, "spears": 3, "horns": 6, "windup": 0.4, "armor": false, "kite": false, "intro": true, "reward": 85, "web": true},
+		"exposed": 3.2, "spears": 3, "horns": 6, "windup": 0.48, "armor": false, "kite": false, "intro": true, "reward": 85, "web": true, "blood": true},
 	"shade": {"name": "Тень Кагэцу", "hp": 20.0, "scale": 1.3, "skin": Color(0.12, 0.08, 0.16), "robe": Color(0.05, 0.03, 0.08),
 		"hair": Color(0.45, 0.04, 0.08), "spd": 9.0, "rspd": 9.0, "dmg": 8.0, "leap": 0.0, "ranged": false, "regen": 0.0,
 		"exposed": 1.0, "spears": 0, "horns": 5, "windup": 0.42, "armor": false, "kite": false, "intro": false, "reward": 0, "fragile": true},
@@ -94,6 +94,7 @@ var frost: Dictionary = {}
 var frost_spikes: Array = []
 var pools: Array = []
 var sc := 1.35              # масштаб модели
+var blood := 0.0            # выпитая кровь: слабые демоны лечатся и отращивают конечности только ею
 
 func _ready() -> void:
 	T = TYPES.get(kind, TYPES.hermit)
@@ -368,23 +369,30 @@ func _physics_process(dt: float) -> void:
 		_animate(dt)
 		return
 	# регенерация
+	var can_grow: bool = not T.get("blood", false) or blood >= 8.0
 	for s in ["r", "l"]:
-		if not arms_alive[s]:
+		if not arms_alive[s] and can_grow:
+			if T.get("blood", false):
+				blood -= dt * 3.0
 			arm_regrow[s] -= dt
 			if arm_regrow[s] <= GROW_T and not growers.has(s):
 				_start_grow(s)
 			if arm_regrow[s] <= 0.0:
 				_regrow_arm(s)
-		if not legs_alive[s]:
+		if not legs_alive[s] and can_grow:
 			leg_regrow[s] -= dt
 			if leg_regrow[s] <= GROW_T and not growers.has("leg_" + s):
 				_start_leg_grow(s)
 			if leg_regrow[s] <= 0.0:
 				_regrow_leg(s)
 	# регенерация: пока бьют — нет, после паузы ~2 с разгоняется до 35 ед/с
-	if since_hit > 2.0 and state != "exposed" and hp < max_hp:
+	if since_hit > 2.0 and state != "exposed" and hp < max_hp and (not T.get("blood", false) or blood > 0.0):
 		var rate := lerpf(8.0, float(T.regen), clampf((since_hit - 2.0) / 2.0, 0.0, 1.0))
-		hp = minf(max_hp, hp + rate * dt)
+		var heal := rate * dt
+		if T.get("blood", false):
+			heal = minf(heal, blood)
+			blood -= heal
+		hp = minf(max_hp, hp + heal)
 		if randf() < dt * 6.0:
 			G.fx.burst(global_position + Vector3(randf_range(-0.4, 0.4), randf_range(0.8, 2.6), randf_range(-0.4, 0.4)), Color(0.75, 0.1, 0.2), 1, 1.0, 0.07, 0.5, -1.0)
 	_update_wounds(dt)
@@ -471,6 +479,8 @@ func _physics_process(dt: float) -> void:
 				_eyes(2.5)
 				if dist < 3.6 and _fwd().dot(dirp) > 0.3 and absf(p.global_position.y - global_position.y) < 2.2:
 					var r: String = p.receive_attack(float(T.dmg) * (1.2 if rage else 1.0), global_position, true, self)
+					if r == "hit":
+						_feed(float(T.dmg))
 					if r == "parry":
 						stagger(2.6 if p.last_parry_perfect else 1.4)
 						return
@@ -483,7 +493,7 @@ func _physics_process(dt: float) -> void:
 				if swings_left > 0 and dist < 4.5:
 					_start_swing()
 				else:
-					atk_cd = 1.2 if rage else 1.8
+					atk_cd = 1.7 if rage else 2.5
 					_set_state("recover")
 		"recover":
 			_gravity(dt)
@@ -715,7 +725,9 @@ func _update_spears(dt: float) -> void:
 		if s.get("web", false):
 			n.rotation += Vector3(4, 5, 3) * dt
 		if p and n.global_position.distance_to(p.global_position + Vector3.UP * 1.0) < 0.85:
-			var r: String = p.receive_attack(4.0 if s.get("web", false) else 9.0, n.global_position - s.v.normalized(), true, self)
+			var r: String = p.receive_attack(4.0 if s.get("web", false) else 6.0, n.global_position - s.v.normalized(), true, self)
+			if r == "hit":
+				_feed(4.0)
 			if s.get("web", false) and r == "hit" and p.has_method("webbed"):
 				p.webbed(1.6)
 			if r != "dodge" and r != "none":
@@ -755,7 +767,9 @@ func take_hit(dmg: float, dir: Vector3, atk: Dictionary) -> Dictionary:
 	var knock: float = atk.get("knock", 2.5)
 	velocity += dir * knock
 	velocity.y = maxf(velocity.y, 1.0 if atk.power < 2 else 3.0)
-	var armored: bool = state in ["swing", "leap", "spikes"] or (state == "windup" and atk.power < 2) or (T.armor and atk.power < 2)
+	# замах слабых демонов сбивается любым ударом; у сильных — только тяжёлым
+	var strong: bool = T.get("boss", false) or kind == "hermit" or T.armor
+	var armored: bool = state in ["leap", "spikes"] or (state == "swing" and strong) or (state == "windup" and atk.power < 2 and strong) or (T.armor and atk.power < 2)
 	hit_dir = dir
 	hit_react = 1.0 if not armored else 0.5
 	if state in ["air", "down"]:
@@ -822,9 +836,17 @@ func _add_wound(p: Vector3, dir: Vector3, atk: Dictionary) -> void:
 	var big: bool = atk.get("power", 1) >= 2
 	Wounds.add(wounds, best, hp2, line, dir, 0.05 if big else 0.032, 0.45 if big else 0.3, 60.0)
 
+# Демон пьёт кровь героя: лечится, копит силы на новые конечности.
+func _feed(amount: float) -> void:
+	if not T.get("blood", false):
+		return
+	blood += amount * 3.0
+	G.fx.burst(global_position + Vector3.UP * 1.6, Color(0.7, 0.02, 0.08), 6, 2.0, 0.08, 0.5, -1.0)
+
 func _update_wounds(dt: float) -> void:
 	# порезы затягиваются вместе с регенерацией — по вокселю
-	Wounds.update(wounds, dt, 0.45 if since_hit >= 2.0 else 0.0)
+	var regen_ok: bool = not T.get("blood", false) or blood > 0.0
+	Wounds.update(wounds, dt, 0.45 if since_hit >= 2.0 and regen_ok else 0.0)
 
 func stagger(t: float) -> void:
 	if state in ["exposed", "dead", "locked", "air", "down"]:

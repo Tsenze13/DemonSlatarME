@@ -5,7 +5,7 @@ extends RefCounted
 # системе: гарда в начале координат, клинок вдоль -Y, ширина лезвия вдоль Z.
 
 const PATH := "res://assets/swords/swords.gltf"
-const BLADE_LEN := 0.85
+const BLADE_LEN := 1.12          # длина клинка (была 0.85 — игрок: «меч очень короткий»)
 
 const NAMES := [
 	"Синий клинок", "Бирюзовый клинок", "Волнистый клинок", "Огненный клинок", "Зелёный клинок",
@@ -117,9 +117,10 @@ static func _analyze(g: Node, flip := false) -> Dictionary:
 		s = Basis(-tv, -dir, wv)
 	var m := s.inverse()
 	var scale := BLADE_LEN / maxf(0.001, blade_len)
+	var cross := 0.85 / maxf(0.001, blade_len)   # толщина и гарда — как при прежней длине 0.85
 	var gp := total.get_center()
 	gp[axis] = gc
-	var basis := m.scaled(Vector3.ONE * scale)
+	var basis := Basis.from_scale(Vector3(cross, scale, cross)) * m
 	var xf := Transform3D(basis, -(basis * gp))
 	return {"xform": xf, "handle": handle_len * scale, "guard_w": gw * scale,
 		"blade_w": blade_box.size[wide] * scale, "blade_t": blade_box.size[thin] * scale}

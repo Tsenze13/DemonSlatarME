@@ -809,6 +809,47 @@ func _run() -> void:
 	check(p.elem_k > 0.5, "стихия на хаори после формы (%.2f)" % p.elem_k)
 	p.set_breath(0)
 	check(G.music.ready_, "музыка и окружение готовы (%d мс)" % G.music.gen_ms)
+	# ===== v0.46: серия в воздухе, кровь слабых демонов, клинок сам в ножны =====
+	p._set_state("move")
+	p.global_position = Vector3(0, 0.5, 12)
+	p.set_sword(0)
+	p.set_drawn(true)
+	await w(0.3)
+	p.press("jump")
+	await w(0.12)
+	var air_seq: Array = []
+	for k in 3:
+		p.press("light")
+		await w(0.2)
+		air_seq.append(p.atk_name)
+	await w(0.8)
+	check(air_seq.has("air2") or air_seq.has("air3"), "удары в прыжке идут серией, а не одним взмахом (%s)" % str(air_seq))
+	var lowd = CharacterBody3D.new()
+	lowd.set_script(load("res://scripts/demon.gd"))
+	lowd.kind = "low"
+	G.world.add_child(lowd)
+	lowd.global_position = Vector3(40, 0.5, 40)
+	lowd.noticed = true
+	await w(0.1)
+	lowd.hp = 20.0
+	lowd.since_hit = 5.0
+	await w(1.0)
+	check(lowd.hp < 21.0, "низший демон без крови не лечится (%.0f)" % lowd.hp)
+	lowd._feed(10.0)
+	lowd.since_hit = 5.0
+	await w(1.5)
+	check(lowd.hp > 25.0, "выпив крови — лечится (%.0f)" % lowd.hp)
+	lowd.queue_free()
+	p.global_position = Vector3(60, 0.5, 60)
+	for e in G.enemies:
+		if is_instance_valid(e) and e != lowd:
+			e.noticed = false
+	p.set_drawn(true)
+	p._set_state("move")
+	await w(4.8)
+	check(not p.drawn, "после боя клинок сам уходит в ножны")
+	p.global_position = Vector3(0, 0.5, 4)
+	check(SwordLib_len() > 1.0, "клинок длиннее (%.2f)" % SwordLib_len())
 	# ===== Формы: по 6 на стиль + финальная =====
 	var forms_ok := true
 	var bad := ""
@@ -1128,3 +1169,6 @@ func _kill_story_wave() -> void:
 			d._expose()
 			d.decapitate(Vector3.FORWARD)
 	await w(0.5)
+
+func SwordLib_len() -> float:
+	return load("res://scripts/sword_lib.gd").BLADE_LEN

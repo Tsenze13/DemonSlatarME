@@ -35,6 +35,8 @@ func _ready() -> void:
 		_forms()
 	elif mode == "finals":
 		_finals()
+	elif mode == "v46":
+		_v46()
 	else:
 		_shots()
 
@@ -650,4 +652,36 @@ func _finals() -> void:
 			cam(Vector3(9.0, 5.0, 8.0), Vector3(0, 1.2, 1.0))
 			await shot("fin_%s_%d" % [st, k])
 		await w(1.5)
+	get_tree().quit()
+
+func _v46() -> void:
+	await w(0.6)
+	G.hud.help = false
+	var pl: Node3D = G.player
+	_park_demons()
+	_set_time("sunset")
+	G.cam_rig.set_process(false)
+	_place(Vector3(0, 0.5, 6), PI * 0.5)
+	pl.set_drawn(true)
+	await w(1.0)
+	cam(pl.global_position + Vector3(0.4, 1.4, 3.2), pl.global_position + Vector3(0, 1.1, 0))
+	await shot("s1_stance")
+	for nm in ["air", "air2", "air3"]:
+		_place(Vector3(0, 0.5, 6), PI * 0.5)
+		pl.velocity.y = 9.0
+		await w(0.25)
+		pl._start_attack(nm)
+		while pl.state == "attack" and pl.state_t < float(pl.ATK[nm].hit0) + 0.04:
+			await get_tree().process_frame
+		cam(pl.global_position + Vector3(0.6, 1.0, 4.0), pl.global_position + Vector3(0, 1.0, 0))
+		await shot("s2_" + nm)
+		await w(0.8)
+	_place(Vector3(0, 0.5, 6), PI * 0.5)
+	pl.set_drawn(false)
+	await w(0.5)
+	pl._start_attack("iai")
+	while pl.state == "attack" and pl.state_t < 0.12:
+		await get_tree().process_frame
+	cam(pl.global_position + Vector3(-2.0, 2.0, 5.5), pl.global_position + Vector3(0, 1.0, 0))
+	await shot("s3_iai")
 	get_tree().quit()
