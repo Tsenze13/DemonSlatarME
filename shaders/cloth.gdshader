@@ -23,6 +23,9 @@ void fragment() {
 
 void light() {
 	float nl = clamp(dot(NORMAL, LIGHT), 0.0, 1.0) * ATTENUATION;
-	float l = nl > 0.5 ? 1.0 : (nl > 0.08 ? 0.55 : 0.0);
+	float l = mix(0.2, 1.0, smoothstep(0.04, 0.32, nl));
+	if (!LIGHT_IS_DIRECTIONAL) {
+		l = clamp(dot(NORMAL, LIGHT) * 0.6 + 0.4, 0.0, 1.0) * ATTENUATION;
+	}
 	DIFFUSE_LIGHT += l * LIGHT_COLOR;
 }

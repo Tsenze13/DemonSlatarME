@@ -5,10 +5,28 @@ extends Node3D
 const Vox = preload("res://scripts/vox.gd")
 const Breakable = preload("res://scripts/breakable.gd")
 const TreeS = preload("res://scripts/tree.gd")
+const Cedar = preload("res://scripts/cedar.gd")
+const Tex = preload("res://scripts/tex.gd")
+
+# Карта: центр — плоская поляна для боя; на востоке — деревня, на севере —
+# святилище на холме среди кедров, на западе — бамбук и пруд с мостом,
+# на юге — длинная стена. По краю — холмы уступами, за краем — горы.
+const CELL := 2.0                  # размер клетки рельефа (м)
+const HALF := 110.0                # край играбельной карты
+const POND := Rect2(-46, -12, 24, 14)     # пруд (x, z, ширина, глубина)
+const SHRINE := Vector3(0, 0, -62)        # святилище на холме
+var noise := FastNoiseLite.new()
+var noise2 := FastNoiseLite.new()
+var cedar_pads: Array = []
+var baked_count := 0         # ветки кедров, на которые можно запрыгнуть
+var water_mat: ShaderMaterial
+var paper_mat: ShaderMaterial
+var village_view := Vector3(32, 0.5, -4)
+var forest_view := Vector3(14, 0.5, -52)
 
 var env: Environment
 var sun: DirectionalLight3D
-var sky_mat: ProceduralSkyMaterial
+var sky_mat: ShaderMaterial
 var night := true
 var lantern_lights: Array = []
 var grass_mat: ShaderMaterial
@@ -22,134 +40,395 @@ var rng := RandomNumberGenerator.new()
 
 func build() -> void:
 	rng.seed = 7
+	noise.seed = 11
+	noise.frequency = 0.03
+	noise.fractal_octaves = 3
+	noise2.seed = 23
+	noise2.frequency = 0.012
 	_environment()
 	_ground()
+	_mountains()
+	_water()
+	_bridge()
 	_grass()
 	_forest()
 	_bamboo()
+	_cedars()
 	_village()
 	_stone_wall()
 	_shrine()
 	_props()
 	_atmosphere()
-	set_night(true)
+	# объединить тысячи статичных блоков в несколько мешей (меньше вызовов отрисовки)
+	baked_count = Vox.bake(self, Callable(self, "_can_bake"))
+	# разрушаемые предметы и рубящиеся деревья — каждый в свой меш (они живут отдельно)
+	var all := Callable(self, "_yes")
+	for n in get_tree().get_nodes_in_group("breakable"):
+		if n.get_script() == Breakable:
+			baked_count += Vox.bake(n, all, 1000.0)
+		elif n.get_script() == TreeS:
+			baked_count += Vox.bake(n.top, all, 1000.0)
+	set_time("sunset")
 
 func _environment() -> void:
 	var we := WorldEnvironment.new()
 	env = Environment.new()
 	env.background_mode = Environment.BG_SKY
 	var sky := Sky.new()
-	sky_mat = ProceduralSkyMaterial.new()
+	sky_mat = ShaderMaterial.new()
+	sky_mat.shader = load("res://shaders/sky.gdshader")
 	sky.sky_material = sky_mat
+	sky.radiance_size = Sky.RADIANCE_SIZE_32
 	env.sky = sky
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	env.tonemap_mode = Environment.TONE_MAPPER_LINEAR
+	# плёночный тон: светлое не выгорает в белое, тени мягче
+	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
+	env.tonemap_exposure = 1.0
+	env.tonemap_white = 6.0
+	# свечение: фонари, солнце, эффекты дыхания светятся
+	env.glow_enabled = true
+	env.glow_intensity = 0.4
+	env.glow_strength = 0.9
+	env.glow_bloom = 0.0
+	env.glow_hdr_threshold = 1.15
+	env.glow_blend_mode = Environment.GLOW_BLEND_MODE_ADDITIVE
+	# дымка: даль растворяется в цвете неба
 	env.fog_enabled = true
-	env.fog_mode = Environment.FOG_MODE_DEPTH
-	env.fog_depth_begin = 30.0
-	env.fog_depth_end = 140.0
+	env.fog_mode = Environment.FOG_MODE_EXPONENTIAL
+	env.fog_density = 0.012
+	env.fog_sky_affect = 0.0
+	env.fog_height_density = 0.0
+	env.adjustment_enabled = true
 	we.environment = env
 	add_child(we)
 	sun = DirectionalLight3D.new()
 	sun.shadow_enabled = true
-	sun.directional_shadow_max_distance = 60.0
-	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_ORTHOGONAL
+	sun.shadow_blur = 1.6
+	sun.shadow_bias = 0.04
+	sun.shadow_normal_bias = 1.2
+	sun.directional_shadow_max_distance = 70.0
+	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
 	add_child(sun)
-	moon = MeshInstance3D.new()
-	var sm := SphereMesh.new()
-	sm.radius = 9.0
-	sm.height = 18.0
-	sm.radial_segments = 12
-	sm.rings = 6
-	moon.mesh = sm
-	var mm := StandardMaterial3D.new()
-	mm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	mm.albedo_color = Color(1.0, 0.96, 0.82)
-	mm.set("disable_fog", true)
-	moon.material_override = mm
-	moon.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	moon.position = Vector3(-90, 110, -160)
-	add_child(moon)
+
+# Время суток: "day" — день, "sunset" — закат (золотой час), "night" — ночь с фонарями.
+# Клавиша N перебирает по кругу.
+const TIMES := {
+	"day": {
+		"sun_rot": Vector3(-50, 35, 0), "sun_col": Color(1.0, 0.95, 0.86), "sun_e": 1.15,
+		"top": Color(0.22, 0.45, 0.85), "hor": Color(0.7, 0.82, 0.95), "ground": Color(0.42, 0.5, 0.45),
+		"sky_sun": Color(1.0, 0.93, 0.78), "halo": 0.35, "cl_lit": Color(1.0, 1.0, 1.0), "cl_sh": Color(0.68, 0.74, 0.86),
+		"cover": 0.42, "stars": 0.0, "moon": 0.0,
+		"amb": Color(0.58, 0.66, 0.84), "amb_e": 0.48, "fog": Color(0.6, 0.72, 0.88), "fog_d": 0.006,
+		"sat": 1.05, "con": 1.05, "bri": 0.97, "glow": 0.2, "lanterns": false,
+	},
+	"sunset": {
+		"sun_rot": Vector3(-13, -62, 0), "sun_col": Color(1.0, 0.66, 0.42), "sun_e": 1.2,
+		"top": Color(0.2, 0.25, 0.5), "hor": Color(1.0, 0.62, 0.42), "ground": Color(0.4, 0.3, 0.32),
+		"sky_sun": Color(1.0, 0.7, 0.4), "halo": 1.1, "cl_lit": Color(1.0, 0.72, 0.5), "cl_sh": Color(0.45, 0.38, 0.55),
+		"cover": 0.5, "stars": 0.0, "moon": 0.0,
+		"amb": Color(0.46, 0.42, 0.62), "amb_e": 0.5, "fog": Color(0.78, 0.55, 0.58), "fog_d": 0.0065,
+		"sat": 1.0, "con": 1.08, "bri": 0.95, "glow": 0.35, "lanterns": true,
+	},
+	"night": {
+		"sun_rot": Vector3(-40, 140, 0), "sun_col": Color(0.55, 0.65, 1.0), "sun_e": 0.45,
+		"top": Color(0.02, 0.03, 0.1), "hor": Color(0.1, 0.12, 0.26), "ground": Color(0.04, 0.05, 0.1),
+		"sky_sun": Color(0.0, 0.0, 0.0), "halo": 0.0, "cl_lit": Color(0.32, 0.36, 0.55), "cl_sh": Color(0.08, 0.09, 0.18),
+		"cover": 0.35, "stars": 1.0, "moon": 1.0,
+		"amb": Color(0.24, 0.3, 0.55), "amb_e": 0.45, "fog": Color(0.06, 0.08, 0.18), "fog_d": 0.012,
+		"sat": 0.95, "con": 1.08, "bri": 0.95, "glow": 0.6, "lanterns": true,
+	},
+}
+var time_of_day := "sunset"
+
+func set_time(t: String) -> void:
+	if not TIMES.has(t):
+		return
+	time_of_day = t
+	night = t == "night"
+	var c: Dictionary = TIMES[t]
+	sun.rotation_degrees = c.sun_rot
+	sun.light_color = c.sun_col
+	sun.light_energy = c.sun_e
+	var sd: Vector3 = sun.global_transform.basis.z
+	sky_mat.set_shader_parameter("sun_dir", sd)
+	sky_mat.set_shader_parameter("top_col", c.top)
+	sky_mat.set_shader_parameter("hor_col", c.hor)
+	sky_mat.set_shader_parameter("ground_col", c.ground)
+	sky_mat.set_shader_parameter("sun_col", c.sky_sun)
+	sky_mat.set_shader_parameter("halo", c.halo)
+	sky_mat.set_shader_parameter("cloud_lit", c.cl_lit)
+	sky_mat.set_shader_parameter("cloud_shade", c.cl_sh)
+	sky_mat.set_shader_parameter("cloud_cover", c.cover)
+	sky_mat.set_shader_parameter("stars", c.stars)
+	sky_mat.set_shader_parameter("moon", c.moon)
+	# ночью «солнце» — это луна: её диск там, откуда идёт свет
+	sky_mat.set_shader_parameter("moon_dir", sd if t == "night" else Vector3(-0.45, 0.55, -0.7))
+	env.ambient_light_color = c.amb
+	env.ambient_light_energy = c.amb_e
+	env.fog_light_color = c.fog
+	env.fog_density = c.fog_d
+	env.adjustment_saturation = c.sat
+	env.adjustment_contrast = c.con
+	env.adjustment_brightness = c.bri
+	env.glow_intensity = c.glow
+	if fireflies:
+		fireflies.emitting = t == "night"
+	for l in lantern_lights:
+		if is_instance_valid(l):
+			l.visible = c.lanterns
+	if G.post_mat:
+		G.post_mat.set_shader_parameter("grade", ["day", "sunset", "night"].find(t))
+	# окна-сёдзи светятся изнутри вечером и ночью
+	var pe: float = {"day": 0.0, "sunset": 0.25, "night": 0.75}[t]
+	Vox.mat_set(Vox.cel_mat(PAPER, true, 0.0, 0.022, "paper"), "emission", pe)
+	Vox.mat_set(Vox.cel_mat(Color(0.92, 0.88, 0.76), true, 0.0, 0.022, "paper"), "emission", pe)
+	if water_mat:
+		water_mat.set_shader_parameter("sky", c.hor)
+		water_mat.set_shader_parameter("deep", Color(0.1, 0.28, 0.42) if t != "night" else Color(0.03, 0.06, 0.14))
+		water_mat.set_shader_parameter("shallow", Color(0.25, 0.52, 0.58) if t != "night" else Color(0.06, 0.12, 0.22))
+
+func next_time() -> void:
+	var order := ["day", "sunset", "night"]
+	set_time(order[(order.find(time_of_day) + 1) % 3])
 
 # Качество из настроек: тени (0 — нет, 1 — простые, 2 — чёткие) и густота травы.
 func set_quality(shadows: int, grass: float) -> void:
 	if sun:
 		sun.shadow_enabled = shadows > 0
-		sun.directional_shadow_max_distance = 40.0 if shadows == 1 else 60.0
+		sun.directional_shadow_max_distance = 45.0 if shadows == 1 else 70.0
 		RenderingServer.directional_shadow_atlas_set_size(2048 if shadows == 1 else 4096, true)
 	if grass_mm:
 		grass_mm.visible_instance_count = int(grass_mm.instance_count * clampf(grass, 0.0, 1.0))
 
+# Совместимость со старым переключателем день/ночь.
 func set_night(on: bool) -> void:
-	night = on
-	if on:
-		sky_mat.sky_top_color = Color(0.03, 0.04, 0.12)
-		sky_mat.sky_horizon_color = Color(0.16, 0.16, 0.32)
-		sky_mat.ground_horizon_color = Color(0.1, 0.1, 0.2)
-		sky_mat.ground_bottom_color = Color(0.03, 0.03, 0.06)
-		sky_mat.sun_angle_max = 0.0
-		env.ambient_light_color = Color(0.36, 0.42, 0.72)
-		env.ambient_light_energy = 0.75
-		env.fog_light_color = Color(0.12, 0.13, 0.27)
-		sun.light_color = Color(0.7, 0.8, 1.0)
-		sun.light_energy = 1.0
-		sun.rotation_degrees = Vector3(-48, -35, 0)
-		moon.visible = true
-		if stars:
-			stars.visible = true
-			fireflies.emitting = true
-		for l in lantern_lights:
-			if is_instance_valid(l):
-				l.visible = true
-	else:
-		sky_mat.sky_top_color = Color(0.25, 0.48, 0.85)
-		sky_mat.sky_horizon_color = Color(0.72, 0.82, 0.92)
-		sky_mat.ground_horizon_color = Color(0.6, 0.7, 0.75)
-		sky_mat.ground_bottom_color = Color(0.3, 0.35, 0.3)
-		env.ambient_light_color = Color(0.6, 0.66, 0.78)
-		env.ambient_light_energy = 0.7
-		env.fog_light_color = Color(0.7, 0.8, 0.9)
-		sun.light_color = Color(1.0, 0.95, 0.85)
-		sun.light_energy = 1.25
-		sun.rotation_degrees = Vector3(-55, 30, 0)
-		moon.visible = false
-		if stars:
-			stars.visible = false
-			fireflies.emitting = false
-		for l in lantern_lights:
-			if is_instance_valid(l):
-				l.visible = false
+	set_time("night" if on else "day")
+
+# --- Рельеф -----------------------------------------------------------------
+# Высота клетки (целые метры, уступами). Центр карты плоский — там бой.
+func height_at(x: float, z: float) -> float:
+	if POND.has_point(Vector2(x, z)):
+		return -1.0
+	# холм святилища: три уступа к площадке
+	var sd := Vector2(x - SHRINE.x, z - SHRINE.z)
+	var sh := 0.0
+	if absf(sd.x) < 11 and absf(sd.y) < 9:
+		sh = 3.0 if (absf(sd.x) < 7 and absf(sd.y) < 5) else (2.0 if (absf(sd.x) < 9 and absf(sd.y) < 7) else 1.0)
+	# деревня, стена, бамбук — ровно
+	if x > 12 and x < 64 and z < 0 and z > -70:
+		return sh
+	var r := Vector2(x, z).length()
+	var n := noise.get_noise_2d(x, z)
+	var e := clampf((r + n * 10.0 - 80.0) / 26.0, 0.0, 1.0)
+	var h := e * e * (5.0 + (noise2.get_noise_2d(x, z) * 0.5 + 0.5) * 11.0)
+	return maxf(sh, floor(h))
+
+# Материал верха клетки: 0 трава, 0.5 земля (поляна, тропы), 1 камень.
+func _ground_mat(x: float, z: float, h: float) -> float:
+	if h < 0.0:
+		return 1.0
+	if h >= 9.0:
+		return 1.0
+	if Vector2(x, z).length() < 12.0 + noise.get_noise_2d(x * 3.0, z * 3.0) * 2.0:
+		return 0.5
+	if absf(x) < 2.2 and z < -10 and z > -56:
+		return 0.5                   # тропа к святилищу
+	if absf(z + 2.0) < 1.8 and x > 10 and x < 34:
+		return 0.5                   # тропа в деревню
+	if absf(x - 32.0) < 3.0 and z < -4 and z > -62:
+		return 0.5                   # улица деревни
+	var sd := Vector2(x - SHRINE.x, z - SHRINE.z)
+	if absf(sd.x) < 7 and absf(sd.y) < 5:
+		return 1.0                   # каменная площадка святилища
+	return 0.0
 
 func _ground() -> void:
 	var sb := StaticBody3D.new()
 	sb.collision_layer = 1
-	var cs := CollisionShape3D.new()
-	var sh := BoxShape3D.new()
-	sh.size = Vector3(500, 2, 500)
-	cs.shape = sh
-	cs.position = Vector3(0, -1, 0)
-	sb.add_child(cs)
-	var mi := MeshInstance3D.new()
-	var pm := PlaneMesh.new()
-	pm.size = Vector2(500, 500)
-	mi.mesh = pm
-	mi.material_override = Vox.cel_mat(Color(0.2, 0.42, 0.17), false, 0.0, 0.022, "grass")
-	sb.add_child(mi)
 	add_child(sb)
+	# коллизия: карта высот с шагом 0,5 м (сэмплы не попадают на границы клеток)
+	var step := 0.5
+	var n := int(HALF * 2.0 / step) + 1
+	var data := PackedFloat32Array()
+	data.resize(n * n)
+	var x0 := -HALF - 0.25
+	for j in n:
+		for i in n:
+			data[j * n + i] = height_at(x0 + i * step, x0 + j * step) / step
+	var hm := HeightMapShape3D.new()
+	hm.map_width = n
+	hm.map_depth = n
+	hm.map_data = data
+	var cs := CollisionShape3D.new()
+	cs.shape = hm
+	cs.scale = Vector3.ONE * step
+	cs.position = Vector3(x0 + (n - 1) * step * 0.5, 0, x0 + (n - 1) * step * 0.5)
+	sb.add_child(cs)
+	# видимая земля — один меш из клеток-вокселей
+	var mi := MeshInstance3D.new()
+	mi.mesh = _terrain_mesh(-HALF - 30.0, HALF + 30.0, CELL, Callable(self, "height_at"))
+	mi.material_override = _terrain_mat()
+	add_child(mi)
 	# невидимые стены по краю карты
 	for s in [Vector3(1, 0, 0), Vector3(-1, 0, 0), Vector3(0, 0, 1), Vector3(0, 0, -1)]:
 		var w := StaticBody3D.new()
 		var c2 := CollisionShape3D.new()
 		var b2 := BoxShape3D.new()
-		b2.size = Vector3(2 if s.x != 0 else 240, 60, 2 if s.z != 0 else 240)
+		b2.size = Vector3(2 if s.x != 0 else 240, 80, 2 if s.z != 0 else 240)
 		c2.shape = b2
 		w.add_child(c2)
-		w.position = s * 110 + Vector3.UP * 30
+		w.position = s * HALF + Vector3.UP * 30
 		add_child(w)
-	# вытоптанная земля на поляне и тропинки
-	Vox.box(self, Vector3(22, 0.04, 22), Vector3(0, 0.02, 0), Color(0.4, 0.33, 0.23), false, 0.0, "dirt")
-	Vox.box(self, Vector3(4, 0.04, 40), Vector3(0, 0.02, -30), Color(0.4, 0.33, 0.23), false, 0.0, "dirt")
-	Vox.box(self, Vector3(34, 0.04, 4), Vector3(26, 0.02, 0), Color(0.4, 0.33, 0.23), false, 0.0, "dirt")
+
+var _tmat: ShaderMaterial
+func _terrain_mat() -> ShaderMaterial:
+	if _tmat:
+		return _tmat
+	_tmat = ShaderMaterial.new()
+	_tmat.shader = load("res://shaders/terrain.gdshader")
+	_tmat.set_shader_parameter("tex_grass", Tex.get_tex("t_grass"))
+	_tmat.set_shader_parameter("tex_dirt", Tex.get_tex("t_dirt"))
+	_tmat.set_shader_parameter("tex_rock", Tex.get_tex("t_rock"))
+	_tmat.set_shader_parameter("tex_side", Tex.get_tex("t_side"))
+	return _tmat
+
+# Меш земли из клеток: верх каждой клетки + бока там, где сосед ниже.
+func _terrain_mesh(lo: float, hi: float, cell: float, hf: Callable, mat_fn := true) -> ArrayMesh:
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var n := int((hi - lo) / cell)
+	var hs := PackedFloat32Array()
+	hs.resize((n + 2) * (n + 2))
+	for j in n + 2:
+		for i in n + 2:
+			var x := lo + (i - 1 + 0.5) * cell
+			var z := lo + (j - 1 + 0.5) * cell
+			hs[j * (n + 2) + i] = hf.call(x, z)
+	for j in n:
+		for i in n:
+			var h := hs[(j + 1) * (n + 2) + i + 1]
+			var x0 := lo + i * cell
+			var z0 := lo + j * cell
+			var cx := x0 + cell * 0.5
+			var cz := z0 + cell * 0.5
+			var m := _ground_mat(cx, cz, h) if mat_fn else (1.0 if h > 30.0 else 0.0)
+			var tint := Color(1, 1, 1, m)
+			if not mat_fn and h > 52.0:
+				tint = Color(1.25, 1.25, 1.3, 1.0)   # снег на вершинах
+			_quad(st, Vector3(x0, h, z0), Vector3(x0 + cell, h, z0), Vector3(x0 + cell, h, z0 + cell), Vector3(x0, h, z0 + cell), Vector3.UP, tint)
+			# бока к более низким соседям
+			var nb := [[1, 0], [-1, 0], [0, 1], [0, -1]]
+			for k in 4:
+				var di: int = nb[k][0]
+				var dj: int = nb[k][1]
+				var h2 := hs[(j + 1 + dj) * (n + 2) + i + 1 + di]
+				if h2 >= h:
+					continue
+				var side_m := m if m < 0.75 else 1.0
+				var tc := Color(1, 1, 1, side_m)
+				if di == 1:
+					_quad(st, Vector3(x0 + cell, h, z0 + cell), Vector3(x0 + cell, h, z0), Vector3(x0 + cell, h2, z0), Vector3(x0 + cell, h2, z0 + cell), Vector3.RIGHT, tc)
+				elif di == -1:
+					_quad(st, Vector3(x0, h, z0), Vector3(x0, h, z0 + cell), Vector3(x0, h2, z0 + cell), Vector3(x0, h2, z0), Vector3.LEFT, tc)
+				elif dj == 1:
+					_quad(st, Vector3(x0, h, z0 + cell), Vector3(x0 + cell, h, z0 + cell), Vector3(x0 + cell, h2, z0 + cell), Vector3(x0, h2, z0 + cell), Vector3.BACK, tc)
+				else:
+					_quad(st, Vector3(x0 + cell, h, z0), Vector3(x0, h, z0), Vector3(x0, h2, z0), Vector3(x0 + cell, h2, z0), Vector3.FORWARD, tc)
+	return st.commit()
+
+func _quad(st: SurfaceTool, a: Vector3, b: Vector3, c: Vector3, d: Vector3, nrm: Vector3, col: Color) -> void:
+	for v in [a, b, c, a, c, d]:
+		st.set_normal(nrm)
+		st.set_color(col)
+		st.add_vertex(v)
+
+# Горы за краем карты: крупные уступы, к вершинам — скала и снег. Без коллизии.
+func _mountain_h(x: float, z: float) -> float:
+	var r := Vector2(x, z).length()
+	if r < HALF + 8.0:
+		return -50.0
+	var e := clampf((r - HALF - 8.0) / 70.0, 0.0, 1.0)
+	var n := noise2.get_noise_2d(x * 0.6, z * 0.6) * 0.5 + 0.5
+	var n2 := noise.get_noise_2d(x * 0.25, z * 0.25) * 0.5 + 0.5
+	var h := 14.0 + e * (25.0 + n * 50.0) * (0.5 + n2)
+	return floor(h / 3.0) * 3.0
+
+func _mountains() -> void:
+	var mi := MeshInstance3D.new()
+	mi.mesh = _terrain_mesh(-300.0, 300.0, 6.0, Callable(self, "_mountain_h"), false)
+	mi.material_override = _terrain_mat()
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(mi)
+
+# Пруд: вода с бликами и пеной у берега.
+func _water() -> void:
+	var mi := MeshInstance3D.new()
+	var pm := PlaneMesh.new()
+	pm.size = POND.size
+	pm.subdivide_width = 24
+	pm.subdivide_depth = 14
+	mi.mesh = pm
+	mi.position = Vector3(POND.position.x + POND.size.x * 0.5, -0.3, POND.position.y + POND.size.y * 0.5)
+	water_mat = ShaderMaterial.new()
+	water_mat.shader = load("res://shaders/water.gdshader")
+	water_mat.set_shader_parameter("rect", Vector4(POND.position.x, POND.position.y, POND.end.x, POND.end.y))
+	mi.material_override = water_mat
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(mi)
+	# камни по берегу и кувшинки
+	for i in 26:
+		var t := rng.randf()
+		var side := rng.randi() % 4
+		var p: Vector3
+		match side:
+			0: p = Vector3(POND.position.x + t * POND.size.x, 0, POND.position.y - 0.3)
+			1: p = Vector3(POND.position.x + t * POND.size.x, 0, POND.end.y + 0.3)
+			2: p = Vector3(POND.position.x - 0.3, 0, POND.position.y + t * POND.size.y)
+			_: p = Vector3(POND.end.x + 0.3, 0, POND.position.y + t * POND.size.y)
+		var s := rng.randf_range(0.4, 1.0)
+		Vox.box(self, Vector3(s * 1.3, s * 0.6, s), p + Vector3.UP * s * 0.2, Color(0.55, 0.55, 0.57), false, 0.0, "stone")
+	for i in 12:
+		var p := Vector3(rng.randf_range(POND.position.x + 1, POND.end.x - 1), -0.27, rng.randf_range(POND.position.y + 1, POND.end.y - 1))
+		if absf(p.x - BRIDGE_X) < 2.5:
+			continue
+		Vox.box(self, Vector3(0.6, 0.03, 0.6), p, Color(0.3, 0.55, 0.25), false)
+		if rng.randf() < 0.4:
+			Vox.box(self, Vector3(0.18, 0.12, 0.18), p + Vector3(0.1, 0.07, 0), Color(1.0, 0.75, 0.85), false, 0.3)
+
+# Мост-арка через пруд (красные перила, деревянный настил).
+const BRIDGE_X := -34.0
+func _bridge() -> void:
+	var z0 := POND.position.y - 2.0
+	var z1 := POND.end.y + 2.0
+	var segs := 16
+	var red := Color(0.72, 0.14, 0.1)
+	var wood := Color(0.5, 0.36, 0.24)
+	var prev := Vector3(BRIDGE_X, 0.0, z0)
+	for i in segs:
+		var t1 := float(i + 1) / segs
+		var p1 := Vector3(BRIDGE_X, sin(t1 * PI) * 1.6, lerpf(z0, z1, t1))
+		var mid := (prev + p1) * 0.5
+		var d := p1 - prev
+		var b := StaticBody3D.new()
+		b.position = mid
+		b.rotation.x = -atan2(d.y, d.z)
+		add_child(b)
+		var cs := CollisionShape3D.new()
+		var sh := BoxShape3D.new()
+		sh.size = Vector3(2.6, 0.2, d.length() + 0.04)
+		cs.shape = sh
+		b.add_child(cs)
+		Vox.box(b, Vector3(2.6, 0.2, d.length() + 0.04), Vector3.ZERO, wood.lightened(0.04 * (i % 2)), true, 0.0, "wood")
+		for sx in [-1.0, 1.0]:
+			if i % 2 == 0:
+				Vox.box(b, Vector3(0.16, 0.9, 0.16), Vector3(sx * 1.25, 0.5, 0), red, true)
+			Vox.box(b, Vector3(0.12, 0.1, d.length() + 0.05), Vector3(sx * 1.25, 0.95, 0), red, true)
+		prev = p1
+	# опоры
+	for t in [0.25, 0.5, 0.75]:
+		var p := Vector3(BRIDGE_X, 0, lerpf(z0, z1, t))
+		for sx in [-1.0, 1.0]:
+			Vox.box(self, Vector3(0.3, 1.6 + sin(t * PI) * 1.6, 0.3), Vector3(p.x + sx * 1.1, -1.0 + (1.6 + sin(t * PI) * 1.6) * 0.5, p.z), wood.darkened(0.2), true)
 
 func _grass() -> void:
 	var st := SurfaceTool.new()
@@ -173,9 +452,13 @@ func _grass() -> void:
 	var placed := 0
 	while placed < count:
 		var p := Vector3(rng.randf_range(-75, 75), 0, rng.randf_range(-75, 75))
-		# на вытоптанной поляне травы меньше
-		if absf(p.x) < 10 and absf(p.z) < 10 and rng.randf() < 0.85:
+		var hy := height_at(p.x, p.z)
+		if hy < 0.0:
 			continue
+		# на вытоптанной земле и камне травы почти нет
+		if _ground_mat(p.x, p.z, hy) > 0.25 and rng.randf() < 0.9:
+			continue
+		p.y = hy
 		var s := rng.randf_range(0.6, 1.4)
 		var t := Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(s, s * rng.randf_range(0.7, 1.3), s)), p)
 		mm.set_instance_transform(placed, t)
@@ -190,29 +473,87 @@ func _tree(p: Vector3, h: float, w: float, k: String, fc := Color(0.18, 0.42, 0.
 	var t = StaticBody3D.new()
 	t.set_script(TreeS)
 	add_child(t)
-	t.position = p
+	t.position = Vector3(p.x, height_at(p.x, p.z), p.z)
 	t.rotation.y = rng.randf() * TAU
 	t.build(h, w, k, fc)
 
+# Свободно ли место для дерева (не на деревне, пруду, тропах, холме святилища).
+func _free_spot(p: Vector3, pad := 2.0) -> bool:
+	if p.x > 14 - pad and p.x < 50 + pad and p.z < 0 + pad and p.z > -64 - pad:
+		return false                       # деревня
+	if p.x < -18 and p.z > 10 and p.z < 42 and p.x > -50:
+		return false                       # бамбук
+	if POND.grow(pad + 1.5).has_point(Vector2(p.x, p.z)):
+		return false
+	if absf(p.z - 48.0) < 3.0 + pad and absf(p.x) < 44:
+		return false                       # стена
+	if absf(p.x) < 4.0 + pad and p.z < -8 and p.z > -58:
+		return false                       # тропа к святилищу
+	if absf(p.x - SHRINE.x) < 12 + pad and absf(p.z - SHRINE.z) < 10 + pad:
+		return false
+	if Vector2(p.x, p.z).length() < 15.0:
+		return false                       # поляна
+	if absf(p.z + 2.0) < 2.5 + pad and p.x > 8 and p.x < 36:
+		return false                       # тропа в деревню
+	return true
+
 func _forest() -> void:
-	# кольцо деревьев вокруг поляны и лес на севере
+	# лиственные деревья по всей карте, гуще к краю
 	var n := 0
-	while n < 46:
+	var tries := 0
+	while n < 70 and tries < 2000:
+		tries += 1
 		var a := rng.randf() * TAU
-		var r := rng.randf_range(17.0, 60.0)
+		var r := rng.randf_range(17.0, 96.0)
 		var p := Vector3(cos(a) * r, 0, sin(a) * r)
-		# не ставить на деревню, бамбук, стену
-		if p.x > 14 and p.z < -6 and p.z > -42 and p.x < 52:
+		if not _free_spot(p):
 			continue
-		if p.x < -18 and p.z > 10 and p.z < 42 and p.x > -50:
+		if p.z > 38 and absf(p.x) < 44:
 			continue
-		if p.z > 38:
-			continue
-		if absf(p.x) < 4 and p.z < -15:
-			continue
-		var fc := Color(0.16, 0.4, 0.2).lerp(Color(0.25, 0.48, 0.16), rng.randf())
-		_tree(p, rng.randf_range(6.0, 9.0), rng.randf_range(0.55, 0.8), "tree", fc)
+		var fc := Color(0.16, 0.4, 0.2).lerp(Color(0.28, 0.5, 0.16), rng.randf())
+		if rng.randf() < 0.18:
+			fc = Color(0.85, 0.42, 0.18).lerp(Color(0.7, 0.2, 0.15), rng.randf())   # клёны осенние
+		elif rng.randf() < 0.1:
+			fc = Color(0.95, 0.68, 0.78)                                          # сакура
+		_tree(p, rng.randf_range(6.0, 9.5), rng.randf_range(0.55, 0.8), "tree", fc)
 		n += 1
+
+# Кедры: роща вокруг святилища и старый лес на северо-западе.
+func _cedars() -> void:
+	var spots := []
+	var tries := 0
+	while spots.size() < 30 and tries < 3000:
+		tries += 1
+		var p: Vector3
+		if spots.size() < 20:
+			p = Vector3(rng.randf_range(-34, 34), 0, rng.randf_range(-96, -42))
+		else:
+			p = Vector3(rng.randf_range(-90, -48), 0, rng.randf_range(-80, -24))
+		if not _free_spot(p, 1.5):
+			continue
+		var ok := true
+		for q in spots:
+			if (q as Vector3).distance_to(p) < 6.5:
+				ok = false
+				break
+		if not ok:
+			continue
+		spots.append(p)
+	# пара кедров у самой поляны — чтобы было куда запрыгнуть сразу
+	spots.append(Vector3(-15.5, 0, -12.0))
+	spots.append(Vector3(-19.0, 0, -18.5))
+	spots.append(Vector3(12.0, 0, -16.0))
+	var i := 0
+	for p in spots:
+		var c = StaticBody3D.new()
+		c.set_script(Cedar)
+		add_child(c)
+		c.position = Vector3(p.x, height_at(p.x, p.z), p.z)
+		var h := rng.randf_range(16.0, 24.0)
+		var fc := Color(0.14, 0.32, 0.2).lerp(Color(0.2, 0.4, 0.22), rng.randf())
+		c.build(h, rng.randf_range(1.1, 1.6), 100 + i, fc)
+		cedar_pads.append_array(c.pads)
+		i += 1
 
 func _bamboo() -> void:
 	# роща бамбука: стволы близко — идеально для прыжков от ствола к стволу
@@ -286,10 +627,210 @@ func _panel(parent: Node3D, pos: Vector3, size: Vector3, paper: Color, wood: Col
 	b.piece_size = 0.35
 	b.height = size.y
 
+const PAPER := Color(0.9, 0.86, 0.74)
+
+# Деревня: улица вдоль z (x = 32), дома с обеих сторон лицом к улице,
+# фонари-тётин на столбах, флаги-нобори, бельё, бочки, колодец, пожарная вышка.
 func _village() -> void:
-	_house(Vector3(24, 0, -14), 0.0, 8.0, 6.0)
-	_house(Vector3(38, 0, -28), 0.3, 6.0, 6.0)
-	_house(Vector3(24, 0, -34), -0.15, 10.0, 6.0)
+	var left := [-12.0, -27.0, -42.0, -56.0]
+	var right := [-10.0, -25.0, -40.0, -54.0]
+	for z in left:
+		_house(Vector3(23, 0, z), 0.0, 7.0, 9.0)
+		_house_dress(Vector3(23, 0, z), 7.0, 9.0, 1.0, int(absf(z)))
+	for z in right:
+		_house(Vector3(42, 0, z), 0.0, 7.0, 9.0)
+		_house_dress(Vector3(42, 0, z), 7.0, 9.0, -1.0, int(absf(z)) + 3)
+	# фонари на столбах вдоль улицы
+	var k := 0
+	var z := -6.0
+	while z > -62.0:
+		for sx in [28.2, 36.3]:
+			_street_lamp(Vector3(sx, 0, z + (0.0 if sx < 30 else 3.5)), sx < 30, k % 2 == 0)
+			k += 1
+		z -= 8.0
+	# флаги-нобори у входов
+	var cols := [Color(0.8, 0.15, 0.12), Color(0.15, 0.3, 0.6), Color(0.9, 0.75, 0.25), Color(0.2, 0.45, 0.3), Color(0.92, 0.9, 0.85)]
+	for i in 7:
+		var bz := -8.0 - i * 7.6
+		var bx := 27.6 if i % 2 == 0 else 37.2
+		var pole := Vector3(bx, 0, bz)
+		Vox.box(self, Vector3(0.1, 4.6, 0.1), pole + Vector3(0, 2.3, 0), Color(0.3, 0.22, 0.15))
+		Vox.box(self, Vector3(0.05, 3.2, 0.9), pole + Vector3(0, 2.6, 0.5), cols[i % cols.size()], true, 0.0, "cloth")
+		Vox.box(self, Vector3(0.07, 0.06, 1.0), pole + Vector3(0, 4.25, 0.5), Color(0.3, 0.22, 0.15))
+	# бельё на верёвках между домами (в проулках)
+	for zz in [-19.5, -34.5, -49.0]:
+		_laundry(Vector3(20.0, 3.0, zz), Vector3(26.0, 3.0, zz))
+		_laundry(Vector3(39.0, 3.0, zz + 2.0), Vector3(45.0, 3.0, zz + 2.0))
+	# бочки и ящики у домов (разрушаемые)
+	for p in [Vector3(27.4, 0, -8), Vector3(27.2, 0, -9.1), Vector3(37.2, 0, -21), Vector3(27.5, 0, -36.5),
+			Vector3(37.4, 0, -36), Vector3(37.3, 0, -37.1), Vector3(27.3, 0, -51), Vector3(37.4, 0, -50)]:
+		if rng.randf() < 0.5:
+			_crate(p)
+		else:
+			_barrel(p)
+	# колодец на площади в конце улицы
+	var wpos := Vector3(32, 0, -62)
+	var st := Color(0.55, 0.55, 0.57)
+	Vox.solid(self, Vector3(2.2, 0.9, 2.2), wpos + Vector3(0, 0.45, 0), st, true, 1, "stone")
+	Vox.box(self, Vector3(1.6, 0.05, 1.6), wpos + Vector3(0, 0.88, 0), Color(0.1, 0.18, 0.25))
+	for sx in [-1.0, 1.0]:
+		Vox.box(self, Vector3(0.18, 2.2, 0.18), wpos + Vector3(sx * 1.0, 1.6, 0), Color(0.4, 0.28, 0.18), true, 0.0, "wood")
+	Vox.box(self, Vector3(2.8, 0.2, 1.8), wpos + Vector3(0, 2.8, 0), Color(0.22, 0.2, 0.24), true, 0.0, "roof")
+	Vox.box(self, Vector3(0.35, 0.4, 0.35), wpos + Vector3(0, 1.4, 0), Color(0.5, 0.36, 0.22), true, 0.0, "wood")
+	# пожарная вышка-ягура: на неё можно забраться (бег по столбам / прыжки)
+	_tower(Vector3(48, 0, -64))
+	# дым из труб
+	for hp in [Vector3(23, 6.0, -27), Vector3(42, 6.0, -40), Vector3(23, 6.0, -56)]:
+		_smoke(hp)
+
+# Убранство дома: фонари у входа, занавеска-норэн, ящики с цветами, вывеска.
+# front — куда смотрит фасад (+1: к +x, −1: к −x).
+func _house_dress(c: Vector3, w: float, d: float, front: float, seed_: int) -> void:
+	var fx := c.x + front * (w * 0.5 + 0.2)
+	var r2 := RandomNumberGenerator.new()
+	r2.seed = seed_
+	var noren: Color = [Color(0.15, 0.22, 0.45), Color(0.6, 0.12, 0.1), Color(0.2, 0.35, 0.25), Color(0.35, 0.2, 0.35)][r2.randi() % 4]
+	# норэн: три полосы ткани над входом
+	for k in 3:
+		Vox.box(self, Vector3(0.05, 1.0, 0.62), Vector3(fx, 2.95, c.z - 0.66 + k * 0.66), noren, true, 0.0, "cloth")
+	Vox.box(self, Vector3(0.06, 0.06, 2.2), Vector3(fx, 3.48, c.z), Color(0.3, 0.2, 0.12))
+	# красные бумажные фонари по бокам входа
+	for sz in [-1.4, 1.4]:
+		var lp := Vector3(fx + front * 0.1, 3.1, c.z + sz)
+		Vox.box(self, Vector3(0.36, 0.5, 0.36), lp, Color(0.95, 0.3, 0.18), true, 1.6)
+		Vox.box(self, Vector3(0.3, 0.06, 0.3), lp + Vector3(0, 0.28, 0), Color(0.1, 0.08, 0.08))
+		Vox.box(self, Vector3(0.3, 0.06, 0.3), lp + Vector3(0, -0.28, 0), Color(0.1, 0.08, 0.08))
+	# ящики с цветами под окнами
+	for sz in [-3.2, 3.2]:
+		var bp := Vector3(fx + front * 0.1, 1.15, c.z + sz)
+		Vox.box(self, Vector3(0.35, 0.3, 1.4), bp, Color(0.45, 0.3, 0.18), true, 0.0, "wood")
+		for q in 5:
+			var fc: Color = [Color(0.95, 0.35, 0.45), Color(1.0, 0.85, 0.3), Color(0.95, 0.95, 0.95), Color(0.6, 0.4, 0.9)][r2.randi() % 4]
+			Vox.box(self, Vector3(0.16, 0.16, 0.16), bp + Vector3(0, 0.22, -0.55 + q * 0.27), fc, false, 0.15)
+			Vox.box(self, Vector3(0.12, 0.12, 0.12), bp + Vector3(0, 0.12, -0.42 + q * 0.27), Color(0.3, 0.55, 0.25), false)
+	# вывеска над входом
+	Vox.box(self, Vector3(0.12, 0.6, 1.6), Vector3(fx + front * 0.05, 4.0, c.z), Color(0.18, 0.12, 0.08), true, 0.0, "wood")
+	Vox.box(self, Vector3(0.14, 0.36, 0.2), Vector3(fx + front * 0.06, 4.0, c.z - 0.35), Color(0.9, 0.85, 0.7), false)
+	Vox.box(self, Vector3(0.14, 0.36, 0.2), Vector3(fx + front * 0.06, 4.0, c.z + 0.35), Color(0.9, 0.85, 0.7), false)
+
+func _street_lamp(p: Vector3, arm_pos: bool, lit: bool) -> void:
+	var wood := Color(0.3, 0.22, 0.15)
+	Vox.solid(self, Vector3(0.18, 3.4, 0.18), p + Vector3(0, 1.7, 0), wood, true, 1, "wood")
+	var arm := 0.6 if arm_pos else -0.6
+	Vox.box(self, Vector3(0.9, 0.1, 0.1), p + Vector3(arm * 0.5, 3.3, 0), wood)
+	var lp := p + Vector3(arm, 2.85, 0)
+	Vox.box(self, Vector3(0.4, 0.58, 0.4), lp, Color(1.0, 0.45, 0.2), true, 1.8)
+	Vox.box(self, Vector3(0.32, 0.07, 0.32), lp + Vector3(0, 0.32, 0), Color(0.1, 0.08, 0.08))
+	Vox.box(self, Vector3(0.32, 0.07, 0.32), lp + Vector3(0, -0.32, 0), Color(0.1, 0.08, 0.08))
+	Vox.box(self, Vector3(0.03, 0.3, 0.03), lp + Vector3(0, 0.5, 0), Color(0.1, 0.08, 0.08))
+	if lit:
+		var l := OmniLight3D.new()
+		l.light_color = Color(1.0, 0.55, 0.28)
+		l.light_energy = 1.8
+		l.omni_range = 7.0
+		l.position = lp
+		add_child(l)
+		lantern_lights.append(l)
+
+func _laundry(a: Vector3, b: Vector3) -> void:
+	var d := b - a
+	var rope := Vox.box(self, Vector3(0.03, 0.03, d.length()), (a + b) * 0.5, Color(0.8, 0.75, 0.6), false)
+	rope.look_at_from_position((a + b) * 0.5, b, Vector3.UP)
+	var cols := [Color(0.95, 0.95, 0.92), Color(0.3, 0.45, 0.7), Color(0.85, 0.5, 0.55), Color(0.9, 0.85, 0.6)]
+	var n := int(d.length() / 1.1)
+	for i in n:
+		if rng.randf() < 0.25:
+			continue
+		var t := (i + 0.5) / n
+		var p := a.lerp(b, t) + Vector3.DOWN * (0.12 + sin(t * PI) * 0.2)
+		var sz := Vector3(0.04, rng.randf_range(0.5, 0.9), rng.randf_range(0.5, 0.8))
+		var cl := Vox.box(self, sz, p + Vector3.DOWN * sz.y * 0.5, cols[rng.randi() % cols.size()], true, 0.0, "cloth")
+		cl.look_at_from_position(cl.position, cl.position + d.normalized().cross(Vector3.UP), Vector3.UP)
+
+func _crate(p: Vector3) -> void:
+	var b = StaticBody3D.new()
+	b.set_script(Breakable)
+	b.position = p
+	add_child(b)
+	var cs := CollisionShape3D.new()
+	var sh := BoxShape3D.new()
+	sh.size = Vector3(0.9, 0.9, 0.9)
+	cs.shape = sh
+	cs.position = Vector3(0, 0.45, 0)
+	b.add_child(cs)
+	var wc := Color(0.6, 0.45, 0.28)
+	Vox.box(b, Vector3(0.9, 0.9, 0.9), Vector3(0, 0.45, 0), wc, true, 0.0, "wood")
+	Vox.box(b, Vector3(0.94, 0.1, 0.94), Vector3(0, 0.82, 0), wc.darkened(0.25), false)
+	Vox.box(b, Vector3(0.94, 0.1, 0.94), Vector3(0, 0.08, 0), wc.darkened(0.25), false)
+	b.brad = 0.7
+	b.col = wc
+	b.pieces = 6
+	b.piece_size = 0.25
+	b.height = 0.9
+
+func _barrel(p: Vector3) -> void:
+	var b = StaticBody3D.new()
+	b.set_script(Breakable)
+	b.position = p
+	add_child(b)
+	var cs := CollisionShape3D.new()
+	var sh := BoxShape3D.new()
+	sh.size = Vector3(0.8, 1.0, 0.8)
+	cs.shape = sh
+	cs.position = Vector3(0, 0.5, 0)
+	b.add_child(cs)
+	var wc := Color(0.55, 0.38, 0.22)
+	Vox.box(b, Vector3(0.7, 1.0, 0.7), Vector3(0, 0.5, 0), wc, true, 0.0, "wood")
+	Vox.box(b, Vector3(0.8, 0.8, 0.6), Vector3(0, 0.5, 0), wc.lightened(0.05), false, 0.0, "wood")
+	Vox.box(b, Vector3(0.6, 0.8, 0.8), Vector3(0, 0.5, 0), wc.lightened(0.05), false, 0.0, "wood")
+	for y in [0.2, 0.8]:
+		Vox.box(b, Vector3(0.84, 0.07, 0.84), Vector3(0, y, 0), Color(0.25, 0.22, 0.2), false)
+	b.brad = 0.6
+	b.col = wc
+	b.pieces = 6
+	b.piece_size = 0.22
+	b.height = 1.0
+
+# Пожарная вышка: четыре столба, площадка на 8 м с крышей и колоколом.
+func _tower(p: Vector3) -> void:
+	var wood := Color(0.42, 0.3, 0.2)
+	for sx in [-1.0, 1.0]:
+		for sz in [-1.0, 1.0]:
+			Vox.solid(self, Vector3(0.35, 9.0, 0.35), p + Vector3(sx * 1.4, 4.5, sz * 1.4), wood, true, 1, "bark")
+	for y in [2.5, 5.0]:
+		for sz in [-1.0, 1.0]:
+			Vox.box(self, Vector3(3.0, 0.15, 0.15), p + Vector3(0, y, sz * 1.4), wood)
+			Vox.box(self, Vector3(0.15, 0.15, 3.0), p + Vector3(sz * 1.4, y, 0), wood)
+	Vox.solid(self, Vector3(3.6, 0.3, 3.6), p + Vector3(0, 8.0, 0), wood.lightened(0.05), true, 1, "wood")
+	for sx in [-1.0, 1.0]:
+		Vox.box(self, Vector3(0.12, 0.8, 3.6), p + Vector3(sx * 1.75, 8.5, 0), wood)
+		Vox.box(self, Vector3(3.6, 0.8, 0.12), p + Vector3(0, 8.5, sx * 1.75), wood)
+	Vox.box(self, Vector3(4.6, 0.3, 4.6), p + Vector3(0, 10.6, 0), Color(0.22, 0.2, 0.24), true, 0.0, "roof")
+	Vox.box(self, Vector3(2.4, 0.4, 2.4), p + Vector3(0, 10.95, 0), Color(0.22, 0.2, 0.24), true, 0.0, "roof")
+	for sx in [-1.0, 1.0]:
+		for sz in [-1.0, 1.0]:
+			Vox.box(self, Vector3(0.18, 2.4, 0.18), p + Vector3(sx * 1.6, 9.4, sz * 1.6), wood)
+	Vox.box(self, Vector3(0.5, 0.6, 0.5), p + Vector3(0, 9.8, 0), Color(0.7, 0.55, 0.25), true, 0.3)
+	# лестница
+	for k in 12:
+		Vox.box(self, Vector3(0.7, 0.08, 0.1), p + Vector3(0, 0.5 + k * 0.65, 1.55), wood.lightened(0.1))
+
+func _smoke(p: Vector3) -> void:
+	var sm := _particles(Color(0.75, 0.75, 0.78), 0.0, 14, 5.0, Vector3(0.2, 0.1, 0.2), Vector3.ZERO, 0.45, 0.0)
+	sm.position = p
+	sm.direction = Vector3(0.2, 1, 0)
+	sm.spread = 12.0
+	sm.initial_velocity_min = 0.6
+	sm.initial_velocity_max = 0.9
+	sm.gravity = Vector3(0.35, 0.15, 0.1)
+	sm.scale_amount_min = 0.8
+	sm.scale_amount_max = 2.2
+	var g := Gradient.new()
+	g.set_color(0, Color(0.8, 0.8, 0.82, 0.55))
+	g.set_color(1, Color(0.8, 0.8, 0.82, 0.0))
+	sm.color_ramp = g
+	var mat: StandardMaterial3D = (sm.mesh as BoxMesh).material
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 
 func _stone_wall() -> void:
 	# длинная стена — для бега по стене
@@ -303,19 +844,78 @@ func _stone_wall() -> void:
 	Vox.solid(self, Vector3(9.0, 3.5, 1.2), Vector3(9, 1.75, 14), stone.darkened(0.08), true, 1, "stone")
 
 func _shrine() -> void:
-	# ворота-тории на тропинке
 	var red := Color(0.78, 0.14, 0.1)
 	var dark := Color(0.12, 0.1, 0.12)
-	var z := -24.0
-	Vox.solid(self, Vector3(0.6, 6.0, 0.6), Vector3(-2.8, 3.0, z), red)
-	Vox.solid(self, Vector3(0.6, 6.0, 0.6), Vector3(2.8, 3.0, z), red)
-	Vox.solid(self, Vector3(8.4, 0.5, 0.9), Vector3(0, 6.1, z), dark)
-	Vox.solid(self, Vector3(7.0, 0.4, 0.6), Vector3(0, 5.1, z), red)
+	# ворота-тории на тропе и у подножия холма
+	for z in [-24.0, -49.5]:
+		Vox.solid(self, Vector3(0.6, 6.0, 0.6), Vector3(-2.8, 3.0, z), red, true, 1, "")
+		Vox.solid(self, Vector3(0.6, 6.0, 0.6), Vector3(2.8, 3.0, z), red, true, 1, "")
+		Vox.solid(self, Vector3(8.4, 0.5, 0.9), Vector3(0, 6.1, z), dark)
+		Vox.solid(self, Vector3(7.0, 0.4, 0.6), Vector3(0, 5.1, z), red)
+		Vox.box(self, Vector3(1.0, 0.8, 0.12), Vector3(0, 5.6, z + 0.35), Color(0.15, 0.12, 0.1))   # табличка
+	# каменные фонари вдоль тропы
+	for z in [-30.0, -38.0, -46.0]:
+		for sx in [-1.0, 1.0]:
+			_lantern(Vector3(sx * 3.4, 0, z), z == -38.0)
+	# лестница на холм: пандус-коллизия + видимые ступени
+	var z0 := -51.0
+	var z1 := -57.0
+	var st := StaticBody3D.new()
+	st.position = Vector3(0, 1.5, (z0 + z1) * 0.5)
+	st.rotation.x = atan2(3.0, z0 - z1)
+	add_child(st)
+	var cs := CollisionShape3D.new()
+	var sh := BoxShape3D.new()
+	sh.size = Vector3(3.2, 0.2, Vector2(3.0, z0 - z1).length())
+	cs.shape = sh
+	st.add_child(cs)
+	var stone := Color(0.6, 0.59, 0.56)
+	for k in 12:
+		var t := (k + 0.5) / 12.0
+		Vox.box(self, Vector3(3.2, 0.25, 0.5), Vector3(0, t * 3.0 - 0.12, lerpf(z0, z1, t)), stone.lightened(0.03 * (k % 2)), true, 0.0, "stone")
+		Vox.box(self, Vector3(3.2, t * 3.0, 0.5), Vector3(0, t * 3.0 * 0.5 - 0.2, lerpf(z0, z1, t)), stone.darkened(0.15), false, 0.0, "stone")
+	# святилище на площадке (y = 3)
+	var base := Vector3(0, 3.0, -64.0)
+	var wood := Color(0.55, 0.3, 0.18)
+	Vox.solid(self, Vector3(9.0, 0.8, 7.0), base + Vector3(0, 0.4, 0), Color(0.4, 0.3, 0.22), true, 1, "wood")
+	for sx in [-1.0, 1.0]:
+		for sz in [-1.0, 1.0]:
+			Vox.solid(self, Vector3(0.45, 3.4, 0.45), base + Vector3(sx * 4.0, 2.5, sz * 3.0), red, true, 1, "")
+	# стены зала — тёмное дерево с белыми вставками
+	Vox.box(self, Vector3(7.6, 2.8, 0.2), base + Vector3(0, 2.2, -3.0), wood, true, 0.0, "wood")
+	Vox.box(self, Vector3(0.2, 2.8, 5.8), base + Vector3(-3.9, 2.2, 0), wood, true, 0.0, "wood")
+	Vox.box(self, Vector3(0.2, 2.8, 5.8), base + Vector3(3.9, 2.2, 0), wood, true, 0.0, "wood")
+	for k in 3:
+		Vox.box(self, Vector3(1.8, 2.0, 0.12), base + Vector3(-2.4 + k * 2.4, 2.2, 2.9), Color(0.92, 0.88, 0.76), true, 0.0, "paper")
+	# крыша в три яруса, свесы шире, конёк с золотом
+	var roof := Color(0.2, 0.22, 0.24)
+	Vox.box(self, Vector3(11.5, 0.45, 9.5), base + Vector3(0, 4.35, 0), roof, true, 0.0, "roof")
+	Vox.box(self, Vector3(10.2, 0.6, 8.0), base + Vector3(0, 4.85, 0), roof.lightened(0.05), true, 0.0, "roof")
+	Vox.box(self, Vector3(8.0, 0.7, 5.6), base + Vector3(0, 5.45, 0), roof, true, 0.0, "roof")
+	Vox.box(self, Vector3(5.0, 0.6, 2.8), base + Vector3(0, 6.05, 0), roof.lightened(0.05), true, 0.0, "roof")
+	Vox.box(self, Vector3(5.6, 0.25, 0.5), base + Vector3(0, 6.45, 0), Color(0.85, 0.65, 0.2), true, 0.6)
+	for sx in [-1.0, 1.0]:
+		Vox.box(self, Vector3(0.6, 0.6, 0.4), base + Vector3(sx * 5.9, 4.6, 4.6), roof.darkened(0.1))   # загнутые углы
+		Vox.box(self, Vector3(0.6, 0.6, 0.4), base + Vector3(sx * 5.9, 4.6, -4.6), roof.darkened(0.1))
+	# верёвка-симэнава с бумажными зигзагами
+	Vox.box(self, Vector3(7.0, 0.22, 0.22), base + Vector3(0, 3.9, 3.2), Color(0.85, 0.75, 0.5), true)
+	for k in 5:
+		Vox.box(self, Vector3(0.18, 0.5, 0.04), base + Vector3(-2.6 + k * 1.3, 3.5, 3.25), Color(0.98, 0.98, 0.95), false, 0.2)
+	# ящик для подношений, колокол
+	Vox.solid(self, Vector3(2.0, 0.9, 0.9), base + Vector3(0, 1.25, 4.0), wood.darkened(0.2), true, 1, "wood")
+	Vox.box(self, Vector3(0.5, 0.5, 0.5), base + Vector3(0, 3.4, 3.5), Color(0.75, 0.6, 0.25), true, 0.4)
+	# каменные стражи-комаину и фонари на площадке
+	for sx in [-1.0, 1.0]:
+		var kp := base + Vector3(sx * 4.6, 0.0, 6.2)
+		Vox.solid(self, Vector3(0.9, 0.6, 0.9), kp + Vector3(0, 0.3, 0), stone.darkened(0.1), true, 1, "stone")
+		Vox.box(self, Vector3(0.7, 0.8, 0.8), kp + Vector3(0, 1.0, 0), stone, true, 0.0, "stone")
+		Vox.box(self, Vector3(0.6, 0.55, 0.6), kp + Vector3(0, 1.6, 0.2), stone.lightened(0.05), true, 0.0, "stone")
+		_lantern(base + Vector3(sx * 6.0, 0.0, 0.0), true)
 
-func _lantern(p: Vector3) -> void:
+func _lantern(p: Vector3, lit := true) -> void:
 	var b = StaticBody3D.new()
 	b.set_script(Breakable)
-	b.position = p
+	b.position = Vector3(p.x, maxf(p.y, height_at(p.x, p.z)), p.z)
 	add_child(b)
 	var cs := CollisionShape3D.new()
 	var sh := BoxShape3D.new()
@@ -329,13 +929,14 @@ func _lantern(p: Vector3) -> void:
 	Vox.box(b, Vector3(0.6, 0.5, 0.6), Vector3(0, 1.3, 0), Color(1.0, 0.75, 0.35), true, 1.6)
 	Vox.box(b, Vector3(0.95, 0.2, 0.95), Vector3(0, 1.65, 0), st.darkened(0.2), true, 0.0, "stone")
 	Vox.box(b, Vector3(0.3, 0.2, 0.3), Vector3(0, 1.85, 0), st.darkened(0.2))
-	var l := OmniLight3D.new()
-	l.light_color = Color(1.0, 0.65, 0.3)
-	l.light_energy = 2.2
-	l.omni_range = 8.0
-	l.position = Vector3(0, 1.3, 0)
-	b.add_child(l)
-	lantern_lights.append(l)
+	if lit:
+		var l := OmniLight3D.new()
+		l.light_color = Color(1.0, 0.65, 0.3)
+		l.light_energy = 2.2
+		l.omni_range = 8.0
+		l.position = Vector3(0, 1.3, 0)
+		b.add_child(l)
+		lantern_lights.append(l)
 	b.brad = 0.7
 	b.need_power = 1
 	b.col = st
@@ -371,36 +972,42 @@ func _fence(a: Vector3, b: Vector3) -> void:
 		f.height = 1.2
 
 func _props() -> void:
-	for p in [Vector3(-3.5, 0, -16), Vector3(3.5, 0, -16), Vector3(-3.5, 0, -32), Vector3(3.5, 0, -32),
-			Vector3(17, 0, -3), Vector3(17, 0, 3), Vector3(-10, 0, 10)]:
+	for p in [Vector3(17, 0, -5), Vector3(17, 0, 1), Vector3(-10, 0, 10), Vector3(-10, 0, -10), Vector3(9, 0, 12)]:
 		_lantern(p)
 	_fence(Vector3(-12, 0, -12), Vector3(-12, 0, 6))
 	_fence(Vector3(12, 0, 6), Vector3(12, 0, 12))
-	_fence(Vector3(18, 0, -44), Vector3(48, 0, -44))
-	# валуны
-	for i in 14:
+	_fence(Vector3(-46, 0, 5), Vector3(-36.5, 0, 5))
+	_fence(Vector3(-31.5, 0, 5), Vector3(-22, 0, 5))
+	# валуны (мшистые)
+	var n := 0
+	while n < 22:
 		var a := rng.randf() * TAU
-		var r := rng.randf_range(14, 50)
-		var s := rng.randf_range(0.8, 2.2)
-		Vox.solid(self, Vector3(s * 1.3, s, s * 1.1), Vector3(cos(a) * r, s * 0.4, sin(a) * r), Color(0.5, 0.5, 0.53), true, 1, "stone")
-	# ящики и бочки в деревне
-	for p in [Vector3(19, 0, -9), Vector3(20, 0, -9), Vector3(30, 0, -21), Vector3(31, 0, -22)]:
-		var b = StaticBody3D.new()
-		b.set_script(Breakable)
-		b.position = p
-		add_child(b)
-		var cs := CollisionShape3D.new()
-		var sh := BoxShape3D.new()
-		sh.size = Vector3(0.9, 0.9, 0.9)
-		cs.shape = sh
-		cs.position = Vector3(0, 0.45, 0)
-		b.add_child(cs)
-		Vox.box(b, Vector3(0.9, 0.9, 0.9), Vector3(0, 0.45, 0), Color(0.6, 0.45, 0.28), true, 0.0, "wood")
-		b.brad = 0.7
-		b.col = Color(0.6, 0.45, 0.28)
-		b.pieces = 6
-		b.piece_size = 0.25
-		b.height = 0.9
+		var r := rng.randf_range(14, 92)
+		var p := Vector3(cos(a) * r, 0, sin(a) * r)
+		if not _free_spot(p, 0.5):
+			continue
+		var s := rng.randf_range(0.8, 2.4)
+		var y := height_at(p.x, p.z)
+		Vox.solid(self, Vector3(s * 1.3, s, s * 1.1), Vector3(p.x, y + s * 0.4, p.z), Color(0.52, 0.52, 0.55), true, 1, "stone")
+		Vox.box(self, Vector3(s * 1.2, 0.15, s * 1.0), Vector3(p.x, y + s * 0.9, p.z), Color(0.3, 0.5, 0.25), false, 0.0, "leaves")
+		n += 1
+	# ящики у поляны
+	_crate(Vector3(15.5, 0, -6.5))
+	_barrel(Vector3(16.5, 0, -7.2))
+
+func _yes(_m: Node) -> bool:
+	return true
+
+func _can_bake(m: Node) -> bool:
+	var n := m.get_parent()
+	while n != null and n != self:
+		if n is RigidBody3D or n is CPUParticles3D:
+			return false
+		var sc = n.get_script()
+		if sc == Breakable or sc == TreeS:
+			return false
+		n = n.get_parent()
+	return n == self
 
 func kick_points() -> Array:
 	var out := []
@@ -425,26 +1032,6 @@ func _process(_dt: float) -> void:
 
 # Атмосфера: звёзды, светлячки ночью, падающие листья и лепестки.
 func _atmosphere() -> void:
-	# звёзды — мелкие точки на куполе
-	var sm := MultiMesh.new()
-	sm.transform_format = MultiMesh.TRANSFORM_3D
-	var bm := BoxMesh.new()
-	bm.size = Vector3.ONE
-	var smat := StandardMaterial3D.new()
-	smat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	smat.albedo_color = Color(0.9, 0.92, 1.0)
-	smat.set("disable_fog", true)
-	bm.material = smat
-	sm.mesh = bm
-	sm.instance_count = 700
-	for i in sm.instance_count:
-		var d := Vector3(rng.randf_range(-1, 1), rng.randf_range(0.12, 1.0), rng.randf_range(-1, 1)).normalized()
-		var sz := rng.randf_range(0.5, 1.6)
-		sm.set_instance_transform(i, Transform3D(Basis.IDENTITY.scaled(Vector3.ONE * sz), d * 300.0))
-	stars = MultiMeshInstance3D.new()
-	stars.multimesh = sm
-	stars.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	add_child(stars)
 	# светлячки
 	fireflies = _particles(Color(0.85, 1.0, 0.4), 2.5, 70, 6.0, Vector3(24, 1.5, 24), Vector3(0, 1.5, 0), 0.05, 0.0)
 	fireflies.direction = Vector3(0, 1, 0)

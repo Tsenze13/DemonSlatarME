@@ -20,6 +20,11 @@ static func get_tex(kind: String) -> Texture2D:
 		"paper": img = _paper()
 		"cloth": img = _speckle(11, 0.86, 0.94, 0.04)
 		"twill": img = _twill()
+		"t_grass": img = _t_grass()
+		"t_dirt": img = _t_dirt()
+		"t_rock": img = _t_rock()
+		"t_side": img = _t_side()
+		"t_moss": img = _t_moss()
 		"hair": img = _hair()
 		"wrap": img = _wrap()
 		"obi": img = _obi()
@@ -74,6 +79,102 @@ static func _speckle(seed_: int, lo: float, hi: float, dark: float) -> Image:
 			if r.randf() < dark:
 				v *= 0.75
 			im.set_pixel(x, y, _g(v))
+	return im
+
+# --- Мягкие цветные текстуры земли (как в Voxium): крупные пиксели,
+# плавные переходы оттенков, без резкого шума. Цвет — прямо в текстуре.
+static func _vn(r: RandomNumberGenerator, n: int) -> Array:
+	# сглаженный шум 16×16 (значения 0..1), бесшовный
+	var g := []
+	for i in 16 * 16:
+		g.append(r.randf())
+	var out := []
+	out.resize(256)
+	for y in 16:
+		for x in 16:
+			var acc := 0.0
+			var wsum := 0.0
+			for dy in range(-n, n + 1):
+				for dx in range(-n, n + 1):
+					var wgt := 1.0 / (1.0 + dx * dx + dy * dy)
+					acc += g[((y + dy + 16) % 16) * 16 + (x + dx + 16) % 16] * wgt
+					wsum += wgt
+			out[y * 16 + x] = acc / wsum
+	# растянуть в 0..1
+	var lo := 1.0
+	var hi := 0.0
+	for v in out:
+		lo = minf(lo, v)
+		hi = maxf(hi, v)
+	for i in 256:
+		out[i] = (out[i] - lo) / maxf(hi - lo, 0.001)
+	return out
+
+static func _pal(im: Image, field: Array, cols: Array) -> void:
+	for y in 16:
+		for x in 16:
+			var v: float = field[y * 16 + x]
+			var k := v * (cols.size() - 1)
+			var i := mini(int(k), cols.size() - 2)
+			im.set_pixel(x, y, (cols[i] as Color).lerp(cols[i + 1], smoothstep(0.35, 0.65, k - i)))
+
+static func _t_grass() -> Image:
+	var r := RandomNumberGenerator.new()
+	r.seed = 31
+	var im := _img()
+	_pal(im, _vn(r, 2), [Color(0.33, 0.55, 0.2), Color(0.42, 0.66, 0.24), Color(0.5, 0.74, 0.28)])
+	# редкие светлые травинки
+	for i in 10:
+		var x := r.randi() % 16
+		var y := r.randi() % 15
+		im.set_pixel(x, y, Color(0.6, 0.82, 0.34))
+		im.set_pixel(x, y + 1, Color(0.52, 0.76, 0.3))
+	return im
+
+static func _t_moss() -> Image:
+	var r := RandomNumberGenerator.new()
+	r.seed = 32
+	var im := _img()
+	_pal(im, _vn(r, 2), [Color(0.24, 0.42, 0.2), Color(0.32, 0.5, 0.24), Color(0.38, 0.56, 0.26)])
+	return im
+
+static func _t_dirt() -> Image:
+	var r := RandomNumberGenerator.new()
+	r.seed = 33
+	var im := _img()
+	_pal(im, _vn(r, 1), [Color(0.5, 0.38, 0.26), Color(0.58, 0.45, 0.31), Color(0.64, 0.51, 0.36)])
+	for i in 6:
+		var x := r.randi() % 15
+		var y := r.randi() % 16
+		im.set_pixel(x, y, Color(0.72, 0.66, 0.58))   # камешки
+		im.set_pixel(x + 1, y, Color(0.62, 0.57, 0.5))
+	return im
+
+static func _t_rock() -> Image:
+	var r := RandomNumberGenerator.new()
+	r.seed = 34
+	var im := _img()
+	_pal(im, _vn(r, 2), [Color(0.44, 0.44, 0.47), Color(0.53, 0.53, 0.55), Color(0.6, 0.6, 0.62)])
+	# трещины
+	var x := 3
+	for y in 16:
+		im.set_pixel(x, y, Color(0.38, 0.38, 0.41))
+		x = (x + (1 if r.randf() < 0.4 else 0)) % 16
+	return im
+
+static func _t_side() -> Image:
+	# бок уступа: полосы грунта (как срез почвы)
+	var r := RandomNumberGenerator.new()
+	r.seed = 35
+	var im := _img()
+	var f := _vn(r, 1)
+	for y in 16:
+		for x in 16:
+			var band := 0.0 if y < 6 else (1.0 if y < 11 else 2.0)
+			var cols := [Color(0.5, 0.37, 0.25), Color(0.45, 0.33, 0.23), Color(0.55, 0.43, 0.3)]
+			var c: Color = cols[int(band)]
+			var v: float = f[y * 16 + x]
+			im.set_pixel(x, y, c.lerp(c.lightened(0.12), v))
 	return im
 
 # Форма истребителя: плотная ткань — лёгкий шум, редкие складки-рубчики, шов.

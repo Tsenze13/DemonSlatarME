@@ -323,13 +323,17 @@ func _run() -> void:
 	await w(0.6)
 	check(p.breath >= b_run - 0.5, "сам быстрый бег дыхание не тратит")
 	p.auto_sprint = false
-	# разгон: рывки на бегу поднимают скорость
+	# разгон: рывки на бегу поднимают скорость (по длинной улице деревни)
+	p.global_position = Vector3(32, 0.5, -2)
+	p.velocity = Vector3.ZERO
+	G.cam_rig.yaw = -PI * 0.5
 	p.momentum = 0
 	await w(0.5)
 	for k in 3:
 		p.dash_charges = 2.0
 		p.press("dash")
 		await w(0.35)
+	if p.momentum < 3: print("dbg mom ", p.global_position, " ", p.state, " ", p.velocity)
 	check(p.momentum >= 3 and p.last_speed > 24.0, "разгон рывками (ступень %d, %.1f м/с)" % [p.momentum, p.last_speed])
 	# перемещение стихией (E): у каждого стиля своя дальность
 	p.auto_move = Vector2.ZERO
@@ -617,7 +621,7 @@ func _run() -> void:
 	# срубить дерево формой
 	var tree2: Node = null
 	for t in get_tree().get_nodes_in_group("kick"):
-		if t.kind == "tree":
+		if t.get("kind") == "tree" and Vector2(t.global_position.x, t.global_position.z).length() < 60.0:
 			tree2 = t
 	if tree2:
 		p.global_position = tree2.global_position + Vector3(2.5, 0.3, 0)
@@ -688,7 +692,14 @@ func _run() -> void:
 	# новый демон
 	await w(5.5)
 	check(demon() != null, "новый демон появился")
-	check(G.world.stars != null and G.world.fireflies != null, "звёзды, светлячки, листья")
+	check(G.world.fireflies != null and G.world.leaves != null, "светлячки, листья")
+	# мир: рельеф, пруд, кедры с ветками, время суток
+	check(G.world.height_at(0, 0) == 0.0 and G.world.height_at(-34, -5) < 0.0 and G.world.height_at(0, -62) >= 3.0, "рельеф: поляна, пруд, холм святилища")
+	check(G.world.cedar_pads.size() > 100, "кедры с ветками для прыжков (%d)" % G.world.cedar_pads.size())
+	for tday in ["day", "sunset", "night"]:
+		G.world.set_time(tday)
+		await w(0.1)
+	check(G.world.time_of_day == "night", "время суток: день, закат, ночь")
 	check(G.music.ready_, "музыка и окружение готовы (%d мс)" % G.music.gen_ms)
 	print("\n=== АВТОТЕСТ ===")
 	for l in log_lines:

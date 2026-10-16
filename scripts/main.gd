@@ -113,7 +113,8 @@ func _ready() -> void:
 		G.started = true
 		menus.title_screen.visible = false
 		var at := Node.new()
-		at.set_script(load("res://scripts/autotest.gd"))
+		# KLINOK_SHOWCASE — витрина кадров/видео вместо автотеста
+		at.set_script(load("res://scripts/showcase.gd" if OS.get_environment("KLINOK_SHOWCASE") != "" else "res://scripts/autotest.gd"))
 		add_child(at)
 
 func _on_resize() -> void:
@@ -196,7 +197,7 @@ func _unhandled_input(e: InputEvent) -> void:
 	elif not G.started:
 		return
 	elif e.is_action_pressed("daynight"):
-		world.set_night(not world.night)
+		world.next_time()
 	elif e.is_action_pressed("help"):
 		hud.help = not hud.help
 		hud.help_t = 0.0

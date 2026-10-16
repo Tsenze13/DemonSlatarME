@@ -13,6 +13,7 @@ uniform float flash = 0.0;
 uniform vec3 flash_col = vec3(1.0);
 uniform float hurt = 0.0;
 uniform bool pixel_mode = false;
+uniform int grade = 1;              // цветокоррекция: 0 — день, 1 — закат, 2 — ночь
 
 float bayer4(vec2 p) {
 	int x = int(mod(p.x, 4.0));
@@ -33,6 +34,14 @@ void fragment() {
 		float levels = 20.0;
 		c = floor(c * levels + 0.5 + bayer4(FRAGCOORD.xy) * 0.9) / levels;
 	}
+
+	// цветокоррекция по времени суток: тени уходят в холодный, света — в тёплый
+	float lum0 = dot(c, vec3(0.299, 0.587, 0.114));
+	vec3 sh_t = grade == 0 ? vec3(0.92, 0.97, 1.06) : (grade == 1 ? vec3(0.86, 0.84, 1.1) : vec3(0.8, 0.9, 1.18));
+	vec3 hi_t = grade == 0 ? vec3(1.04, 1.01, 0.96) : (grade == 1 ? vec3(1.1, 1.0, 0.86) : vec3(1.08, 0.98, 0.86));
+	c *= mix(sh_t, hi_t, smoothstep(0.15, 0.75, lum0));
+	// мягкая «кривая»: чуть приподнять тени, чтобы они не были угольно-чёрными
+	c = c + (vec3(0.035, 0.03, 0.05) * (1.0 - smoothstep(0.0, 0.35, lum0)));
 
 	vec2 d = uv - 0.5;
 	d.x *= 16.0 / 9.0;

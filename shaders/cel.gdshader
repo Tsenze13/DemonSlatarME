@@ -10,6 +10,7 @@ uniform float rim = 0.18;
 uniform float shade_floor = 0.0;
 uniform sampler2D tex : filter_nearest, repeat_enable;
 uniform bool use_tex = false;
+uniform bool use_vcol = false;             // цвет в вершинах (запечённые блоки мира)
 uniform bool tex_local = false;
 uniform float tex_scale = 1.0;
 uniform vec2 tex_mul = vec2(1.0, 1.0);     // растяжение узора по осям (хаори на рукавах)
@@ -44,6 +45,9 @@ void fragment() {
 		discard;
 	}
 	vec3 c = albedo.rgb;
+	if (use_vcol) {
+		c *= COLOR.rgb;
+	}
 	if (use_tex) {
 		vec3 an = abs(tn);
 		vec2 uv;
@@ -74,13 +78,19 @@ void fragment() {
 		}
 	}
 	ALBEDO = c;
-	EMISSION = albedo.rgb * emission + c * em;
+	EMISSION = (use_vcol ? albedo.rgb * COLOR.rgb : albedo.rgb) * emission + c * em;
 	ROUGHNESS = 1.0;
 }
 
 void light() {
 	float nl = clamp(dot(NORMAL, LIGHT), 0.0, 1.0) * ATTENUATION;
-	float l = nl > 0.5 ? 1.0 : (nl > 0.08 ? 0.6 : shade_floor);
+	// мягкий аниме-свет: две зоны с плавной границей, тень не проваливается в чёрное
+	float l = mix(max(shade_floor, 0.2), 1.0, smoothstep(0.04, 0.32, nl));
+	if (!LIGHT_IS_DIRECTIONAL) {
+		// фонари: светят только в своём радиусе (пол «тени» — только для солнца)
+		float ndl = clamp(dot(NORMAL, LIGHT) * 0.6 + 0.4, 0.0, 1.0);
+		l = ndl * ATTENUATION;
+	}
 	float r = pow(1.0 - clamp(dot(NORMAL, VIEW), 0.0, 1.0), 3.0);
 	r = step(0.45, r) * rim * step(0.08, nl);
 	DIFFUSE_LIGHT += (l + r) * LIGHT_COLOR;
