@@ -239,7 +239,7 @@ func _setup_input() -> void:
 		"flash": JOY_BUTTON_RIGHT_SHOULDER, "lock": JOY_BUTTON_RIGHT_STICK,
 		"breathe": JOY_BUTTON_LEFT_STICK, "form1": JOY_BUTTON_DPAD_LEFT,
 		"form2": JOY_BUTTON_DPAD_UP, "form3": JOY_BUTTON_DPAD_RIGHT,
-		"pause": JOY_BUTTON_START, "draw": JOY_BUTTON_BACK,
+		"pause": JOY_BUTTON_START, "draw": JOY_BUTTON_BACK, "mark": JOY_BUTTON_DPAD_DOWN,
 	}
 	for a in keys:
 		if not InputMap.has_action(a):

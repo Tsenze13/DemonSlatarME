@@ -86,7 +86,7 @@ func _build_title() -> void:
 	gap.custom_minimum_size = Vector2(0, 40)
 	box.add_child(gap)
 	cont_btn = _title_button(box, "Продолжить", func(): _start_game("continue"))
-	_title_button(box, "Новая игра", func(): _start_game("new"))
+	new_btn = _title_button(box, "Новая игра", _new_game_click)
 	_title_button(box, "Свободная охота", func(): _start_game("free"))
 	_title_button(box, "Настройки", func(): _open_settings(true))
 	_title_button(box, "Выйти", func(): save(); get_tree().quit())
@@ -94,7 +94,7 @@ func _build_title() -> void:
 func _title_button(parent: Control, txt: String, cb: Callable) -> Button:
 	var b := Button.new()
 	b.text = txt
-	b.custom_minimum_size = Vector2(320, 56)
+	b.custom_minimum_size = Vector2(420, 56)
 	b.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	b.add_theme_font_size_override("font_size", 28)
 	b.alignment = HORIZONTAL_ALIGNMENT_LEFT
@@ -116,11 +116,35 @@ func _sb(bg: Color, border: Color) -> StyleBoxFlat:
 	return s
 
 var cont_btn: Button
+var new_btn: Button
+var new_confirm := 0.0
+# Новая игра при сохранении — только со второго нажатия (иначе прогресс сотрётся случайно).
+func _new_game_click() -> void:
+	if G.story and G.story.has_save() and new_confirm <= 0.0:
+		new_confirm = 4.0
+		new_btn.text = "Точно? Прогресс сотрётся — нажми ещё"
+		return
+	new_confirm = 0.0
+	new_btn.text = "Новая игра"
+	_start_game("new")
+
+func _process(dt: float) -> void:
+	if new_confirm > 0.0:
+		new_confirm -= G.rdt
+		if new_confirm <= 0.0 and new_btn:
+			new_btn.text = "Новая игра"
 func show_title() -> void:
 	G.started = false
 	title_screen.visible = true
 	if cont_btn:
 		cont_btn.visible = G.story != null and G.story.has_save()
+		if cont_btn.visible:
+			var ch := int(G.prog.chapter)
+			var st = G.story
+			if bool(G.prog.get("finished2", false)) or ch >= st.CH.size():
+				cont_btn.text = "Продолжить — свободная охота"
+			else:
+				cont_btn.text = "Продолжить — %s" % ("пролог" if ch == 0 else "глава %d · %s" % [ch, st.CH[ch].name])
 	pause_panel.visible = false
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 

@@ -68,6 +68,9 @@ func _show_choices() -> void:
 		b.pressed.connect(func(): _pick(k))
 		box.add_child(b)
 		buttons.append(b)
+	# фокус на первом ответе: стрелки / крестовина геймпада и Enter / A выбирают
+	if not buttons.is_empty():
+		buttons[0].grab_focus()
 
 func _sb(bg: Color, border: Color) -> StyleBoxFlat:
 	var s := StyleBoxFlat.new()
@@ -133,6 +136,9 @@ func _input(e: InputEvent) -> void:
 			advance()
 			get_viewport().set_input_as_handled()
 	elif e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT and buttons.is_empty():
+		advance()
+		get_viewport().set_input_as_handled()
+	elif e is InputEventJoypadButton and e.pressed and buttons.is_empty() and e.button_index in [JOY_BUTTON_A, JOY_BUTTON_B]:
 		advance()
 		get_viewport().set_input_as_handled()
 
