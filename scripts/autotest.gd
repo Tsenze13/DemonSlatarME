@@ -449,6 +449,14 @@ func _run() -> void:
 	await w(3.2)
 	check(d.hp > hp_before + 40.0, "демон регенерирует после паузы (+%.0f)" % (d.hp - hp_before))
 	check(d.arms_alive["l"] and not d.growers.has("l") and not d.stumps.has("l"), "рука отросла целиком")
+	# отрубленная нога: демон оседает на колено, нога отрастает
+	d._cut_leg("r", Vector3.RIGHT)
+	check(not d.legs_alive["r"] and d.stumps.has("leg_r"), "нога отрублена — культя")
+	d.leg_regrow["r"] = 2.6
+	await w(0.8)
+	check(d.growers.has("leg_r"), "нога растёт по вокселям")
+	await w(3.0)
+	check(d.legs_alive["r"] and not d.stumps.has("leg_r"), "нога отросла")
 	d.global_position = dpos
 	await approach(d)
 	p.press("heavy")
@@ -667,6 +675,15 @@ func _run() -> void:
 	check(G.world.grass_mm.visible_instance_count < G.world.grass_mm.instance_count, "густота травы меняется")
 	mn.settings.grass = 1.0
 	mn._apply_graphics()
+	# наборы качества: «Низкое» для слабых ПК и обратно «Высокое»
+	mn.set_preset(0)
+	check(get_parent().vp.msaa_3d == Viewport.MSAA_DISABLED and not G.world.env.glow_enabled and G.cam_rig.cam.far < 300.0, "набор «Низкое»: без сглаживания и свечения, даль ближе")
+	mn.set_preset(2)
+	check(get_parent().vp.msaa_3d == Viewport.MSAA_4X and G.world.env.glow_enabled and G.cam_rig.cam.far > 400.0, "набор «Высокое»")
+	mn.settings.grass = 0.9
+	mn._custom()
+	check(mn.settings.preset == 3, "ручная правка — набор «Своё»")
+	mn.set_preset(2)
 	get_parent()._toggle_pause()
 	await w(0.2)
 	# главное меню
@@ -782,6 +799,15 @@ func _run() -> void:
 		G.world.set_time(tday)
 		await w(0.1)
 	check(G.world.time_of_day == "night", "время суток: день, закат, ночь")
+	# огненный тигр и стихия на хаори
+	var tg0: int = G.fx.tigers.size()
+	G.fx.flame_tiger(Vector3(0, 1.3, 0), Vector3.FORWARD, 9.0, 0.6)
+	check(G.fx.tigers.size() == tg0 + 1, "огненный тигр появляется")
+	p.set_breath(1)
+	p.haori_element(1.0)
+	await w(0.5)
+	check(p.elem_k > 0.5, "стихия на хаори после формы (%.2f)" % p.elem_k)
+	p.set_breath(0)
 	check(G.music.ready_, "музыка и окружение готовы (%d мс)" % G.music.gen_ms)
 	print("\n=== АВТОТЕСТ ===")
 	for l in log_lines:

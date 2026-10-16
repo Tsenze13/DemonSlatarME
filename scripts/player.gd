@@ -897,6 +897,7 @@ func _physics_process(dt: float) -> void:
 	_update_cuts(dt)
 	_update_glint(dt)
 	_update_leap_marker(dt)
+	_update_haori_element(dt)
 	for ec in elbow_caps:
 		ec[0].quaternion = Quaternion.IDENTITY.slerp((ec[1] as Node3D).quaternion, 0.5)
 	_effects(dt)
@@ -1692,6 +1693,7 @@ func _start_flash() -> void:
 		G.fx.burst(global_position + Vector3.UP * 0.5, Color(1.0, 0.5, 0.1), 18, 7.0, 0.22, 0.45, -2.0, -dir + Vector3.UP * 0.6, 0.7, 2.0)
 		G.fx.embers(global_position + Vector3.UP * 0.4, 20, 1.2)
 		G.fx.cracks(global_position + Vector3.UP * 0.03, 6, 1.4)
+		G.fx.flame_tiger(global_position + Vector3.UP * 1.1 + dir * 1.6, dir, dist, flash_dur + 0.2)
 		G.add_shake(0.2)
 		if G.cam_rig and G.cam_rig.has_method("kick_fov"):
 			G.cam_rig.kick_fov(16.0)
@@ -2042,6 +2044,11 @@ func _attack_fx() -> void:
 	match a.fx:
 		"slash":
 			G.fx.slash_arc(o, atk_dir, a.get("roll", 0.0), 1.9, 150.0, 0.55, G.br().a, G.br().b, G.br().kind, 0.22, a.get("rev", false))
+			if G.breath_style == "flame":
+				# пламя: второй, широкий язык огня снаружи + угли и вспышка по ходу удара
+				G.fx.slash_arc(o, atk_dir, a.get("roll", 0.0), 2.35, 165.0, 0.9, G.br().a, G.br().b, 3, 0.3, a.get("rev", false))
+				G.fx.embers(o + atk_dir * 1.6, 8, 1.0)
+				G.fx.burst(o + atk_dir * 1.4, Color(1.0, 0.55, 0.12), 8, 4.5, 0.12, 0.35, -3.0, atk_dir + Vector3.UP * 0.3, 0.5, 1.5)
 		"wave":
 			G.fx.breath_arc(o, atk_dir, a.get("roll", 0.0), 2.6, 170.0, 1.0, 0.45, a.get("rev", false))
 			G.fx.breath_burst(o + atk_dir * 1.5, atk_dir, 10)
@@ -2082,8 +2089,9 @@ func _attack_fx() -> void:
 		"flame_wheel":
 			G.fx.breath_sound(-3.0, 1.1)
 		"flame_tiger":
-			# огромный удар сверху и огненная волна по земле до 9 м
+			# огромный удар сверху, огненная волна по земле до 9 м — и тигр из пламени
 			G.fx.breath_arc(o, atk_dir, 90.0, 3.2, 170.0, 2.2, 0.7)
+			G.fx.flame_tiger(global_position + Vector3.UP * 1.3 + atk_dir * 1.0, atk_dir, 9.0, 0.6)
 			for k in 5:
 				var gp3 := global_position + atk_dir * (1.8 + k * 1.7) + Vector3.UP * 0.6
 				G.fx.breath_arc(gp3, atk_dir, 90.0, 1.2 + k * 0.1, 140.0, 1.0, 0.55 + k * 0.05)
@@ -2784,6 +2792,40 @@ func _add_cut(src: Vector3) -> void:
 # Блик на клинке ярче во время удара (sword.gdshader, glint_boost).
 var glint_b := 0.0
 var glint_sent := -1.0
+# Хаори отзывается на стихию дыхания: после форм и стихийных перемещений
+# вода делает ткань мокрой (капли с подола), пламя — подол тлеет углями,
+# гром — по ткани бегут искры. Постепенно проходит.
+var elem_k := 0.0
+var elem_drip_t := 0.0
+func haori_element(k: float) -> void:
+	elem_k = maxf(elem_k, k)
+
+func _update_haori_element(dt: float) -> void:
+	if state == "flash" or (state == "attack" and atk.get("form", false)):
+		elem_k = minf(1.0, elem_k + dt * 3.0)
+	elem_k = maxf(0.0, elem_k - dt * (0.12 if G.breath_style == "water" else 0.25))
+	var e := {"water": 1, "flame": 2, "thunder": 3}.get(G.breath_style, 0) as int
+	var col: Color = {"water": Color(0.85, 0.95, 1.0), "flame": Color(1.0, 0.55, 0.12), "thunder": Color(1.0, 0.9, 0.35)}.get(G.breath_style, Color.WHITE)
+	for m in haori_cloth_mats:
+		m.set_shader_parameter("elem", e)
+		m.set_shader_parameter("elem_k", elem_k)
+		m.set_shader_parameter("elem_col", col)
+	if elem_k > 0.15 and haori_body:
+		elem_drip_t -= dt
+		if elem_drip_t <= 0.0:
+			elem_drip_t = 0.12 / elem_k
+			var hb = haori_body
+			var c: int = randi() % hb.cols
+			var q: Vector3 = hb.pos[hb._idx(c, hb.rows - 1)]
+			match e:
+				1:
+					G.fx.droplets(q, Vector3.DOWN, 1)
+				2:
+					G.fx.embers(q, 2, 0.15)
+				3:
+					var c2: int = clampi(c + 2, 0, hb.cols - 1)
+					G.fx.lightning(q, hb.pos[hb._idx(c2, hb.rows - 2)], Color(1.0, 0.9, 0.4), 0.08, 0.15, 0, 0.025)
+
 func _update_glint(dt: float) -> void:
 	var want := 1.0 if state in ["attack", "finisher"] else 0.0
 	glint_b = move_toward(glint_b, want, dt * (8.0 if want > glint_b else 2.5))

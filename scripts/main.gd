@@ -127,7 +127,8 @@ func apply_view(st: Dictionary) -> void:
 	var h := float(get_viewport().get_visible_rect().size.y)
 	var shrink := maxi(1, int(round(h / BASE_H))) if st.pixel else 1
 	container.stretch_shrink = shrink
-	vp.msaa_3d = Viewport.MSAA_DISABLED if st.pixel else Viewport.MSAA_4X
+	var ms: int = int(st.get("msaa", 2))
+	vp.msaa_3d = Viewport.MSAA_DISABLED if st.pixel or ms == 0 else (Viewport.MSAA_2X if ms == 1 else Viewport.MSAA_4X)
 	vp.scaling_3d_mode = Viewport.SCALING_3D_MODE_BILINEAR
 	vp.scaling_3d_scale = 1.0 if st.pixel else clampf(float(st.render_scale), 0.5, 1.0)
 	if G.post_mat:

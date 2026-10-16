@@ -7,6 +7,7 @@ const Vox = preload("res://scripts/vox.gd")
 var parts: Array = []        # частицы: {n, v, life, max, g, drag, s0, spin}
 var arcs: Array = []         # дуги: {n, mat, life, max, grow, kind}
 var ghosts: Array = []
+var tigers: Array = []
 var debris: Array = []
 var labels: Array = []
 var _arc_shader: Shader
@@ -310,7 +311,120 @@ func breath_sound(vol := 0.0, pitch := 1.0) -> void:
 		_:
 			G.sfx.play("water", vol, pitch)
 
+# Огненный тигр (как у мастера пламени): голова зверя из пламени-блоков
+# с раскрытой пастью летит вперёд по линии удара, растёт, оставляет огонь и гаснет.
+func _fire_mat(c: Color, a: float) -> StandardMaterial3D:
+	var m := StandardMaterial3D.new()
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	m.cull_mode = BaseMaterial3D.CULL_DISABLED
+	m.no_depth_test = false
+	m.albedo_color = Color(c.r, c.g, c.b, a)
+	return m
+
+# Пламенный тигр: голова-призрак из огня (слои светящихся блоков без контура,
+# складываются светом), пасть кусает, грива — языки пламени, всё дрожит как огонь.
+func flame_tiger(pos: Vector3, dir: Vector3, dist := 9.0, life := 0.6) -> void:
+	var root := Node3D.new()
+	add_child(root)
+	var d := Vector3(dir.x, 0, dir.z).normalized()
+	root.global_position = pos
+	root.look_at(pos + d, Vector3.UP)
+	var org := Color(1.0, 0.42, 0.06)
+	var yel := Color(1.0, 0.85, 0.35)
+	var red := Color(0.9, 0.12, 0.02)
+	var wht := Color(1.0, 0.97, 0.85)
+	var parts_ := [
+		# [размер, позиция (−z — вперёд), цвет, прозрачность, роль]
+		[Vector3(1.9, 1.4, 1.7), Vector3(0, 0.25, 0.4), red, 0.45, ""],         # череп (внешний слой)
+		[Vector3(1.4, 1.0, 1.3), Vector3(0, 0.25, 0.3), org, 0.6, ""],          # череп (ядро)
+		[Vector3(1.3, 0.5, 1.3), Vector3(0, 0.45, -0.9), yel, 0.7, "up"],       # верхняя челюсть-морда
+		[Vector3(0.6, 0.3, 0.4), Vector3(0, 0.55, -1.45), wht, 0.8, "up"],      # нос
+		[Vector3(1.1, 0.35, 1.1), Vector3(0, -0.45, -0.75), org, 0.65, "jaw"],  # нижняя челюсть
+		[Vector3(0.2, 0.42, 0.18), Vector3(-0.4, 0.05, -1.4), wht, 1.0, "up"],  # клыки
+		[Vector3(0.2, 0.42, 0.18), Vector3(0.4, 0.05, -1.4), wht, 1.0, "up"],
+		[Vector3(0.16, 0.3, 0.16), Vector3(-0.32, -0.15, -1.2), wht, 1.0, "jaw"],
+		[Vector3(0.16, 0.3, 0.16), Vector3(0.32, -0.15, -1.2), wht, 1.0, "jaw"],
+		[Vector3(0.5, 0.14, 0.1), Vector3(-0.45, 0.72, -0.55), wht, 1.0, "eye"], # глаза — белое пламя
+		[Vector3(0.5, 0.14, 0.1), Vector3(0.45, 0.72, -0.55), wht, 1.0, "eye"],
+		[Vector3(0.4, 0.55, 0.3), Vector3(-0.72, 1.1, 0.5), red, 0.7, "ear"],   # уши
+		[Vector3(0.4, 0.55, 0.3), Vector3(0.72, 1.1, 0.5), red, 0.7, "ear"],
+		[Vector3(0.1, 0.18, 1.0), Vector3(-0.96, 0.5, 0.3), red, 0.9, ""],     # полосы тигра
+		[Vector3(0.1, 0.18, 1.0), Vector3(0.96, 0.5, 0.3), red, 0.9, ""],
+		[Vector3(0.1, 0.18, 0.8), Vector3(-0.96, 0.05, 0.4), red, 0.9, ""],
+		[Vector3(0.1, 0.18, 0.8), Vector3(0.96, 0.05, 0.4), red, 0.9, ""],
+	]
+	var nodes: Array = []
+	for pr in parts_:
+		var mi := MeshInstance3D.new()
+		var bm := BoxMesh.new()
+		bm.size = pr[0]
+		mi.mesh = bm
+		mi.material_override = _fire_mat(pr[2], pr[3])
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		mi.position = pr[1]
+		root.add_child(mi)
+		nodes.append({"n": mi, "p": pr[1], "role": pr[4], "a": pr[3]})
+	# грива и хвост — языки пламени назад и вверх, каждый дрожит сам
+	for k in 14:
+		var mi := MeshInstance3D.new()
+		var bm := BoxMesh.new()
+		var ln := randf_range(0.8, 1.8)
+		bm.size = Vector3(randf_range(0.3, 0.55), randf_range(0.3, 0.55), ln)
+		mi.mesh = bm
+		var a := randf_range(-PI * 0.9, PI * 0.9)
+		var c: Color = [red, org, yel][k % 3]
+		mi.material_override = _fire_mat(c, 0.55)
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		var p0 := Vector3(sin(a) * 0.9, cos(a) * 0.75 + 0.3, 0.9 + ln * 0.5)
+		mi.position = p0
+		mi.rotation = Vector3(-cos(a) * 0.5, sin(a) * 0.5, 0)
+		root.add_child(mi)
+		nodes.append({"n": mi, "p": p0, "role": "mane", "a": 0.55, "ph": randf() * TAU})
+	var lt := OmniLight3D.new()
+	lt.light_color = Color(1.0, 0.55, 0.2)
+	lt.light_energy = 3.0
+	lt.omni_range = 7.0
+	lt.shadow_enabled = false
+	root.add_child(lt)
+	tigers.append({"n": root, "life": 0.0, "max": life, "from": pos, "dir": d, "dist": dist, "parts": nodes})
+
 func _process(dt: float) -> void:
+	for i in range(tigers.size() - 1, -1, -1):
+		var tg: Dictionary = tigers[i]
+		tg.life += dt
+		var k: float = tg.life / tg.max
+		if k >= 1.0:
+			tg.n.queue_free()
+			tigers.remove_at(i)
+			continue
+		var pos: Vector3 = tg.from + tg.dir * tg.dist * Vox.ease_out(k)
+		tg.n.global_position = pos + Vector3.UP * sin(k * PI) * 0.4
+		var sc := lerpf(0.6, 1.5, Vox.ease_out(k))
+		tg.n.scale = Vector3.ONE * sc * (1.0 + sin(tg.life * 60.0) * 0.04)
+		# пасть: раскрыта в броске, щёлкает в конце; к концу тигр тает
+		var bite: float = 1.0 - smoothstep(0.55, 0.75, k)
+		var fade: float = 1.0 - smoothstep(0.7, 1.0, k)
+		for pt in tg.parts:
+			var mi: MeshInstance3D = pt.n
+			var p0: Vector3 = pt.p
+			match pt.role:
+				"jaw":
+					mi.position = p0 + Vector3(0, -0.35 * bite, 0.1 * bite)
+					mi.rotation.x = 0.45 * bite
+				"up":
+					mi.position = p0 + Vector3(0, 0.12 * bite, 0)
+					mi.rotation.x = -0.15 * bite
+				"mane":
+					var fl: float = 1.0 + sin(tg.life * 30.0 + pt.ph) * 0.25 + randf() * 0.15
+					mi.scale = Vector3(1.0, 1.0, fl)
+					mi.position = p0 + Vector3(0, 0, (fl - 1.0) * 0.5)
+				"ear":
+					mi.scale.y = 1.0 + sin(tg.life * 25.0) * 0.15
+			var m: StandardMaterial3D = mi.material_override
+			m.albedo_color.a = pt.a * fade * (0.85 + randf() * 0.15)
+		if randf() < 0.8:
+			burst(pos + Vector3(randf_range(-0.8, 0.8), randf_range(-0.2, 1.0), randf_range(-0.8, 0.8)), Color(1.0, 0.5, 0.1) if randf() < 0.5 else Color(1.0, 0.85, 0.3), 2, 3.0, 0.3, 0.4, -4.0, Vector3.UP, 0.3, 2.0)
 	for i in range(bolts.size() - 1, -1, -1):
 		var bo: Dictionary = bolts[i]
 		bo.life -= dt

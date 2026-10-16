@@ -22,6 +22,8 @@ var eye_mats: Array = []
 var neck_glow: MeshInstance3D
 var arms_alive := {"r": true, "l": true}
 var arm_regrow := {"r": 0.0, "l": 0.0}
+var legs_alive := {"r": true, "l": true}
+var leg_regrow := {"r": 0.0, "l": 0.0}
 var growers := {}          # рука, отрастающая по вокселям (voxgrow.gd)
 var stumps := {}           # культя: срез мяса с костью
 const GROW_T := 2.4
@@ -238,6 +240,12 @@ func _physics_process(dt: float) -> void:
 				_start_grow(s)
 			if arm_regrow[s] <= 0.0:
 				_regrow_arm(s)
+		if not legs_alive[s]:
+			leg_regrow[s] -= dt
+			if leg_regrow[s] <= GROW_T and not growers.has("leg_" + s):
+				_start_leg_grow(s)
+			if leg_regrow[s] <= 0.0:
+				_regrow_leg(s)
 	# регенерация: пока бьют — нет, после паузы ~2 с разгоняется до 35 ед/с
 	if since_hit > 2.0 and state != "exposed" and hp < max_hp:
 		var rate := lerpf(8.0, 35.0, clampf((since_hit - 2.0) / 2.0, 0.0, 1.0))
@@ -267,6 +275,8 @@ func _physics_process(dt: float) -> void:
 		"chase":
 			_gravity(dt)
 			var spd := 8.0 if rage else 6.2
+			if not (legs_alive.r and legs_alive.l):
+				spd *= 0.45          # на одной ноге — ковыляет
 			if dist > 2.6:
 				var hv := Vector3(velocity.x, 0, velocity.z).move_toward(dirp * spd, 30.0 * dt)
 				velocity.x = hv.x
@@ -278,13 +288,13 @@ func _physics_process(dt: float) -> void:
 				swings_left = 3 if rage else 2
 				_start_swing()
 			elif atk_cd <= 0.0 and dist > 7.0 and dist < 18.0:
-				if randf() < 0.5:
+				if randf() < 0.5 and legs_alive.r and legs_alive.l:
 					_set_state("leap_wind")
 					G.sfx.play("roar", -10.0, 1.4)
 				else:
 					_set_state("spikes")
 				atk_cd = 2.5
-			elif dist < 3.4 and not (arms_alive.r or arms_alive.l) and atk_cd <= 0.0:
+			elif dist < 3.4 and not (arms_alive.r or arms_alive.l) and atk_cd <= 0.0 and legs_alive.r and legs_alive.l:
 				_set_state("leap_wind")
 				atk_cd = 2.5
 		"windup":
@@ -569,8 +579,14 @@ func take_hit(dmg: float, dir: Vector3, atk: Dictionary) -> Dictionary:
 		_set_state("air")
 	elif not armored and atk.stagger > 0.0:
 		stagger(atk.stagger * (0.6 if rage else 1.0))
+	# сильный удар по ногам (или когда рук уже нет) — отрубить голень
+	var low_hit: bool = res.point.y - global_position.y < 0.9 or not (arms_alive.r or arms_alive.l)
+	if atk.power >= 2 and (legs_alive.r or legs_alive.l) and randf() < (0.5 if low_hit else 0.12):
+		var ls := "r" if legs_alive.r and (randf() < 0.5 or not legs_alive.l) else "l"
+		_cut_leg(ls, dir)
+		res.cut_limb = true
 	# отрубить руку сильным ударом
-	if atk.power >= 2 and randf() < 0.35:
+	elif atk.power >= 2 and randf() < 0.35:
 		var side := "r" if arms_alive.r and (randf() < 0.5 or not arms_alive.l) else ("l" if arms_alive.l else "")
 		if side != "":
 			_cut_arm(side, dir)
@@ -694,6 +710,86 @@ func _regrow_arm(side: String) -> void:
 	G.fx.burst(arm.global_position + Vector3(0, -0.3, 0), Color(0.75, 0.1, 0.2), 8, 2.0, 0.05, 0.4, 1.0)
 	G.sfx.play("crack", -6.0, 0.6)
 
+# Отрубить голень: нога падает, демон оседает на колено и ковыляет,
+# через 6 с нога отрастает по вокселям (кость с когтями → мышцы → кожа).
+func _cut_leg(side: String, dir: Vector3) -> void:
+	legs_alive[side] = false
+	leg_regrow[side] = 6.0
+	var shin: Node3D = J["shin_" + side]
+	var rb := RigidBody3D.new()
+	rb.collision_layer = 8
+	rb.collision_mask = 1 | 8
+	var cs := CollisionShape3D.new()
+	var sh := BoxShape3D.new()
+	sh.size = Vector3(0.18, 0.5, 0.25)
+	cs.shape = sh
+	cs.position = Vector3(0, -0.22, 0)
+	rb.add_child(cs)
+	G.fx.add_child(rb)
+	rb.global_transform = shin.global_transform
+	var copy := Node3D.new()
+	rb.add_child(copy)
+	copy.scale = Vector3.ONE * 1.35
+	for c in shin.get_children():
+		if c is MeshInstance3D:
+			var mi := MeshInstance3D.new()
+			mi.mesh = c.mesh
+			mi.material_override = c.material_override
+			mi.transform = c.transform
+			copy.add_child(mi)
+	rb.linear_velocity = dir * 5.0 + Vector3.UP * 4.0
+	rb.angular_velocity = Vector3(randf_range(-10, 10), randf_range(-10, 10), randf_range(-10, 10))
+	G.fx.adopt(rb, 4.5)
+	shin.visible = false
+	var leg: Node3D = J["leg_" + side]
+	var st := Node3D.new()
+	leg.add_child(st)
+	st.position = Vector3(0, -0.42, 0)
+	Vox.box(st, Vector3(0.17, 0.03, 0.18), Vector3(0, -0.015, 0), Color(0.55, 0.06, 0.1), false)
+	Vox.box(st, Vector3(0.12, 0.034, 0.13), Vector3(0, -0.016, 0), Color(0.32, 0.02, 0.06), false)
+	Vox.box(st, Vector3(0.05, 0.05, 0.05), Vector3(0, -0.02, 0), Color(0.92, 0.88, 0.78), false)
+	stumps["leg_" + side] = st
+	G.fx.blood(shin.global_position, dir + Vector3.UP, 24)
+	G.sfx.play("hit_heavy", 0.0, 0.7)
+	if G.hud:
+		G.hud.notify("Нога отрублена — демон оседает!", 1.6)
+
+func _start_leg_grow(side: String) -> void:
+	var shin: Node3D = J["shin_" + side]
+	shin.visible = true
+	for c in shin.get_children():
+		if c is MeshInstance3D:
+			c.visible = false
+	var g = VoxGrow.new()
+	g.dur = GROW_T
+	shin.add_child(g)
+	g.build(0.42, 0.14, 0.42, Color(0.5, 0.42, 0.52), Color(0.92, 0.88, 0.78))
+	growers["leg_" + side] = g
+	G.sfx.play("crack", -10.0, 0.5)
+
+func _regrow_leg(side: String) -> void:
+	legs_alive[side] = true
+	var shin: Node3D = J["shin_" + side]
+	shin.visible = true
+	for c in shin.get_children():
+		if c is MeshInstance3D:
+			c.visible = true
+	for key in ["leg_" + side]:
+		if growers.has(key):
+			if is_instance_valid(growers[key]):
+				growers[key].queue_free()
+			growers.erase(key)
+		if stumps.has(key):
+			if is_instance_valid(stumps[key]):
+				stumps[key].queue_free()
+			stumps.erase(key)
+	for mi in wounds.keys():
+		if is_instance_valid(mi) and shin.is_ancestor_of(mi):
+			wounds.erase(mi)
+			Wounds._upload(mi, [])
+	G.fx.burst(shin.global_position, Color(0.75, 0.1, 0.2), 8, 2.0, 0.05, 0.4, 1.0)
+	G.sfx.play("crack", -6.0, 0.6)
+
 # Культя: срез — тёмное мясо, по краю кожа, в середине кость.
 func _make_stump(side: String) -> void:
 	var upper: Node3D = J["arm_" + side]
@@ -744,6 +840,8 @@ func _regenerate() -> void:
 	for s in ["r", "l"]:
 		if not arms_alive[s]:
 			_regrow_arm(s)
+		if not legs_alive[s]:
+			_regrow_leg(s)
 	var p: Node3D = G.player
 	if p.global_position.distance_to(global_position) < 4.0:
 		p.receive_attack(8.0, global_position, false, self)
@@ -952,6 +1050,11 @@ func _animate(dt: float) -> void:
 		elif k == "arm_r" or k == "arm_l":
 			add = Vector3(-25.0, 0, 0) * hr
 		J[k].rotation_degrees = rest[k] + add
+	if not (legs_alive.r and legs_alive.l) and state not in ["dead", "air", "down"]:
+		# без голени — оседает на колено той ноги, корпус кренится
+		hips_y -= 0.36
+		var cut_r: bool = not legs_alive.r
+		J["leg_" + ("r" if cut_r else "l")].rotation_degrees.x = -70.0
 	J.hips.position.y = lerpf(J.hips.position.y, hips_y, rate)
 	model.position.y = lerpf(model.position.y, model_y, rate)
 	for s in ["r", "l"]:

@@ -17,6 +17,8 @@ func _ready() -> void:
 		_fx()
 	elif mode == "flame":
 		_flame()
+	elif mode == "new":
+		_new()
 	else:
 		_shots()
 
@@ -227,4 +229,59 @@ func _flame() -> void:
 		pl.breath = 100.0
 		pl.press("flash")
 		await w(1.0)
+	get_tree().quit()
+
+# Новое в v0.37: кедры, огненный тигр, стихия на хаори, демон без ноги.
+func _new() -> void:
+	await w(0.6)
+	G.hud.help = false
+	var pl: Node3D = G.player
+	_set_time(OS.get_environment("KLINOK_TIME") if OS.get_environment("KLINOK_TIME") != "" else "sunset")
+	G.cam_rig.set_process(false)
+	var d = G.enemies[0]
+	_park_demons()
+	# кедры
+	_place(Vector3(-10, 0.5, 0), PI)
+	await w(0.4)
+	cam(Vector3(-6, 2.0, 6), Vector3(-17, 9.0, -14))
+	await shot("n1_cedars")
+	# огненный тигр (третья форма пламени)
+	pl.set_breath(1)
+	pl.set_drawn(true)
+	_place(Vector3(0, 0.5, 6), PI)
+	await w(0.6)
+	pl.breath = 100.0
+	pl.press("form3")
+	await w(0.55)
+	cam(pl.global_position + Vector3(5.0, 2.2, -1.0), pl.global_position + Vector3(0, 1.3, -4.0))
+	await shot("n2_tiger_a")
+	await w(0.2)
+	await shot("n2_tiger_b")
+	await w(1.0)
+	# тигр отдельно, сбоку
+	_place(Vector3(0, 0.5, 12), PI)
+	G.fx.flame_tiger(Vector3(0, 1.6, 4), Vector3.FORWARD, 9.0, 1.6)
+	await w(0.5)
+	cam(Vector3(7, 2.5, 0), Vector3(0, 1.8, -1.0))
+	await shot("n2_tiger_side")
+	cam(Vector3(2, 2.0, -9), Vector3(0, 1.8, 0))
+	await shot("n2_tiger_front")
+	await w(1.2)
+	# стихия на хаори: вода, пламя, гром
+	for st in 3:
+		pl.set_breath(st)
+		_place(Vector3(0, 0.5, 6), 0.0)
+		pl.haori_element(1.0)
+		await w(0.5)
+		cam(pl.global_position + Vector3(1.6, 1.4, -2.4), pl.global_position + Vector3(0, 0.9, 0))
+		await shot("n3_haori_%d" % st)
+	# демон без ноги
+	d.global_position = Vector3(0, 0.5, 0)
+	d.set_physics_process(true)
+	d.state = "idle"
+	_place(Vector3(0, 0.5, 5), PI)
+	d._cut_leg("r", Vector3.RIGHT)
+	await w(0.8)
+	cam(Vector3(5.0, 2.4, 5.0), d.global_position + Vector3(0, 1.0, 0))
+	await shot("n4_demon_leg")
 	get_tree().quit()

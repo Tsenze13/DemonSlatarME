@@ -88,7 +88,13 @@ func form_title(nm: String) -> void:
 		title_sub = f[0]
 		title_t = 2.0
 
+var intro_seen := {}
 func boss_intro(nm: String) -> void:
+	# имя демона — крупно только при первой встрече (и не чаще раза в 3 мин), рык повторяется часто
+	var now := Time.get_ticks_msec() / 1000.0
+	if intro_seen.has(nm) and now - float(intro_seen[nm]) < 180.0:
+		return
+	intro_seen[nm] = now
 	intro = nm
 	intro_t = 3.0
 

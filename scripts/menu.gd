@@ -10,8 +10,15 @@ var settings := {
 	"volume": 0.4, "sfx": 1.0, "music": 0.6, "sens": 1.0, "invert_y": false, "fov": 72.0, "cam_dist": 5.2,
 	"shake": 1.0, "auto_cam": true, "pixel": false, "sword": 0, "saya": 0, "tint": 0, "haori": 0, "breath": 0,
 	"window": 0, "vsync": true, "fps_limit": 0, "shadows": 2, "render_scale": 1.0, "grass": 1.0, "show_fps": false,
+	"preset": 2, "msaa": 2, "glow": true, "view_dist": 1.0,
 	"keys": {},
 }
+# Готовые наборы графики: [тени, чёткость 3D, трава, сглаживание, свечение, дальность]
+const PRESETS := [
+	[1, 0.75, 0.3, 0, false, 0.45],   # Низкое — для слабых ноутбуков
+	[1, 0.9, 0.6, 1, true, 0.7],      # Среднее
+	[2, 1.0, 1.0, 2, true, 1.0],      # Высокое
+]
 const FPS_LIMITS := [0, 30, 60, 120, 144, 240]
 const ACTIONS := [
 	["move_f", "Вперёд"], ["move_b", "Назад"], ["move_l", "Влево"], ["move_r", "Вправо"],
@@ -267,9 +274,13 @@ func _tab_graphics() -> void:
 	for f in FPS_LIMITS:
 		lim.append("без ограничения" if f == 0 else "%d кадров/с" % f)
 	_option(v, "fps_limit", "Ограничение кадров", lim, func(i): settings.fps_limit = i; _apply_window())
-	_option(v, "shadows", "Тени", ["Выключены", "Простые", "Чёткие"], func(i): settings.shadows = i; _apply_graphics())
-	_slider(v, "render_scale", "Чёткость 3D (меньше — быстрее)", 0.5, 1.0, 0.05, func(x): settings.render_scale = x; _apply_graphics())
-	_slider(v, "grass", "Трава", 0.0, 1.0, 0.1, func(x): settings.grass = x; _apply_graphics())
+	_option(v, "preset", "Качество", ["Низкое (слабый ПК)", "Среднее", "Высокое", "Своё"], set_preset)
+	_option(v, "shadows", "Тени", ["Выключены", "Простые", "Чёткие"], func(i): settings.shadows = i; _custom())
+	_slider(v, "render_scale", "Чёткость 3D (меньше — быстрее)", 0.5, 1.0, 0.05, func(x): settings.render_scale = x; _custom())
+	_slider(v, "grass", "Трава", 0.0, 1.0, 0.1, func(x): settings.grass = x; _custom())
+	_option(v, "msaa", "Сглаживание", ["Выключено", "2×", "4×"], func(i): settings.msaa = i; _custom())
+	_check(v, "glow", "Свечение (ореолы огня и фонарей)", func(on): settings.glow = on; _custom())
+	_slider(v, "view_dist", "Дальность прорисовки", 0.3, 1.0, 0.05, func(x): settings.view_dist = x; _custom())
 	_check(v, "pixel", "Пиксельный фильтр (крупные пиксели)", func(on): settings.pixel = on; _apply_graphics())
 	_check(v, "show_fps", "Показывать кадры в секунду", func(on): settings.show_fps = on; G.show_fps = on)
 
@@ -438,11 +449,42 @@ func _apply_window() -> void:
 	DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_ENABLED if settings.vsync else DisplayServer.VSYNC_DISABLED)
 	Engine.max_fps = FPS_LIMITS[clampi(int(settings.fps_limit), 0, FPS_LIMITS.size() - 1)]
 
+# Набор качества: ставит все настройки графики разом.
+func set_preset(i: int) -> void:
+	settings.preset = i
+	if i < PRESETS.size():
+		var pr: Array = PRESETS[i]
+		settings.shadows = pr[0]
+		settings.render_scale = pr[1]
+		settings.grass = pr[2]
+		settings.msaa = pr[3]
+		settings.glow = pr[4]
+		settings.view_dist = pr[5]
+		_sync_graphics_ctrl()
+	_apply_graphics()
+
+# Любая ручная правка графики — набор «Своё».
+func _custom() -> void:
+	settings.preset = 3
+	if ctrl.has("preset"):
+		(ctrl.preset as OptionButton).select(3)
+	_apply_graphics()
+
+func _sync_graphics_ctrl() -> void:
+	if not ctrl.has("preset"):
+		return
+	for k in ["render_scale", "grass", "view_dist"]:
+		(ctrl[k] as HSlider).set_value_no_signal(float(settings[k]))
+	(ctrl.glow as CheckBox).set_pressed_no_signal(bool(settings.glow))
+	(ctrl.shadows as OptionButton).select(clampi(settings.shadows, 0, 2))
+	(ctrl.msaa as OptionButton).select(clampi(settings.msaa, 0, 2))
+	(ctrl.preset as OptionButton).select(clampi(settings.preset, 0, 3))
+
 func _apply_graphics() -> void:
 	if main:
 		main.apply_view(settings)
 	if G.world and G.world.has_method("set_quality"):
-		G.world.set_quality(int(settings.shadows), float(settings.grass))
+		G.world.set_quality(int(settings.shadows), float(settings.grass), bool(settings.glow), float(settings.view_dist))
 
 func apply_all() -> void:
 	_apply_sound()
@@ -468,7 +510,7 @@ func apply_all() -> void:
 	(ctrl.breath as OptionButton).select(clampi(settings.breath, 0, G.BREATH_ORDER.size() - 1))
 	(ctrl.window as OptionButton).select(clampi(settings.window, 0, 2))
 	(ctrl.fps_limit as OptionButton).select(clampi(settings.fps_limit, 0, FPS_LIMITS.size() - 1))
-	(ctrl.shadows as OptionButton).select(clampi(settings.shadows, 0, 2))
+	_sync_graphics_ctrl()
 	_refresh_binds()
 
 func load_settings() -> void:

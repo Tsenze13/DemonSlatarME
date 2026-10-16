@@ -119,7 +119,7 @@ const TIMES := {
 		"top": Color(0.16, 0.38, 0.82), "hor": Color(0.58, 0.74, 0.94), "ground": Color(0.42, 0.5, 0.45),
 		"sky_sun": Color(1.0, 0.93, 0.78), "halo": 0.35, "cl_lit": Color(1.0, 1.0, 1.0), "cl_sh": Color(0.68, 0.74, 0.86),
 		"cover": 0.42, "stars": 0.0, "moon": 0.0,
-		"amb": Color(0.55, 0.62, 0.8), "amb_e": 0.45, "fog": Color(0.52, 0.66, 0.86), "fog_d": 0.0035,
+		"amb": Color(0.55, 0.62, 0.8), "amb_e": 0.45, "fog": Color(0.46, 0.63, 0.9), "fog_d": 0.0028,
 		"sat": 1.15, "con": 1.14, "bri": 0.92, "glow": 0.12, "lanterns": false,
 	},
 	"sunset": {
@@ -167,7 +167,7 @@ func set_time(t: String) -> void:
 	env.ambient_light_color = c.amb
 	env.ambient_light_energy = c.amb_e
 	env.fog_light_color = c.fog
-	env.fog_density = c.fog_d
+	env.fog_density = c.fog_d * fog_mult
 	env.adjustment_saturation = c.sat
 	env.adjustment_contrast = c.con
 	env.adjustment_brightness = c.bri
@@ -193,7 +193,20 @@ func next_time() -> void:
 	set_time(order[(order.find(time_of_day) + 1) % 3])
 
 # Качество из настроек: тени (0 — нет, 1 — простые, 2 — чёткие) и густота травы.
-func set_quality(shadows: int, grass: float) -> void:
+var fog_mult := 1.0
+var view_k := 1.0
+# Качество графики: тени, доля травинок, свечение, дальность прорисовки
+# (ближе даль — гуще дымка, чтобы край мира не «обрывался»).
+func set_quality(shadows: int, grass: float, glow := true, view := 1.0) -> void:
+	view_k = clampf(view, 0.3, 1.0)
+	fog_mult = pow(1.0 / view_k, 1.6)
+	if env:
+		env.glow_enabled = glow
+		env.fog_density = float(TIMES[time_of_day].fog_d) * fog_mult
+	if G.cam_rig:
+		G.cam_rig.cam.far = lerpf(120.0, 420.0, (view_k - 0.3) / 0.7)
+	for mi in grass_mmis:
+		(mi as MultiMeshInstance3D).visibility_range_end = lerpf(40.0, 110.0, (view_k - 0.3) / 0.7)
 	if sun:
 		sun.shadow_enabled = shadows > 0
 		sun.directional_shadow_max_distance = 45.0 if shadows == 1 else 70.0
@@ -435,6 +448,7 @@ func _bridge() -> void:
 # от корня к кончику), плюс цветы-кубики. Раскиданы по всей карте кусками 24 м
 # (невидимое за камерой отсекается), под героем расступаются.
 var grass_mms: Array = []
+var grass_mmis: Array = []
 var flower_mat: ShaderMaterial
 
 func _grass_mesh() -> ArrayMesh:
@@ -525,13 +539,22 @@ func _mm(mesh: Mesh, items: Array) -> MultiMesh:
 	mm.use_colors = true
 	mm.mesh = mesh
 	mm.instance_count = items.size()
+	# узел — в центре куска: дальность прорисовки считается от него
+	var cen := Vector3.ZERO
+	for it in items:
+		cen += (it[0] as Transform3D).origin
+	cen /= maxf(1.0, items.size())
 	for i in items.size():
-		mm.set_instance_transform(i, items[i][0])
+		var t: Transform3D = items[i][0]
+		t.origin -= cen
+		mm.set_instance_transform(i, t)
 		mm.set_instance_color(i, items[i][1])
 	var mmi := MultiMeshInstance3D.new()
 	mmi.multimesh = mm
+	mmi.position = cen
 	mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(mmi)
+	grass_mmis.append(mmi)
 	return mm
 
 func _tree(p: Vector3, h: float, w: float, k: String, fc := Color(0.18, 0.42, 0.2)) -> void:
