@@ -41,6 +41,8 @@ func _ready() -> void:
 		_styles()
 	elif mode == "train":
 		_train()
+	elif mode == "npc":
+		_npc()
 	else:
 		_shots()
 
@@ -796,4 +798,46 @@ func _train() -> void:
 	await shot("t8_split")
 	cam(T + Vector3(-9, 4, -52), T + Vector3(0, 2.6, -62))
 	await shot("t9_split2")
+	get_tree().quit()
+
+# Жители заняты делом: кузнец у наковальни, Окику метёт, Таро бегает, поклон и приветствие.
+func _npc() -> void:
+	await w(0.6)
+	G.hud.help = false
+	var st = G.story
+	G.prog.chapter = 3
+	G.prog.started = true
+	st.continue_game()
+	await w(1.0)
+	st.card_t = 0.0
+	G.cam_rig.set_process(false)
+	var tk = st.npcs.tetsu
+	var ok = st.npcs.okiku
+	var tr = st.npcs.taro
+	var el = st.npcs.elder
+	_place(Vector3(31, 0.5, -10), PI)
+	await w(0.3)
+	for i in 3:
+		while fmod(tk.act_t, 1.1) < 0.8 + i * 0.02:
+			await get_tree().process_frame
+		cam(tk.global_position + Vector3(-2.6, 1.9, 2.2), tk.global_position + Vector3(-0.5, 0.9, 0))
+		await shot("n1_forge_%d" % i)
+		await w(0.4)
+	cam(ok.global_position + Vector3(3.2, 2.0, 2.2), ok.global_position + Vector3(0, 0.8, 0))
+	await shot("n2_sweep")
+	cam(tr.home + Vector3(-5.0, 3.0, 4.0), tr.home + Vector3(0, 0.6, 0))
+	await shot("n3_taro")
+	await w(0.7)
+	await shot("n3_taro_b")
+	cam(el.global_position + Vector3(3.5, 2.0, 2.5), el.global_position + Vector3(0, 1.0, 0))
+	await shot("n4_elder")
+	# подходим к Окику — поклон и приветствие
+	_place(ok.global_position + Vector3(2.5, 0.5, 0.5), -PI * 0.5)
+	await w(0.6)
+	cam(ok.global_position + Vector3(3.0, 2.0, 3.6), ok.global_position + Vector3(1.0, 1.0, 0))
+	await shot("n5_bow")
+	_place(tr.global_position + Vector3(-2.5, 0.5, 0.5), PI * 0.5)
+	await w(0.6)
+	cam(tr.global_position + Vector3(-3.5, 2.2, 3.5), tr.global_position + Vector3(-1.2, 0.8, 0))
+	await shot("n6_wave")
 	get_tree().quit()

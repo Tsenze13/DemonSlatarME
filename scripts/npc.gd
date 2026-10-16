@@ -32,6 +32,21 @@ var path_i := 0
 var wait_t := 0.0
 var walk_phase := 0.0
 var lines: Array = []          # реплики прохожего
+var walk_speed := 1.3
+# Занятие, когда никто не говорит: forge (кузнец бьёт молотом по наковальне), sweep (метёт улицу),
+# play (ребёнок бегает кругами), pace (ходит с тростью), meditate (наставник: руки на рукояти, глаза закрыты).
+var activity := ""
+var act_t := 0.0
+var strike_done := false
+var anvil := Vector3.ZERO
+var greets: Array = []         # приветствия при встрече
+var greet_cd := 0.0
+var bow_t := -1.0              # поклон / взмах рукой
+var hop_t := -1.0
+var bubble: Label3D
+var bubble_t := 0.0
+var run_a := 0.0
+var prop_node: Node3D = null
 
 func setup(id_: String, title_: String, look_: Dictionary, pos: Vector3, rot := 0.0) -> void:
 	id = id_
@@ -60,6 +75,26 @@ func setup(id_: String, title_: String, look_: Dictionary, pos: Vector3, rot := 
 	else:
 		_build_person()
 	_build_mark()
+	bubble = Label3D.new()
+	bubble.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	bubble.no_depth_test = false
+	bubble.font_size = 40
+	bubble.pixel_size = 0.006
+	bubble.outline_size = 12
+	bubble.outline_modulate = Color(0.05, 0.04, 0.06, 0.9)
+	bubble.modulate = Color(1, 0.97, 0.88)
+	bubble.position = Vector3(0, (2.05 * float(look.get("scale", 1.0))) if not is_crow else 2.6, 0)
+	bubble.visible = false
+	add_child(bubble)
+
+# Реплика над головой (на пару секунд).
+func say_bubble(txt: String, t := 2.6) -> void:
+	bubble.text = txt
+	bubble.visible = true
+	bubble_t = t
+
+func hop() -> void:
+	hop_t = 0.0
 
 func _build_person() -> void:
 	var sc: float = look.get("scale", 1.0)
@@ -223,14 +258,16 @@ func _process(dt: float) -> void:
 				wait_t = randf_range(1.0, 4.0)
 			else:
 				walking = true
-				var step := minf(to3.length(), 1.3 * dt)
+				var step := minf(to3.length(), walk_speed * dt)
 				global_position += to3.normalized() * step
 				if G.world and G.world.has_method("height_at"):
 					global_position.y = G.world.height_at(global_position.x, global_position.z)
 				base_rot = atan2(to3.x, to3.z)
 				rotation.y = lerp_angle(rotation.y, base_rot, 1.0 - exp(-6.0 * dt))
+	if activity == "play" and not talking and bow_t < 0.0:
+		walking = _run_circle(dt)
 	if walking:
-		walk_phase += dt * 7.0
+		walk_phase += dt * (12.0 if activity == "play" else 7.0)
 	else:
 		walk_phase = lerpf(walk_phase, round(walk_phase / PI) * PI, 1.0 - exp(-8.0 * dt))
 	var sw := sin(walk_phase) * (28.0 if walking else 0.0)
@@ -239,6 +276,7 @@ func _process(dt: float) -> void:
 	# дыхание
 	torso.position.y = 0.66 + sin(t * 2.0) * 0.008 + absf(cos(walk_phase)) * (0.025 if walking else 0.0)
 	torso.rotation_degrees.x = sin(t * 2.0) * 1.2
+	torso.rotation_degrees.y = 0.0
 	# смотрит на героя, если рядом
 	var want := 0.0
 	var d := 99.0
@@ -261,6 +299,113 @@ func _process(dt: float) -> void:
 	arm_r.rotation_degrees.x = lerpf(arm_r.rotation_degrees.x, -35.0 * g - (10.0 if talking else 0.0) + aw, 1.0 - exp(-6.0 * dt))
 	arm_l.rotation_degrees.x = lerpf(arm_l.rotation_degrees.x, -12.0 * (1.0 - g) * (1.0 if talking else 0.0) - aw, 1.0 - exp(-6.0 * dt))
 	head.rotation_degrees.x = sin(t * 7.0) * 3.0 if talking else 0.0
+	_greet_tick(dt, p, d)
+	if not talking and bow_t < 0.0:
+		_activity_tick(dt, p, d)
+	_bow_pose()
+	if hop_t >= 0.0:
+		hop_t += dt
+		model.position.y = maxf(0.0, sin(hop_t * PI / 0.45) * 0.45) if hop_t < 0.45 else 0.0
+		if hop_t >= 0.45:
+			hop_t = -1.0
+	if bubble_t > 0.0:
+		bubble_t -= dt
+		bubble.visible = bubble_t > 0.0
+		bubble.modulate.a = clampf(bubble_t * 3.0, 0.0, 1.0)
+
+# Подошёл герой — житель отрывается от дела, кланяется (ребёнок машет) и здоровается.
+func _greet_tick(dt: float, p: Node3D, d: float) -> void:
+	greet_cd -= dt
+	if p == null or greets.is_empty() or talking or G.dialog:
+		return
+	if d < 4.2 and greet_cd <= 0.0 and G.story and G.story.phase in ["day", "free"]:
+		greet_cd = 50.0
+		bow_t = 0.0
+		say_bubble(greets[randi() % greets.size()], 3.0)
+	if bow_t >= 0.0:
+		bow_t += dt
+		var to := p.global_position - global_position
+		rotation.y = lerp_angle(rotation.y, atan2(to.x, to.z), 1.0 - exp(-8.0 * dt))
+		if bow_t > 1.3:
+			bow_t = -1.0
+
+func _bow_pose() -> void:
+	if bow_t < 0.0:
+		return
+	var k := sin(clampf(bow_t / 1.3, 0.0, 1.0) * PI)
+	if activity == "play":
+		# ребёнок машет рукой над головой
+		arm_r.rotation_degrees.x = -160.0 * k
+		arm_r.rotation_degrees.z = -20.0 + sin(bow_t * 18.0) * 25.0 * k
+	else:
+		torso.rotation_degrees.x = 32.0 * k
+		head.rotation_degrees.x = 12.0 * k
+		arm_r.rotation_degrees.x = 0.0
+		arm_l.rotation_degrees.x = 0.0
+
+func _activity_tick(dt: float, p: Node3D, d: float) -> void:
+	act_t += dt
+	match activity:
+		"forge":
+			# цикл 1,1 с: медленный замах — резкий удар — искры и звон
+			var c := fmod(act_t, 1.1)
+			var up := clampf(c / 0.75, 0.0, 1.0)
+			var ang := -40.0 - 120.0 * Vox.ease_in_out(up)
+			if c > 0.75:
+				ang = lerpf(-160.0, -35.0, clampf((c - 0.75) / 0.08, 0.0, 1.0))
+			arm_r.rotation_degrees.x = ang
+			arm_r.rotation_degrees.z = -6.0
+			arm_l.rotation_degrees.x = -45.0        # клещами держит заготовку
+			torso.rotation_degrees.x = 12.0 + (6.0 if c > 0.78 and c < 0.95 else 0.0)
+			head.rotation_degrees.x = 18.0
+			if c > 0.83 and not strike_done:
+				strike_done = true
+				G.fx.sparks(anvil + Vector3.UP * 0.05, Vector3.UP, Color(1.0, 0.75, 0.3), 9)
+				if d < 18.0 and G.sfx:
+					G.sfx.play("clang", -14.0 - d * 0.6, randf_range(1.3, 1.5))
+			elif c < 0.5:
+				strike_done = false
+		"sweep":
+			# метёт: руки вперёд, метла ходит из стороны в сторону, пыль
+			var sw := sin(act_t * 3.2)
+			arm_r.rotation_degrees.x = -38.0
+			arm_l.rotation_degrees.x = -50.0
+			arm_r.rotation_degrees.z = -6.0 + sw * 14.0
+			arm_l.rotation_degrees.z = 20.0 + sw * 14.0
+			if prop_node:
+				prop_node.rotation_degrees.y = sw * 25.0
+			torso.rotation_degrees.x = 14.0
+			torso.rotation_degrees.y = sw * 10.0
+			if fmod(act_t, 1.96) < dt and d < 20.0:
+				var bp := global_position + global_transform.basis.z * 1.0
+				G.fx.dust(bp, 3)
+		"play":
+			arm_r.rotation_degrees.x = -sin(walk_phase) * 50.0
+			arm_l.rotation_degrees.x = sin(walk_phase) * 50.0
+			torso.rotation_degrees.x = 10.0
+			if fmod(act_t, 4.3) < dt:
+				hop()
+		"pace":
+			arm_l.rotation_degrees.x = -10.0
+			torso.rotation_degrees.x = 8.0           # сутулится, руки за спиной
+		"meditate":
+			arm_r.rotation_degrees.x = -30.0
+			arm_l.rotation_degrees.x = -30.0
+			arm_r.rotation_degrees.z = 25.0
+			arm_l.rotation_degrees.z = -25.0
+			torso.rotation_degrees.x = sin(act_t * 0.9) * 2.0
+
+# Ребёнок бегает кругами вокруг своего места (останавливается поговорить).
+func _run_circle(dt: float) -> bool:
+	run_a += dt * 1.15
+	var tgt := home + Vector3(cos(run_a) * 2.6, 0, sin(run_a) * 2.6)
+	var to := Vector3(tgt.x - global_position.x, 0, tgt.z - global_position.z)
+	if to.length() > 0.05:
+		global_position += to.normalized() * minf(to.length(), 3.4 * dt)
+		if G.world and G.world.has_method("height_at"):
+			global_position.y = G.world.height_at(global_position.x, global_position.z)
+		rotation.y = lerp_angle(rotation.y, atan2(to.x, to.z), 1.0 - exp(-10.0 * dt))
+	return true
 
 func _crow_tick(dt: float, p: Node3D) -> void:
 	var flap := 0.0

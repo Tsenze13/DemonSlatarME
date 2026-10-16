@@ -990,6 +990,34 @@ func _run() -> void:
 	await _skip_talk()
 	await w(0.6)
 	check(not G.world.in_train(p.global_position), "после обучения — в деревню (главная карта)")
+	# ===== жители заняты делом и здороваются =====
+	var okn = st.npcs.okiku
+	var tkn = st.npcs.tetsu
+	var trn = st.npcs.taro
+	check(tkn.activity == "forge" and okn.activity == "sweep" and trn.activity == "play" and st.npcs.elder.activity == "pace", "жители заняты делом: кузнец, метла, игра, прогулка")
+	var tr0: Vector3 = trn.global_position
+	var at0: float = tkn.act_t
+	await w(0.6)
+	check(trn.global_position.distance_to(tr0) > 0.5 and tkn.act_t > at0, "Таро бегает, кузнец бьёт молотом")
+	okn.greet_cd = 0.0
+	st._place(okn.global_position + Vector3(2.0, 0, 0), -PI * 0.5)
+	await w(0.3)
+	check(okn.bubble.visible and okn.bow_t >= 0.0, "Окику кланяется и здоровается («%s»)" % okn.bubble.text)
+	st.talk("elder")
+	await _skip_talk()
+	check(G.dialog_ui.buttons.size() == 4, "староста: разговор по темам (4 ответа)")
+	G.dialog_ui._pick(1)
+	await _skip_talk()
+	check(not G.dialog, "тема «демоны» рассказана")
+	st._place(trn.global_position + Vector3(3.0, 0, 0), -PI * 0.5)
+	await w(0.2)
+	trn.bubble_t = 0.0
+	st._taro_pick(0)
+	await _skip_talk()
+	p.press("dash")
+	await w(0.3)
+	check(trn.bubble.visible and trn.bubble.text.find("!") >= 0 and st.taro_watch <= 0.0, "Таро смотрит рывок: «%s»" % trn.bubble.text)
+	await w(0.4)
 	check(st.chapter == 1 and st.phase == "day", "пролог пройден — день, глава 1 (%d, %s)" % [st.chapter, st.phase])
 	check(st.crow.has_news and st.target != null, "ворон ждёт с заданием, метка на карте")
 	st.talk("crow")

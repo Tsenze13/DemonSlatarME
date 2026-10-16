@@ -41,7 +41,7 @@ const LOOK := {
 	"elder": {"style": "bald", "skin": Color(0.9, 0.75, 0.62), "robe": Color(0.42, 0.34, 0.5), "robe2": Color(0.28, 0.24, 0.32),
 		"obi": Color(0.2, 0.18, 0.25), "prop": "cane"},
 	"okiku": {"style": "bun", "skin": Color(0.96, 0.82, 0.72), "robe": Color(0.78, 0.46, 0.52), "robe2": Color(0.5, 0.28, 0.35),
-		"obi": Color(0.95, 0.85, 0.5), "hair": Color(0.1, 0.07, 0.08), "prop": "basket"},
+		"obi": Color(0.95, 0.85, 0.5), "hair": Color(0.1, 0.07, 0.08), "prop": "broom"},
 	"taro": {"style": "kid", "skin": Color(0.95, 0.78, 0.64), "robe": Color(0.3, 0.52, 0.72), "robe2": Color(0.22, 0.3, 0.45),
 		"hair": Color(0.15, 0.1, 0.08), "scale": 0.72},
 	"crow": {"style": "crow"},
@@ -270,6 +270,55 @@ func _spawn_npcs() -> void:
 		G.world.add_child(wn)
 		npcs[id] = wn
 	crow = npcs.crow
+	_npc_life()
+
+# Чем жители заняты и как здороваются.
+const GREETS := {
+	"gensai": ["Хм.", "Дыши ровнее.", "Опять без дела бродишь?"],
+	"tetsu": ["Не стой под молотом!", "*дзинь* …Чего?", "Клинок показать пришёл?"],
+	"elder": ["Добрый день, охотник.", "А, наш защитник!", "Заходи на чай."],
+	"okiku": ["Ой, здравствуйте!", "Доброго дня, охотник-сан!", "Осторожно, тут пыль!"],
+	"taro": ["Охотник!!", "Привет! Покажи меч!", "Догони меня!"],
+	"jun": ["Здорово.", "Клюёт сегодня плохо."],
+	"hana": ["Данго! Горячие данго!", "Охотник! Загляни ко мне!"],
+	"kenshin": ["Мир тебе.", "Да хранит тебя Кумо."],
+}
+func _npc_life() -> void:
+	for id in GREETS:
+		if npcs.has(id):
+			npcs[id].greets = GREETS[id]
+	npcs.gensai.activity = "meditate"
+	# кузнец у наковальни: пень, железо, раскалённая заготовка
+	var tk = npcs.tetsu
+	tk.activity = "forge"
+	var fw := Vector3(sin(tk.rotation.y), 0, cos(tk.rotation.y))
+	var ap: Vector3 = tk.global_position + fw * 0.8
+	var V = load("res://scripts/vox.gd")
+	V.box(G.world, Vector3(0.45, 0.5, 0.45), ap + Vector3.UP * 0.25, Color(0.42, 0.3, 0.2), true, 0.0, "bark")
+	V.box(G.world, Vector3(0.55, 0.16, 0.28), ap + Vector3.UP * 0.58, Color(0.22, 0.22, 0.25), true, 0.0, "stone")
+	V.box(G.world, Vector3(0.22, 0.05, 0.08), ap + Vector3.UP * 0.685, Color(1.0, 0.45, 0.12), false, 2.5)
+	# горн сбоку: каменная печь с углями
+	var side := Vector3(-fw.z, 0, fw.x)
+	var fp: Vector3 = tk.global_position + side * 1.1
+	V.box(G.world, Vector3(0.7, 0.8, 0.7), fp + Vector3.UP * 0.4, Color(0.5, 0.48, 0.48), true, 0.0, "stone")
+	V.box(G.world, Vector3(0.4, 0.1, 0.4), fp + Vector3.UP * 0.82, Color(1.0, 0.4, 0.1), false, 2.2)
+	var fl := OmniLight3D.new()
+	fl.light_color = Color(1.0, 0.55, 0.25)
+	fl.light_energy = 1.4
+	fl.omni_range = 4.0
+	fl.position = fp + Vector3.UP * 1.1
+	G.world.add_child(fl)
+	tk.anvil = ap + Vector3.UP * 0.7
+	# староста прохаживается с тростью, Окику метёт улицу, Таро носится кругами
+	var el = npcs.elder
+	el.activity = "pace"
+	el.path = [el.home, el.home + Vector3(0, 0, -4.0)]
+	el.walk_speed = 0.55
+	var ok = npcs.okiku
+	ok.activity = "sweep"
+	ok.path = [ok.home, ok.home + Vector3(0, 0, 3.5)]
+	ok.walk_speed = 0.35
+	npcs.taro.activity = "play"
 
 func _process(_dt: float) -> void:
 	var dt: float = G.rdt
@@ -290,6 +339,13 @@ func _process(_dt: float) -> void:
 			if d < bd:
 				bd = d
 				near = n
+	if taro_watch > 0.0 and npcs.has("taro"):
+		taro_watch -= dt
+		var tn = npcs.taro
+		if p.state == "dash" and p.global_position.distance_to(tn.global_position) < 14.0 and not G.dialog:
+			taro_watch = 0.0
+			tn.say_bubble(["УХ ТЫ!!!", "ЕЩЁ! ЕЩЁ!", "Как молния!"][randi() % 3], 3.0)
+			tn.hop()
 	match phase:
 		"tutorial":
 			_tutorial_tick()
@@ -359,19 +415,19 @@ func talk(id: String) -> void:
 		"tetsu":
 			_talk_tetsu()
 		"elder":
-			_say("elder", [_elder_line()])
+			_say("elder", [_elder_line()], ["Расскажи о деревне", "Что известно о демонах?", "Как мне стать сильнее?", "Прощайте"], _elder_pick)
 		"okiku":
 			if int(G.prog.get("gift", -1)) != chapter:
 				G.prog.gift = chapter
 				G.prog.onigiri = mini(int(G.prog.onigiri) + 1, 9)
 				G.save_prog()
-				_say("okiku", [_okiku_line(), "Вот, возьмите онигири — тёплый ещё. Съешьте в бою, когда тяжко (H)."])
+				_say("okiku", [_okiku_line(), "Вот, возьмите онигири — тёплый ещё. Съешьте в бою, когда тяжко (H)."], OKIKU_Q, _okiku_pick)
 			else:
-				_say("okiku", [_okiku_line()])
+				_say("okiku", [_okiku_line()], OKIKU_Q, _okiku_pick)
 		"hana":
 			_talk_hana()
 		"taro":
-			_say("taro", [_taro_line()])
+			_say("taro", [_taro_line()], ["Смотри — рывок!", "Ты чего не дома?", "Кем хочешь стать?", "Пока, Таро"], _taro_pick)
 		_:
 			var n = npcs.get(id)
 			if n and not n.lines.is_empty():
@@ -611,6 +667,57 @@ func _hana_pick(i: int) -> void:
 	G.save_prog()
 	G.sfx.play("tick", -6.0, 0.8)
 	_say("hana", ["Держи! Свежие, с умэбоси. Приятного — и удачной охоты!"])
+
+func _elder_pick(i: int) -> void:
+	match i:
+		0:
+			_say("elder", ["Ивакуру основали лесорубы. Кедры отсюда шли на храмы в столицу — по реке, плотами.",
+				"Улица фонарей — это от старого обычая: свет у каждой двери, чтобы путник не сбился ночью.",
+				"Святилище Кумо на холме охраняет деревню. Колокол его звонит на рассвете — демоны его не любят.",
+				"А праздник фонарей — в память о той ночи, когда деревня пережила первую зиму. Триста лет назад."])
+		1:
+			var ls := ["Демоны боятся солнца и стали из горной руды. Больше ничего — ни огня, ни молитв.",
+				"Они были людьми. Кто-то дал им своей крови — и они забыли, кем были.",
+				"Слабые пьют кровь, чтобы раны затягивались. Без крови они… хрупки. Сильные — растут и без неё."]
+			if chapter >= 2:
+				ls.append("Гэнсай рассказывал о Лунах — двенадцать демонов, сильнее всех. У каждого — номер в глазу.")
+			if chapter >= 7:
+				ls.append("Кагэцу был Третьей Ущербной. Его сестра… если она придёт, держитесь за свет.")
+			_say("elder", ls)
+		2:
+			_say("elder", ["Сила — не в руках, охотник. Но руки тоже не помешают.",
+				"Гэнсай учит формам и тренирует тело за мастерство. Тэцу закалит клинок за рё.",
+				"Хана продаёт онигири — в бою подкрепишься (H). А ворон Кагари даёт работу: охоты и заказы.",
+				"И отдыхай. Мёртвый охотник никого не спасёт."])
+
+const OKIKU_Q := ["Как вы тут живёте?", "Что слышно на улице?", "Спасибо, до встречи"]
+func _okiku_pick(i: int) -> void:
+	match i:
+		0:
+			_say("okiku", ["Муж плотничает, я пеку и мету улицу. Каждое утро — от колодца до ворот.",
+				"Если улица чистая, люди улыбаются. А когда люди улыбаются — и страх меньше.",
+				"Таро вот только не уследишь. Бегает, бегает… Весь в отца."])
+		1:
+			var ls := ["Хана опять подняла цену на данго. Говорит — рис подорожал. Ну-ну.",
+				"Тэцу-сан с утра стучит. Говорит, у него заказ от самого Гэнсая-сама."]
+			if chapter >= 3:
+				ls.append("Рыбак Дзюн видел у пруда следы — огромные, как у быка. Только босые.")
+			if chapter >= 6:
+				ls.append("Все говорят о вас! Таро рассказывает, что вы прыгаете выше кедров.")
+			_say("okiku", ls)
+
+func _taro_pick(i: int) -> void:
+	match i:
+		0:
+			_say("taro", ["Давай! Давай! Shift — я смотрю!"])
+			taro_watch = 6.0
+		1:
+			_say("taro", ["Дома скучно. Мама метёт, папа строгает. А тут — ты! И ворон! И кузнец бахает!",
+				"Только не говори маме, что я к пруду бегал. Совсем чуть-чуть бегал."])
+		2:
+			_say("taro", ["Охотником! Как ты! Я уже палку точу. Гэнсай сказал — сначала научись дышать.",
+				"Я дышу! Вот: ффффууух. Видишь? Уже почти охотник."])
+var taro_watch := 0.0
 
 func _elder_line() -> String:
 	var ls := [
