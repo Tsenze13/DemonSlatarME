@@ -29,6 +29,10 @@ var loc_cand_sub := ""
 var loc_stay := 0.0
 var loc_seen := {}             # место → когда последний раз показан титр
 var show_map := true
+var big_map := false
+const MAP_LABELS := [["Поляна у старой стены", Vector2(0, 2)], ["Деревня Ивакура", Vector2(32, -32)], ["Святилище Кумо", Vector2(0, -62)],
+	["Пруд Цукими", Vector2(-34, -5)], ["Бамбуковая роща", Vector2(-32, 26)], ["Старый кедровый лес", Vector2(-62, -42)],
+	["Каменная стена", Vector2(0, 50)]]
 
 const RANKS := [
 	[0.0, "D", "НЕРЯШЛИВО", Color(0.7, 0.7, 0.75)],
@@ -303,6 +307,43 @@ func _draw_story(s: Vector2, u: float) -> void:
 		draw_line(Vector2(s.x * 0.5 + lw * 0.5 + 20 * u, cy - 18 * u), Vector2(s.x * 0.5 + lw * 0.5 + 90 * u, cy - 18 * u), Color(1, 0.9, 0.7, a * 0.8), 1.5 * u)
 		_stxt(Vector2(s.x * 0.5, cy + 38 * u), st.card_sub, int(22 * u), Color(0.95, 0.85, 0.7, a * 0.9))
 
+# Большая карта (M): вся округа, места, цель задания, жители, демоны, герой.
+func _draw_big_map(s: Vector2, u: float) -> void:
+	var w = G.world
+	if w == null or w.get("minimap") == null or w.minimap == null:
+		return
+	draw_rect(Rect2(Vector2.ZERO, s), Color(0.02, 0.02, 0.04, 0.72))
+	var side := minf(s.x, s.y) * 0.82
+	var r := Rect2(s * 0.5 - Vector2(side, side) * 0.5, Vector2(side, side))
+	var half: float = w.HALF
+	var to_px := func(x: float, z: float) -> Vector2:
+		return r.position + Vector2((x + half) / (half * 2.0), (z + half) / (half * 2.0)) * side
+	draw_rect(r.grow(6 * u), Color(0.75, 0.62, 0.4))
+	draw_texture_rect(w.minimap, r, false)
+	for lb in MAP_LABELS:
+		var lp: Vector2 = to_px.call(lb[1].x, lb[1].y)
+		_stxt(lp, lb[0], int(17 * u), Color(1, 0.97, 0.88))
+	if G.story:
+		for id in G.story.npcs:
+			var n = G.story.npcs[id]
+			if n.visible:
+				var np: Vector2 = to_px.call(n.global_position.x, n.global_position.z)
+				draw_circle(np, 4 * u, Color(1.0, 0.9, 0.3) if n.has_news else Color(0.9, 0.85, 0.75))
+		if G.story.target != null:
+			var tp: Vector2 = to_px.call(G.story.target.x, G.story.target.z)
+			var k := 10 * u * (1.0 + sin(G.real_time * 4.0) * 0.15)
+			draw_colored_polygon(PackedVector2Array([tp + Vector2(0, -k), tp + Vector2(k * 0.7, 0), tp + Vector2(0, k), tp + Vector2(-k * 0.7, 0)]), Color(1.0, 0.82, 0.4))
+	for e in G.enemies:
+		if is_instance_valid(e) and not e.is_dead():
+			draw_circle(to_px.call(e.global_position.x, e.global_position.z), 4 * u, Color(1, 0.25, 0.2))
+	var p: Node3D = G.player
+	var pp: Vector2 = to_px.call(p.global_position.x, p.global_position.z)
+	var fd := Vector2(sin(p.facing), cos(p.facing))
+	var sd := Vector2(-fd.y, fd.x)
+	draw_colored_polygon(PackedVector2Array([pp + fd * 12 * u, pp - fd * 7 * u + sd * 8 * u, pp - fd * 3 * u, pp - fd * 7 * u - sd * 8 * u]), Color(1, 1, 1))
+	_stxt(Vector2(s.x * 0.5, r.position.y - 16 * u), "Округа деревни Ивакура", int(30 * u), Color(1, 0.95, 0.85))
+	_txt(Vector2(s.x * 0.5, r.end.y + 30 * u), "M — закрыть   ·   ромб — цель задания   ·   жёлтые точки — жители с новостями", int(15 * u), Color(0.85, 0.85, 0.9), HORIZONTAL_ALIGNMENT_CENTER, 0)
+
 func _txt(pos: Vector2, t: String, fsize: int, col: Color, align := HORIZONTAL_ALIGNMENT_LEFT, _w := -1.0, outline := 8) -> void:
 	if align != HORIZONTAL_ALIGNMENT_LEFT:
 		var tw := font.get_string_size(t, HORIZONTAL_ALIGNMENT_LEFT, -1, fsize).x
@@ -333,6 +374,13 @@ func _draw() -> void:
 		var c := Color(0.85, 0.95, 1.0) if p.dash_charges >= i + 1 else Color(0.25, 0.3, 0.4)
 		draw_rect(Rect2(x0 + i * 22 * u, y0 + 76 * u, 16 * u, 8 * u), c)
 	_txt(Vector2(x0 + 52 * u, y0 + 85 * u), "рывок", int(12 * u), Color(0.8, 0.85, 0.95))
+	# шкала Метки охотника
+	if p.has_method("mark_unlocked") and p.mark_unlocked():
+		var mk: float = p.mark_t / p.MARK_DUR if p.mark_t > 0.0 else p.fury / 100.0
+		var mcol := Color(1.0, 0.25, 0.15) if p.mark_t > 0.0 or p.fury >= 100.0 else Color(0.65, 0.2, 0.18)
+		_bar(Rect2(x0 + 110 * u, y0 + 78 * u, 150 * u, 6 * u), mk, mcol)
+		var mt := "МЕТКА — V" if p.fury >= 100.0 and p.mark_t <= 0.0 else ("МЕТКА %d с" % int(ceil(p.mark_t)) if p.mark_t > 0.0 else "метка")
+		_txt(Vector2(x0 + 268 * u, y0 + 86 * u), mt, int(12 * u), mcol.lightened(0.3) if int(G.real_time * 3.0) % 2 == 0 or p.fury < 100.0 else mcol)
 	if p.state == "breathe":
 		_txt(Vector2(x0, y0 + 112 * u), "Полная концентрация...", int(16 * u), Color(0.6, 0.85, 1.0))
 
@@ -442,6 +490,8 @@ func _draw() -> void:
 		ny += 28 * u
 
 	_draw_story(s, u)
+	if big_map:
+		_draw_big_map(s, u)
 	# --- управление ---
 	if (help or G.paused) and not G.dialog:
 		var lines := [

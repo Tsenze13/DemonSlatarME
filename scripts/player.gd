@@ -625,6 +625,65 @@ func _build_face(head: Node3D, skin: Color, hair: Color) -> void:
 	Vox.box(mouth_open, Vector3(0.06, 0.045, 0.006), Vector3.ZERO, Color(0.3, 0.06, 0.1), false)
 	Vox.box(mouth_open, Vector3(0.05, 0.01, 0.008), Vector3(0, 0.014, 0.001), Color(0.95, 0.95, 0.92), false)  # зубы
 	mouth_open.scale = Vector3(1, 0.05, 1)
+	# Метка охотника: алый узор-пламя на лбу и щеке, проступает в режиме Метки
+	mark_face = Vox.pivot(face, Vector3(0, 0, 0.004))
+	var mc := Color(0.85, 0.06, 0.08)
+	for sx in [-1.0, 1.0]:
+		# три косых языка пламени на каждой щеке, от скулы к подбородку
+		for k in 3:
+			var st := Vox.box(mark_face, Vector3(0.014, 0.05 - k * 0.008, 0.006), Vector3((0.088 + k * 0.016) * sx, -0.055 + k * 0.006, 0), mc, false, 1.1)
+			st.rotation_degrees.z = 28.0 * sx
+	mark_face.visible = false
+
+# ---------------------------------------------------------------------
+# Метка охотника (V): ярость копится от ударов по демону и полученных ран;
+# на полной шкале — 10 с скорости и силы, но здоровье тает. Открывается в 4-й главе.
+var fury := 0.0
+var mark_t := 0.0
+var mark_face: Node3D
+const MARK_DUR := 10.0
+
+func mark_unlocked() -> bool:
+	return G.mode == "free" or int(G.prog.chapter) >= 4
+
+func add_fury(v: float) -> void:
+	if mark_t <= 0.0 and mark_unlocked():
+		var was := fury
+		fury = minf(100.0, fury + v)
+		if was < 100.0 and fury >= 100.0 and G.hud:
+			G.hud.notify("Метка готова — V", 2.5)
+
+func _mark_on() -> void:
+	mark_t = MARK_DUR
+	fury = 0.0
+	if mark_face:
+		mark_face.visible = true
+	G.slowmo(0.25, 0.6)
+	G.impact(0.08, 2)
+	G.add_shake(0.5)
+	G.do_flash(0.4, Color(1.0, 0.3, 0.2))
+	G.sfx.play("gong", -4.0, 1.2)
+	G.sfx.play("roar", -12.0, 1.6)
+	G.fx.ring(global_position + Vector3.UP * 0.1, 0.8, Color(1.0, 0.2, 0.1), Color(1.0, 0.8, 0.5), 0.6, 10.0, 0.5)
+	G.fx.burst(global_position + Vector3.UP * 1.2, Color(1.0, 0.3, 0.15), 24, 8.0, 0.07, 0.45, -2.0, Vector3.UP, 1.0, 1.5)
+	if G.hud:
+		G.hud.big_text("МЕТКА ОХОТНИКА")
+
+func _mark_tick(dt: float) -> void:
+	if pressed("mark") and mark_t <= 0.0 and fury >= 100.0 and mark_unlocked() and state not in ["dead", "down"]:
+		_mark_on()
+	if mark_t > 0.0:
+		mark_t -= dt
+		# цена силы: здоровье тает, но не убивает
+		hp = maxf(1.0, hp - 2.2 * dt)
+		breath = minf(max_breath, breath + 8.0 * dt)
+		if randf() < dt * 25.0:
+			G.fx.burst(global_position + Vector3(randf_range(-0.4, 0.4), randf_range(0.3, 1.9), randf_range(-0.4, 0.4)), Color(1.0, 0.25, 0.12) if randf() < 0.6 else Color(1.0, 0.7, 0.3), 1, 1.5, 0.07, 0.35, -3.0, Vector3.UP, 0.4, 1.5)
+		if mark_t <= 0.0:
+			if mark_face:
+				mark_face.visible = false
+			if G.hud:
+				G.hud.notify("Метка угасла", 1.6)
 
 # Мимика: в бою — сдвинутые брови и крик на ударе, от боли — зажмуривается,
 # на дыхании — прикрытые глаза, без сознания — закрыты. Моргает сам.
@@ -767,7 +826,7 @@ func _make_cloth(attach: Node3D, anchors: Array, rows: int, seg: float):
 # =====================================================================
 # ВВОД
 # =====================================================================
-const BUF_ACTIONS := ["jump", "dash", "flash", "light", "heavy", "parry", "form1", "form2", "form3", "lock", "draw"]
+const BUF_ACTIONS := ["jump", "dash", "flash", "light", "heavy", "parry", "form1", "form2", "form3", "lock", "draw", "mark"]
 
 # Вызывается из main.gd: события мыши не доходят до пиксельного SubViewport сами.
 func handle_input(e: InputEvent) -> void:
@@ -841,6 +900,7 @@ func _physics_process(dt: float) -> void:
 		return
 	state_t += dt
 	invuln_t -= dt
+	_mark_tick(dt)
 	flash_window -= dt
 	counter_window -= dt
 	flip_t = maxf(0.0, flip_t - dt)
@@ -976,7 +1036,7 @@ func _st_move(dt: float, inp: Vector3) -> void:
 			momentum = 0
 	else:
 		momentum_lost_t = 0.0
-	var spd := RUN_SPEED * (1.0 + MOMENTUM_STEP * momentum)
+	var spd := RUN_SPEED * (1.0 + MOMENTUM_STEP * momentum) * (1.3 if mark_t > 0.0 else 1.0)
 	_hmove(inp * spd, (ACCEL * 1.3 if sprinting else ACCEL) if on_floor else AIR_ACCEL, dt)
 	_gravity(dt)
 	if lock_target and inp.length() < 0.1:
@@ -2736,6 +2796,7 @@ func receive_attack(dmg: float, src: Vector3, parryable: bool, attacker: Node = 
 				G.hud.add_combo("dodge", 15)
 		return "dodge"
 	hp -= dmg * G.dmg_in_mult()
+	add_fury(dmg * 0.6)
 	_add_cut(src)
 	G.hurt_fx = 1.0
 	G.add_shake(0.35)

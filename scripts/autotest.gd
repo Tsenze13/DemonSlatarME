@@ -653,7 +653,7 @@ func _run() -> void:
 	get_parent()._set_volume(0.2, true)
 	check(AudioServer.get_bus_volume_db(0) < -10.0, "громкость меняется")
 	var mn = get_parent().menus
-	check(mn.tabs.get_tab_count() == 4, "в настройках 4 вкладки")
+	check(mn.tabs.get_tab_count() == 5, "в паузе 5 вкладок (журнал + настройки)")
 	for ti in mn.tabs.get_tab_count():
 		mn.tabs.current_tab = ti
 		await w(0.15)
@@ -814,7 +814,8 @@ func _run() -> void:
 	st.fast = true
 	st.new_game()
 	await w(0.8)
-	check(st.npcs.size() == 6 and st.npcs.has("gensai") and st.npcs.has("crow"), "жители и ворон в деревне (%d)" % st.npcs.size())
+	check(st.npcs.size() == 9 and st.npcs.has("gensai") and st.npcs.has("crow"), "жители, прохожие и ворон в деревне (%d)" % st.npcs.size())
+	var jun_p0: Vector3 = st.npcs.jun.global_position
 	await _skip_talk()
 	check(st.phase == "tutorial", "пролог: обучение у наставника (%s)" % st.phase)
 	p.set_drawn(false)
@@ -883,6 +884,16 @@ func _run() -> void:
 			G.dialog_ui._pick(G.dialog_ui.buttons.size() - 1)
 		await w(0.05)
 	await shot("30_village_day")
+	check(st.npcs.jun.global_position.distance_to(jun_p0) > 1.0, "прохожие гуляют по улице")
+	st.talk("hana")
+	check(G.dialog, "с прохожим можно поговорить")
+	await _skip_talk()
+	# журнал и большая карта
+	get_parent().menus.refresh_journal()
+	check(get_parent().menus.journal.text.find("Отбор") >= 0, "журнал: главы сюжета")
+	G.hud.big_map = true
+	await w(0.1)
+	G.hud.big_map = false
 	# испытание наставника: чучела на время
 	var m0 := int(G.prog.mastery)
 	st._start_trial()
@@ -894,6 +905,21 @@ func _run() -> void:
 	await w(0.3)
 	await _skip_talk()
 	check(st.phase == "day" and int(G.prog.mastery) == m0 + 2, "испытание пройдено: +2 мастерства")
+	# Метка охотника: ярость → V → сила и скорость, здоровье тает
+	G.prog.chapter = 4
+	p.fury = 0.0
+	p.add_fury(200.0)
+	check(p.fury >= 100.0, "шкала ярости копится")
+	p.hp = p.max_hp
+	p.press("mark")
+	await w(0.3)
+	check(p.mark_t > 0.0 and G.dmg_out_mult() > 1.3 and p.mark_face.visible, "Метка охотника: сила, узор на лице")
+	await w(1.0)
+	check(p.hp < p.max_hp, "Метка пьёт жизнь")
+	p.mark_t = 0.01
+	await w(0.2)
+	check(not p.mark_face.visible, "Метка угасла")
+	G.prog.chapter = 2
 	# виды демонов
 	st._clear_demons()
 	await w(0.2)

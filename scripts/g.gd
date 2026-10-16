@@ -22,7 +22,9 @@ var prog := {"ryo": 0, "mastery": 0, "hp": 0, "lungs": 0, "focus": 0, "blade": 0
 
 var difficulty := 1          # 0 — лёгкая, 1 — обычная, 2 — тяжёлая (настройки)
 func dmg_out_mult() -> float:
-	return (1.0 + 0.1 * float(prog.blade)) * [1.3, 1.0, 0.85][clampi(difficulty, 0, 2)]
+	var mt = player.get("mark_t") if player else null
+	var mk := 1.4 if mt != null and float(mt) > 0.0 else 1.0
+	return (1.0 + 0.1 * float(prog.blade)) * [1.3, 1.0, 0.85][clampi(difficulty, 0, 2)] * mk
 
 func dmg_in_mult() -> float:
 	return [0.55, 1.0, 1.4][clampi(difficulty, 0, 2)]
@@ -166,7 +168,7 @@ func _setup_input() -> void:
 		"parry": [KEY_Q], "breathe": [KEY_R], "form1": [KEY_1],
 		"form2": [KEY_2], "form3": [KEY_3], "lock": [KEY_TAB],
 		"daynight": [KEY_N], "pause": [KEY_ESCAPE], "help": [KEY_F1],
-		"light": [KEY_J], "heavy": [KEY_K], "draw": [KEY_F],
+		"light": [KEY_J], "heavy": [KEY_K], "draw": [KEY_F], "mark": [KEY_V], "map": [KEY_M],
 	}
 	var mouse := {"light": MOUSE_BUTTON_LEFT, "heavy": MOUSE_BUTTON_RIGHT, "lock": MOUSE_BUTTON_MIDDLE}
 	var pad := {

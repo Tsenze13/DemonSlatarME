@@ -230,6 +230,8 @@ func _unhandled_input(e: InputEvent) -> void:
 		return
 	elif e.is_action_pressed("daynight"):
 		world.next_time()
+	elif e.is_action_pressed("map"):
+		hud.big_map = not hud.big_map
 	elif e.is_action_pressed("help"):
 		hud.help = not hud.help
 		hud.help_t = 0.0

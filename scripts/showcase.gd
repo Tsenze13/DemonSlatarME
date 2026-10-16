@@ -23,6 +23,8 @@ func _ready() -> void:
 		_story()
 	elif mode == "play":
 		_play()
+	elif mode == "v39":
+		_v39()
 	else:
 		_shots()
 
@@ -427,4 +429,54 @@ func _play() -> void:
 	await w(4.0)
 	await _talk_auto()
 	await w(3.0)
+	get_tree().quit()
+
+# v0.39: Метка охотника, большая карта, журнал, прохожие.
+func _v39() -> void:
+	await w(0.6)
+	G.hud.help = false
+	var st = G.story
+	var pl: Node3D = G.player
+	_park_demons()
+	st._clear_demons()
+	G.mode = "story"
+	st._spawn_npcs()
+	st.chapter = 4
+	G.prog.chapter = 4
+	G.prog.ryo = 320
+	G.prog.mastery = 4
+	st._day()
+	await w(4.0)
+	G.cam_rig.set_process(false)
+	# прохожие на улице
+	_place(Vector3(32, 0.5, -14), PI)
+	await w(0.4)
+	cam(Vector3(31.0, 2.0, -8), Vector3(31.5, 1.0, -30))
+	await shot("v1_street")
+	# Метка: лицо крупно
+	_set_time("sunset")
+	_place(Vector3(0, 0.5, 6), 0.0)
+	pl.set_drawn(true)
+	pl.add_fury(200.0)
+	await w(0.5)
+	pl.press("mark")
+	await w(1.6)
+	G.hud.big_t = 0.0
+	st.card_t = 0.0
+	cam(pl.global_position + Vector3(0.25, 1.72, 1.1), pl.global_position + Vector3(0, 1.62, 0))
+	await shot("v2_mark_face")
+	cam(pl.global_position + Vector3(2.2, 1.6, 3.2), pl.global_position + Vector3(0, 1.1, 0))
+	await shot("v3_mark")
+	# большая карта
+	G.cam_rig.set_process(true)
+	st.target = Vector3(-34, 0, 8)
+	G.hud.big_map = true
+	await w(0.4)
+	await shot("v4_map")
+	G.hud.big_map = false
+	# журнал в паузе
+	get_parent().menus.open_pause()
+	await w(0.5)
+	await shot("v5_journal")
+	get_parent().menus.close_menu()
 	get_tree().quit()

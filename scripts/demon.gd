@@ -644,6 +644,8 @@ func take_hit(dmg: float, dir: Vector3, atk: Dictionary) -> Dictionary:
 		G.fx.sparks(res.point, dir, Color(1, 0.4, 0.3), 6)
 		return res
 	hp -= dmg * G.dmg_out_mult()
+	if G.player and G.player.has_method("add_fury"):
+		G.player.add_fury(dmg * 0.35)
 	_add_wound(res.point, dir, atk)
 	combo_hits = combo_hits + 1 if combo_t > 0.0 else 1
 	combo_t = 1.1

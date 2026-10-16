@@ -25,7 +25,7 @@ const ACTIONS := [
 	["jump", "Прыжок"], ["dash", "Рывок / бег (держать)"], ["flash", "Шаг-вспышка"],
 	["light", "Удар"], ["heavy", "Тяжёлый удар"], ["parry", "Парирование"], ["draw", "Достать / убрать клинок"],
 	["breathe", "Восстановить дыхание"], ["form1", "Форма 1"], ["form2", "Форма 2"], ["form3", "Форма 3"],
-	["lock", "Захват цели"], ["daynight", "День / ночь"], ["help", "Подсказка"],
+	["lock", "Захват цели"], ["mark", "Метка охотника"], ["map", "Карта"], ["daynight", "День / ночь"], ["help", "Подсказка"],
 ]
 
 var title_screen: Control          # главное меню
@@ -175,6 +175,7 @@ func _build_pause() -> void:
 	tabs.custom_minimum_size = Vector2(640, 470)
 	tabs.add_theme_font_size_override("font_size", 18)
 	box.add_child(tabs)
+	_tab_journal()
 	_tab_sword()
 	_tab_graphics()
 	_tab_sound()
@@ -279,6 +280,52 @@ func _tab_sword() -> void:
 	_option(v, "breath", "Стиль дыхания", brs, _set_breath)
 	_label(v, "Катаны держатся двумя руками и носятся за поясом.\nПарные клинки — на цепи, за спиной в бинтах; ПКМ — бросок на цепи.\nХлыст — дальние хлёсты; ПКМ — щелчок до 7 м.\nНагината — длинные махи и укол; шар на цепи — бьёт по кругу и в землю, ПКМ — бросок на 8 м.", 15).modulate = Color(0.75, 0.82, 1.0)
 
+# Журнал: главы сюжета, прокачка, ранг и статистика.
+var journal: RichTextLabel
+func _tab_journal() -> void:
+	var v := _page("Журнал")
+	journal = RichTextLabel.new()
+	journal.bbcode_enabled = true
+	journal.fit_content = true
+	journal.scroll_active = false
+	journal.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	journal.add_theme_font_size_override("normal_font_size", 18)
+	journal.add_theme_font_size_override("bold_font_size", 20)
+	v.add_child(journal)
+
+func refresh_journal() -> void:
+	if journal == null:
+		return
+	var st = G.story
+	var pr: Dictionary = G.prog
+	var t := ""
+	t += "[b][color=#ffd890]Ранг:[/color][/b] %s     [b][color=#ffd890]Рё:[/color][/b] %d     [b][color=#ffd890]Мастерство:[/color][/b] %d\n" % [st.rank_name() if st else "", int(pr.ryo), int(pr.mastery)]
+	t += "Выносливость %d/5 · Лёгкие %d/5 · Концентрация %d/3 · Закалка клинка %d/5\n" % [int(pr.hp), int(pr.lungs), int(pr.focus), int(pr.blade)]
+	t += "Демонов обезглавлено: %d · Охот на заказ: %d · В игре: %d мин\n\n" % [int(G.stats.kills_total), int(pr.get("hunts", 0)), int(float(G.stats.play_time) / 60.0)]
+	t += "[b][color=#ffd890]СЮЖЕТ[/color][/b]\n"
+	if st:
+		var cur_ch := int(pr.chapter)
+		for i in st.CH.size():
+			var c: Dictionary = st.CH[i]
+			var mark := "[color=#7fe08a]✓[/color]" if i < cur_ch or bool(pr.finished) else ("[color=#ffd36b]▶[/color]" if i == cur_ch else "[color=#666a77]·[/color]")
+			var title := ("Пролог · " if i == 0 else "Глава %d · " % i) + String(c.name)
+			if i > cur_ch and not bool(pr.finished):
+				t += "%s  [color=#666a77]%s — ???[/color]\n" % [mark, "Глава %d" % i]
+			else:
+				t += "%s  %s — [i]%s[/i]\n" % [mark, title, String(c.sub)]
+		if bool(pr.finished):
+			t += "\n[color=#ffd890]Кагэцу повержен. Ворон даёт охоты на заказ — каждая злее.[/color]\n"
+		elif st.objective != "":
+			t += "\n[b]Сейчас:[/b] %s\n" % st.objective
+	t += "\n[b][color=#ffd890]ДЕМОНЫ[/color][/b]\n"
+	t += "Низший — стаей, слабый. Отшельник — копья крови, прыжок, отращивает руки.\n"
+	t += "Громила — не вздрагивает от лёгких ударов, бей тяжёлыми и формами, руби ноги.\n"
+	t += "Кровавая ткачиха — держит дистанцию, веер копий: сокращай рывком.\n"
+	t += "Кагэцу — исчезает и выходит из-за спины, кровавый дождь, шея срастается дважды.\n"
+	t += "\n[b][color=#ffd890]МЕТКА ОХОТНИКА[/color][/b] (с 4-й главы): копи ярость в бою, на полной шкале — V. 10 с силы и скорости, здоровье тает.\n"
+	t += "[b][color=#ffd890]КАРТА[/color][/b] — клавиша M."
+	journal.text = t
+
 func _tab_graphics() -> void:
 	var v := _page("Графика")
 	_option(v, "window", "Окно", ["В окне", "Полный экран", "Полный экран (без рамки)"], func(i): settings.window = i; _apply_window())
@@ -375,10 +422,12 @@ func _open_settings(title_mode: bool) -> void:
 	ctrl.title.text = "НАСТРОЙКИ" if title_mode else "ПАУЗА"
 	ctrl.continue.text = "Назад" if title_mode else "Продолжить"
 	ctrl.to_title.visible = not title_mode
+	tabs.current_tab = 1 if title_mode else 0
 	if title_mode:
 		title_screen.visible = false
 
 func open_pause() -> void:
+	refresh_journal()
 	G.paused = true
 	get_tree().paused = true
 	_open_settings(false)

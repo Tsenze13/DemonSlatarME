@@ -26,6 +26,12 @@ var wing_r: Node3D
 var fly_to := Vector3.ZERO
 var flying := false
 var home := Vector3.ZERO
+var legs: Array = []
+var path: Array = []           # маршрут прогулки (мировые точки); пусто — стоит на месте
+var path_i := 0
+var wait_t := 0.0
+var walk_phase := 0.0
+var lines: Array = []          # реплики прохожего
 
 func setup(id_: String, title_: String, look_: Dictionary, pos: Vector3, rot := 0.0) -> void:
 	id = id_
@@ -63,10 +69,12 @@ func _build_person() -> void:
 	var robe: Color = look.get("robe", Color(0.35, 0.4, 0.5))
 	var robe2: Color = look.get("robe2", robe.darkened(0.3))
 	var st: String = look.get("style", "short")
-	# ноги в хакама, сандалии
+	# ноги в хакама, сандалии (на шарнирах — чтобы ходить)
 	for sx in [-1.0, 1.0]:
-		Vox.box(model, Vector3(0.2, 0.62, 0.24), Vector3(0.12 * sx, 0.35, 0), robe2, true, 0.0, "cloth")
-		Vox.box(model, Vector3(0.18, 0.06, 0.28), Vector3(0.12 * sx, 0.03, 0.03), Color(0.55, 0.42, 0.28))
+		var lg := Vox.pivot(model, Vector3(0.12 * sx, 0.66, 0))
+		Vox.box(lg, Vector3(0.2, 0.62, 0.24), Vector3(0, -0.31, 0), robe2, true, 0.0, "cloth")
+		Vox.box(lg, Vector3(0.18, 0.06, 0.28), Vector3(0, -0.63, 0.03), Color(0.55, 0.42, 0.28))
+		legs.append(lg)
 	torso = Vox.pivot(model, Vector3(0, 0.66, 0), "torso")
 	Vox.box(torso, Vector3(0.48, 0.6, 0.3), Vector3(0, 0.3, 0), robe, true, 0.0, "cloth")
 	# запахнутый ворот и пояс-оби
@@ -202,8 +210,34 @@ func _process(dt: float) -> void:
 	if is_crow:
 		_crow_tick(dt, p)
 		return
+	# прогулка по маршруту (останавливается поговорить)
+	var walking := false
+	if not path.is_empty() and not talking:
+		if wait_t > 0.0:
+			wait_t -= dt
+		else:
+			var tp: Vector3 = path[path_i]
+			var to3 := Vector3(tp.x - global_position.x, 0, tp.z - global_position.z)
+			if to3.length() < 0.3:
+				path_i = (path_i + 1) % path.size()
+				wait_t = randf_range(1.0, 4.0)
+			else:
+				walking = true
+				var step := minf(to3.length(), 1.3 * dt)
+				global_position += to3.normalized() * step
+				if G.world and G.world.has_method("height_at"):
+					global_position.y = G.world.height_at(global_position.x, global_position.z)
+				base_rot = atan2(to3.x, to3.z)
+				rotation.y = lerp_angle(rotation.y, base_rot, 1.0 - exp(-6.0 * dt))
+	if walking:
+		walk_phase += dt * 7.0
+	else:
+		walk_phase = lerpf(walk_phase, round(walk_phase / PI) * PI, 1.0 - exp(-8.0 * dt))
+	var sw := sin(walk_phase) * (28.0 if walking else 0.0)
+	for i in legs.size():
+		legs[i].rotation_degrees.x = sw * (1.0 if i == 0 else -1.0)
 	# дыхание
-	torso.position.y = 0.66 + sin(t * 2.0) * 0.008
+	torso.position.y = 0.66 + sin(t * 2.0) * 0.008 + absf(cos(walk_phase)) * (0.025 if walking else 0.0)
 	torso.rotation_degrees.x = sin(t * 2.0) * 1.2
 	# смотрит на героя, если рядом
 	var want := 0.0
@@ -217,14 +251,15 @@ func _process(dt: float) -> void:
 	if talking and p:
 		var to2 := p.global_position - global_position
 		rotation.y = lerp_angle(rotation.y, atan2(to2.x, to2.z), 1.0 - exp(-5.0 * dt))
-	elif d > 9.0:
+	elif d > 9.0 and not walking:
 		rotation.y = lerp_angle(rotation.y, base_rot, 1.0 - exp(-1.5 * dt))
 	head_yaw = lerpf(head_yaw, clampf(want, -1.1, 1.1), 1.0 - exp(-4.0 * dt))
 	head.rotation.y = head_yaw
 	# жесты в разговоре
 	var g := sin(t * 5.0) * 0.5 + 0.5 if talking else 0.0
-	arm_r.rotation_degrees.x = lerpf(arm_r.rotation_degrees.x, -35.0 * g - (10.0 if talking else 0.0), 1.0 - exp(-6.0 * dt))
-	arm_l.rotation_degrees.x = lerpf(arm_l.rotation_degrees.x, -12.0 * (1.0 - g) * (1.0 if talking else 0.0), 1.0 - exp(-6.0 * dt))
+	var aw := -sw * 0.7
+	arm_r.rotation_degrees.x = lerpf(arm_r.rotation_degrees.x, -35.0 * g - (10.0 if talking else 0.0) + aw, 1.0 - exp(-6.0 * dt))
+	arm_l.rotation_degrees.x = lerpf(arm_l.rotation_degrees.x, -12.0 * (1.0 - g) * (1.0 if talking else 0.0) - aw, 1.0 - exp(-6.0 * dt))
 	head.rotation_degrees.x = sin(t * 7.0) * 3.0 if talking else 0.0
 
 func _crow_tick(dt: float, p: Node3D) -> void:

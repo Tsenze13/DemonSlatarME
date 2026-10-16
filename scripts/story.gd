@@ -45,9 +45,24 @@ const LOOK := {
 	"taro": {"style": "kid", "skin": Color(0.95, 0.78, 0.64), "robe": Color(0.3, 0.52, 0.72), "robe2": Color(0.22, 0.3, 0.45),
 		"hair": Color(0.15, 0.1, 0.08), "scale": 0.72},
 	"crow": {"style": "crow"},
+	"jun": {"style": "short", "skin": Color(0.8, 0.6, 0.45), "robe": Color(0.35, 0.42, 0.5), "robe2": Color(0.3, 0.3, 0.32),
+		"hair": Color(0.2, 0.15, 0.1), "prop": "basket"},
+	"hana": {"style": "bun", "skin": Color(0.96, 0.84, 0.74), "robe": Color(0.9, 0.7, 0.35), "robe2": Color(0.55, 0.35, 0.3),
+		"obi": Color(0.8, 0.2, 0.3), "hair": Color(0.12, 0.08, 0.06)},
+	"kenshin": {"style": "bald", "skin": Color(0.88, 0.72, 0.58), "robe": Color(0.25, 0.25, 0.28), "robe2": Color(0.2, 0.2, 0.22),
+		"obi": Color(0.85, 0.55, 0.2)},
+}
+# Прохожие: маршрут прогулки и реплики (меняются по кругу).
+const WALKERS := {
+	"jun": [[Vector3(30.5, 0, -4), Vector3(30.5, 0, -28), Vector3(33.5, 0, -52), Vector3(33.5, 0, -20)],
+		["Рыба нынче мелкая. Это всё громила — распугал всех.", "Сети чиню. Ночью — ни ногой из дома.", "Говорят, ты ученик Гэнсая? Он мне в детстве уши драл."]],
+	"hana": [[Vector3(33.8, 0, -10), Vector3(29.8, 0, -40), Vector3(31.5, 0, -58)],
+		["Сладкие данго! Охотникам — со скидкой. Ну… почти со скидкой.", "Фонари на улице горят всю ночь. Масло дорогое, а страх дороже.", "У тебя хаори красивое. Сама шила? Ой, сам."]],
+	"kenshin": [[Vector3(0.5, 0, -18), Vector3(0.5, 0, -44), Vector3(-1.2, 0, -30)],
+		["Святилище Кумо видело много зим. Демоны не любят звон его колокола.", "Молись — не молись, а клинок точи. Так говорил мой учитель.", "Кедры помнят всё. Даже то, что мы хотели бы забыть."]],
 }
 const NAMES := {"gensai": "Наставник Гэнсай", "tetsu": "Кузнец Тэцу", "elder": "Староста Мотоки",
-	"okiku": "Окику", "taro": "Таро", "crow": "Ворон Кагари"}
+	"okiku": "Окику", "taro": "Таро", "crow": "Ворон Кагари", "jun": "Рыбак Дзюн", "hana": "Торговка Хана", "kenshin": "Монах Кэнсин"}
 const HERO := {"style": "short", "skin": Color(0.95, 0.78, 0.64), "robe": Color(0.11, 0.12, 0.18), "hair": Color(0.15, 0.1, 0.1)}
 
 # Главы. place — куда идти, start — где очнуться после гибели, waves — [[вид, x, z], ...].
@@ -205,6 +220,18 @@ func _spawn_npcs() -> void:
 		n.setup(id, NAMES[id], LOOK[id], pos, spots[id][1])
 		G.world.add_child(n)
 		npcs[id] = n
+	for id in WALKERS:
+		var wn = StaticBody3D.new()
+		wn.set_script(Npc)
+		var pts: Array = WALKERS[id][0]
+		var p0: Vector3 = pts[0]
+		p0.y = G.world.height_at(p0.x, p0.z)
+		wn.setup(id, NAMES[id], LOOK[id], p0, 0.0)
+		wn.path = pts.duplicate()
+		wn.path_i = 1
+		wn.lines = WALKERS[id][1]
+		G.world.add_child(wn)
+		npcs[id] = wn
 	crow = npcs.crow
 
 func _process(_dt: float) -> void:
@@ -300,6 +327,10 @@ func talk(id: String) -> void:
 			_say("okiku", [_okiku_line()])
 		"taro":
 			_say("taro", [_taro_line()])
+		_:
+			var n = npcs.get(id)
+			if n and not n.lines.is_empty():
+				_say(id, [n.lines[randi() % n.lines.size()]])
 
 # Текущее задание: глава сюжета или охота на заказ.
 var cur: Dictionary = {}
@@ -795,7 +826,9 @@ func _complete() -> void:
 		var rw: Array = c.reward
 		G.prog.ryo = int(G.prog.ryo) + rw[0]
 		G.prog.mastery = int(G.prog.mastery) + rw[1]
-		G.hud.big_text("ОХОТА ЗАВЕРШЕНА")
+		G.hud.big_text("РАССВЕТ" if chapter == 1 and cur.is_empty() else "ОХОТА ЗАВЕРШЕНА")
+		if chapter == 1 and cur.is_empty():
+			_set_time("sunset")          # Отбор выстоян: над святилищем встаёт солнце
 		G.hud.notify("Награда: %d рё, %d мастерства" % [rw[0], rw[1]], 4.0)
 	G.sfx.play("chime", -4.0)
 	G.save_prog()
@@ -832,6 +865,12 @@ func _next_chapter() -> void:
 	_day()
 	if chapter == 2:
 		G.hud.notify("Ранг: %s" % rank_name(), 3.0)
+	if chapter == 4:
+		await _w(3.5)
+		if phase == "day" and not G.dialog:
+			_say("crow", ["Кааа! Гэнсай велел передать: после боя с отшельником на твоём лице проступил алый узор.",
+				"Это Метка охотника. Копи ярость в бою — шкала под дыханием. Полная — жми V.",
+				"Десять секунд ты будешь быстрее и сильнее. Но Метка пьёт жизнь. Кааа!"])
 
 # Гибель в бою: волна заново, герой — у начала места.
 func on_player_respawn() -> void:
