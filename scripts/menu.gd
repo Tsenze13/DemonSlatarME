@@ -307,9 +307,11 @@ func refresh_journal() -> void:
 		var cur_ch := int(pr.chapter)
 		for i in st.CH.size():
 			var c: Dictionary = st.CH[i]
-			var mark := "[color=#7fe08a]✓[/color]" if i < cur_ch or bool(pr.finished) else ("[color=#ffd36b]▶[/color]" if i == cur_ch else "[color=#666a77]·[/color]")
+			var mark := "[color=#7fe08a]✓[/color]" if i < cur_ch or bool(pr.get("finished2", false)) else ("[color=#ffd36b]▶[/color]" if i == cur_ch else "[color=#666a77]·[/color]")
 			var title := ("Пролог · " if i == 0 else "Глава %d · " % i) + String(c.name)
-			if i > cur_ch and not bool(pr.finished):
+			if i == 7:
+				t += "[color=#ffd890]— Часть вторая: Красный фестиваль —[/color]\n"
+			if i > cur_ch and not bool(pr.get("finished2", false)):
 				t += "%s  [color=#666a77]%s — ???[/color]\n" % [mark, "Глава %d" % i]
 			else:
 				t += "%s  %s — [i]%s[/i]\n" % [mark, title, String(c.sub)]

@@ -262,7 +262,7 @@ func _process(_dt: float) -> void:
 		for e in G.enemies:
 			if is_instance_valid(e) and not e.is_dead() and e.noticed and e.global_position.distance_to(G.player.global_position) < 35.0:
 				want = 1.0
-				if e.get("kind") == "boss":
+				if e.get("kind") in ["boss", "boss2"]:
 					want_boss = 1.0
 	combat = move_toward(combat, want, dt * (0.6 if want > combat else 0.25))
 	boss_k = move_toward(boss_k, want_boss, dt * 0.5)

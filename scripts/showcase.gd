@@ -527,15 +527,15 @@ func _kinds() -> void:
 	_set_time("sunset")
 	var x := -10.0
 	var sp_d = null
-	for kd in ["low", "weaver", "hermit", "spider", "brute", "boss"]:
+	for kd in ["low", "weaver", "spider", "brute", "boss", "boss2"]:
 		var dm = CharacterBody3D.new()
 		dm.set_script(load("res://scripts/demon.gd"))
 		dm.kind = kd
 		G.world.add_child(dm)
 		dm.global_position = Vector3(x, 0.5, -2)
 		dm.facing = 0.0
-		dm.set_physics_process(kd == "spider")
-		if kd == "spider":
+		dm.set_physics_process(false)
+		if kd == "boss2":
 			sp_d = dm
 		x += 4.0
 	_place(Vector3(0, 0.5, 60), PI)

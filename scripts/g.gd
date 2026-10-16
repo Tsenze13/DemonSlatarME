@@ -18,7 +18,7 @@ var cutscene := false       # титры главы / затемнение
 var mode := "free"          # "story" — сюжет, "free" — свободная охота
 
 # Прокачка (сохраняется в save.cfg, раздел [story]).
-var prog := {"ryo": 0, "mastery": 0, "hp": 0, "lungs": 0, "focus": 0, "blade": 0, "chapter": 0, "finished": false, "started": false, "trial": -1, "hunts": 0, "onigiri": 2, "gift": -1}
+var prog := {"ryo": 0, "mastery": 0, "hp": 0, "lungs": 0, "focus": 0, "blade": 0, "chapter": 0, "finished": false, "started": false, "trial": -1, "hunts": 0, "onigiri": 2, "gift": -1, "finished2": false}
 
 var difficulty := 1          # 0 — лёгкая, 1 — обычная, 2 — тяжёлая (настройки)
 func dmg_out_mult() -> float:
@@ -103,6 +103,7 @@ const ACH := [
 	["mark", "Алая метка", "пробуди Метку охотника"],
 	["combo", "Буря клинка", "серия из 25 ударов"],
 	["boss", "Закат Третьей луны", "победи Кагэцу"],
+	["boss2", "Иней тает", "победи Сэйрэн, Вторую луну"],
 	["hunt5", "Охотник на заказ", "5 охот на заказ"],
 	["rich", "Тугой кошель", "накопи 1000 рё"],
 	["full", "Предел тела", "все тренировки наставника до предела"],
@@ -125,6 +126,7 @@ func _ach_ok(k: String) -> bool:
 		"mark": return int(stats.marks) >= 1
 		"combo": return int(stats.best_combo) >= 25
 		"boss": return int(stats.bosses) >= 1
+		"boss2": return bool(prog.get("finished2", false))
 		"hunt5": return int(prog.get("hunts", 0)) >= 5
 		"rich": return int(prog.ryo) >= 1000
 		"full": return int(prog.hp) >= 5 and int(prog.lungs) >= 5 and int(prog.focus) >= 3

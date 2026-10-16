@@ -78,7 +78,10 @@ const TYPES := {
 		"exposed": 1.0, "spears": 0, "horns": 5, "windup": 0.42, "armor": false, "kite": false, "intro": false, "reward": 0, "fragile": true},
 	"boss": {"name": "Кагэцу, Третья Тень", "hp": 700.0, "scale": 1.5, "skin": Color(0.88, 0.85, 0.88), "robe": Color(0.07, 0.06, 0.11),
 		"hair": Color(0.55, 0.06, 0.1), "spd": 7.4, "rspd": 9.2, "dmg": 20.0, "leap": 0.4, "ranged": true, "regen": 45.0,
-		"exposed": 3.0, "spears": 6, "horns": 5, "windup": 0.36, "armor": false, "kite": false, "intro": true, "reward": 300},
+		"exposed": 3.0, "spears": 6, "horns": 5, "windup": 0.36, "armor": false, "kite": false, "intro": true, "reward": 300, "boss": true},
+	"boss2": {"name": "Сэйрэн, Вторая Тень", "hp": 900.0, "scale": 1.55, "skin": Color(0.78, 0.84, 0.95), "robe": Color(0.08, 0.1, 0.24),
+		"hair": Color(0.9, 0.94, 1.0), "spd": 7.8, "rspd": 9.8, "dmg": 23.0, "leap": 0.45, "ranged": true, "regen": 50.0,
+		"exposed": 2.8, "spears": 7, "horns": 5, "windup": 0.33, "armor": false, "kite": false, "intro": true, "reward": 450, "boss": true},
 }
 var kind := "hermit"
 var T: Dictionary = {}
@@ -96,7 +99,7 @@ func _ready() -> void:
 	hp = max_hp
 	name_ru = T.name
 	exposed_time = T.exposed
-	lives = 2 if kind == "boss" else 0
+	lives = 2 if T.get("boss", false) else 0
 	collision_layer = 4
 	collision_mask = 1
 	var cs := CollisionShape3D.new()
@@ -124,7 +127,7 @@ func _exit_tree() -> void:
 		if is_instance_valid(sp.n):
 			sp.n.queue_free()
 	spears.clear()
-	if kind == "boss" and G.world and G.world.get("blood") != null and G.world.blood > 0:
+	if T.get("boss", false) and G.world and G.world.get("blood") != null and G.world.blood > 0:
 		G.world.blood_moon(0)
 
 func is_dead() -> bool:
@@ -299,6 +302,13 @@ func _horns(head: Node3D, bone: Color, torso: Node3D) -> void:
 	if kind == "boss":
 		# красный пояс-оби и белые узоры-луны на кимоно
 		Vox.box(torso, Vector3(0.53, 0.12, 0.33), Vector3(0, 0.08, 0), Color(0.7, 0.05, 0.08))
+	elif kind == "boss2":
+		# Сэйрэн: синий пояс, ледяные иглы-наплечники
+		Vox.box(torso, Vector3(0.53, 0.12, 0.33), Vector3(0, 0.08, 0), Color(0.3, 0.55, 0.95), true, 0.6)
+		for sx in [-1.0, 1.0]:
+			for k in 3:
+				var ic := Vox.box(torso, Vector3(0.05, 0.22 - k * 0.04, 0.05), Vector3(0.22 * sx, 0.66, -0.08 + k * 0.08), Color(0.75, 0.9, 1.0), true, 0.8)
+				ic.rotation_degrees.z = -25.0 * sx
 
 # Паучьи лапы: по три с каждого бока, колено выше спины.
 var spider_legs: Array = []
@@ -397,7 +407,7 @@ func _physics_process(dt: float) -> void:
 			var want := dirp * spd
 			if T.kite and dist < 6.0:
 				want = -dirp * spd * 0.8          # ткачиха держит дистанцию
-			if kind == "boss":
+			if T.get("boss", false):
 				blink_cd -= dt
 				if blink_cd <= 0.0 and dist > 6.0:
 					_blink(p)
@@ -630,7 +640,7 @@ func _land_shock() -> void:
 func _throw_spears(p: Node3D) -> void:
 	G.sfx.play("whoosh_big", -2.0, 0.6)
 	var origin: Vector3 = J.hand_r.global_position if arms_alive.r else J.head.global_position
-	if kind == "boss" and randf() < 0.5:
+	if T.get("boss", false) and randf() < 0.5:
 		_blood_rain(p)
 		return
 	if T.get("web", false):
@@ -1058,7 +1068,7 @@ func decapitate(dir: Vector3) -> void:
 	ash_parts.shuffle()
 	ash_t = 0.0
 	G.add_kill()
-	if kind == "boss":
+	if T.get("boss", false):
 		G.stat_add("bosses")
 		if G.world and G.world.has_method("blood_moon"):
 			G.world.blood_moon(0)
@@ -1353,7 +1363,7 @@ func _neck_holds(dir: Vector3) -> void:
 # Кровавые лужи под ногами героя: сначала тёмное кольцо (0,9 с), потом
 # лужа жжёт 5 с — стоять в ней нельзя.
 func _update_pools(dt: float) -> void:
-	if kind == "boss" and lives < 2 and state not in ["dead", "exposed", "locked"]:
+	if T.get("boss", false) and lives < 2 and state not in ["dead", "exposed", "locked"]:
 		pool_cd -= dt
 		if pool_cd <= 0.0:
 			pool_cd = 3.2 if lives == 1 else 2.2

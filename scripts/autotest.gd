@@ -988,15 +988,32 @@ func _run() -> void:
 	G._check_ach()
 	check(G.has_ach("arms") and G.has_ach("first"), "достижения открываются")
 	st._clear_demons()
-	# финал: после Третьей Ущербной луны — слова наставника, титры, свободная охота
+	# конец части первой: титры → часть вторая (глава 7, день)
 	G.mode = "story"
+	st.chapter = st.ARC1_END
+	st.phase = "done"
+	st.done_t = 0.0
+	await w(0.3)
+	await _skip_talk()
+	await w(1.5)
+	check(st.phase == "day" and st.chapter == st.ARC1_END + 1 and bool(G.prog.finished), "после Кагэцу — часть вторая (%s, гл. %d)" % [st.phase, st.chapter])
+	st._clear_demons()
+	var b2 = CharacterBody3D.new()
+	b2.set_script(load("res://scripts/demon.gd"))
+	b2.kind = "boss2"
+	G.world.add_child(b2)
+	b2.global_position = Vector3(4, 0.5, -6)
+	await w(0.1)
+	check(b2.lives == 2 and b2.max_hp > 800.0, "Сэйрэн, Вторая луна: две жизни шеи")
+	st._clear_demons()
+	# финал части второй: слова наставника, титры, свободная охота
 	st.chapter = st.CH.size() - 1
 	st.phase = "done"
 	st.done_t = 0.0
 	await w(0.3)
 	await _skip_talk()
 	await w(1.5)
-	check(st.phase == "free" and bool(G.prog.finished), "финал: титры и свободная охота (%s)" % st.phase)
+	check(st.phase == "free" and bool(G.prog.finished2), "финал части второй: титры и свободная охота (%s)" % st.phase)
 	# охота на заказ у ворона (после сюжета)
 	st.talk("crow")
 	await _skip_talk()
