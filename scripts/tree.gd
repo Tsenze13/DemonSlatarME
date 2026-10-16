@@ -71,6 +71,7 @@ func slash_hit(origin: Vector3, dir: Vector3, power: int) -> bool:
 		G.fx.burst(center(), Color(0.5, 0.35, 0.2), 6, 5.0, 0.1, 0.4, 10.0, -dir, 0.6)
 		G.fx.leaves(global_position + Vector3.UP * (height * 0.7), 4)
 		G.sfx.play("crack", -10.0, 1.3)
+		G.sfx.play("wood", -4.0)
 		return false
 	cut = true
 	remove_from_group("breakable")

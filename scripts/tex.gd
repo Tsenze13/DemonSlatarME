@@ -12,10 +12,10 @@ static func get_tex(kind: String) -> Texture2D:
 	match kind:
 		"grass": img = _grass()
 		"dirt": img = _speckle(7, 0.72, 0.95, 0.12)
-		"stone": img = _stone()
-		"wood": img = _planks()
-		"bark": img = _bark()
-		"leaves": img = _leaves()
+		"stone": img = _soft_stone()
+		"wood": img = _soft_planks()
+		"bark": img = _soft_bark()
+		"leaves": img = _soft_leaves()
 		"roof": img = _roof()
 		"paper": img = _paper()
 		"cloth": img = _speckle(11, 0.86, 0.94, 0.04)
@@ -175,6 +175,75 @@ static func _t_side() -> Image:
 			var c: Color = cols[int(band)]
 			var v: float = f[y * 16 + x]
 			im.set_pixel(x, y, c.lerp(c.lightened(0.12), v))
+	return im
+
+# --- Мягкие серые текстуры блоков мира (цвет даёт материал): низкий контраст,
+# плавные пятна — как в Voxium, без «телевизионного» шума.
+static func _gray(field: Array, lo: float, hi: float) -> Image:
+	var im := _img()
+	for y in 16:
+		for x in 16:
+			var v: float = field[y * 16 + x]
+			v = floor(v * 4.0) / 4.0           # 4 ступени — пиксельные пятна
+			im.set_pixel(x, y, _g(lerpf(lo, hi, v)))
+	return im
+
+static func _soft_stone() -> Image:
+	var r := RandomNumberGenerator.new()
+	r.seed = 41
+	var im := _gray(_vn(r, 1), 0.8, 0.96)
+	# кладка: камни 8×5 со смещением, швы чуть темнее
+	for y in 16:
+		for x in 16:
+			var row := y / 5
+			var off := 4 if row % 2 == 1 else 0
+			if y % 5 == 4 or (x + off) % 8 == 7:
+				im.set_pixel(x, y, _g(im.get_pixel(x, y).r * 0.86))
+	return im
+
+static func _soft_planks() -> Image:
+	var r := RandomNumberGenerator.new()
+	r.seed = 42
+	var f := _vn(r, 1)
+	var im := _img()
+	for y in 16:
+		for x in 16:
+			var plank := y / 4
+			var v: float = 0.84 + 0.05 * float(plank % 2) + (f[y * 16 + x] - 0.5) * 0.08
+			# волокна вдоль доски
+			if (x + plank * 5) % 7 == 0:
+				v -= 0.04
+			if y % 4 == 3:
+				v -= 0.12                        # щель между досками
+			im.set_pixel(x, y, _g(v))
+	return im
+
+static func _soft_bark() -> Image:
+	var r := RandomNumberGenerator.new()
+	r.seed = 43
+	var f := _vn(r, 1)
+	var im := _img()
+	for y in 16:
+		for x in 16:
+			var v: float = 0.82 + (f[y * 16 + x] - 0.5) * 0.12
+			if x % 4 == 0:
+				v -= 0.1                         # вертикальные борозды коры
+			im.set_pixel(x, y, _g(v))
+	return im
+
+static func _soft_leaves() -> Image:
+	var r := RandomNumberGenerator.new()
+	r.seed = 44
+	var f := _vn(r, 1)
+	var im := _img()
+	for y in 16:
+		for x in 16:
+			var v: float = f[y * 16 + x]
+			var c: float = 0.74 + floor(v * 4.0) / 4.0 * 0.24
+			# светлые «листики» сверху каждого пятна
+			if v > 0.8:
+				c = 1.0
+			im.set_pixel(x, y, _g(c))
 	return im
 
 # Форма истребителя: плотная ткань — лёгкий шум, редкие складки-рубчики, шов.

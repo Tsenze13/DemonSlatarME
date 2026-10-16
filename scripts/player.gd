@@ -640,7 +640,7 @@ func _face_anim(dt: float) -> void:
 			if state_t >= a.hit0 - 0.04 and state_t <= a.hit1 + 0.1:
 				open = 1.0
 			squint = 0.25
-		"dash", "flash", "wallrun", "draw", "parry", "stance":
+		"dash", "flash", "wallrun", "draw", "parry", "stance", "leap":
 			brow = 0.8
 			squint = 0.2
 		"hurt", "down":
@@ -703,8 +703,10 @@ func set_breath(i: int) -> void:
 	var b: Dictionary = G.br()
 	if trail:
 		trail.set_colors(b.core, b.edge)
+		trail.set_style(b.kind, b.a, b.b)
 	if trail_l:
 		trail_l.set_colors(b.core, b.edge)
+		trail_l.set_style(b.kind, b.a, b.b)
 
 func set_haori(i: int) -> void:
 	haori_style = clampi(i, 0, SwordLib.HAORI.size() - 1)
@@ -858,6 +860,7 @@ func _physics_process(dt: float) -> void:
 		"move": _st_move(dt, inp)
 		"dash": _st_dash(dt, inp)
 		"wallrun": _st_wallrun(dt, inp)
+		"leap": _st_leap(dt)
 		"attack": _st_attack(dt, inp)
 		"parry": _st_parry(dt)
 		"stance": _st_stance(dt)
@@ -892,6 +895,7 @@ func _physics_process(dt: float) -> void:
 	_separate_from_enemies()
 	_update_cuts(dt)
 	_update_glint(dt)
+	_update_leap_marker(dt)
 	for ec in elbow_caps:
 		ec[0].quaternion = Quaternion.IDENTITY.slerp((ec[1] as Node3D).quaternion, 0.5)
 	_effects(dt)
@@ -982,6 +986,10 @@ func _st_move(dt: float, inp: Vector3) -> void:
 			takeoff_t = 0.0
 			G.sfx.play("jump", -8.0)
 			G.fx.dust(global_position, 5)
+		elif _near_trunk() and _try_kickoff(inp):
+			pass                     # у самого ствола — оттолкнуться
+		elif _start_leap():
+			pass                     # к ветке кедра
 		elif _try_kickoff(inp):
 			pass
 		elif air_jumps > 0:
@@ -1256,6 +1264,127 @@ func _set_state(s: String) -> void:
 			bandage.unwrap()               # руки к рукоятям — бинты разматываются
 			G.sfx.play("whoosh", -9.0, 1.5)
 
+# --- Прыжки по ветвям кедров -----------------------------------------------
+# В воздухе Пробел — если впереди (по взгляду камеры) есть ветка-облако кедра,
+# герой летит к ней дугой и встаёт сверху. С ветки на ветку — без ограничений.
+const LEAP_RANGE := 17.0
+var leap_from := Vector3.ZERO
+var leap_to := Vector3.ZERO
+var leap_t := 0.0
+var leap_dur := 0.5
+var leap_h := 2.0
+var leap_target := Vector3.INF      # лучшая ветка сейчас (для метки)
+var leap_count := 0                 # для автотеста
+var leap_marker: MeshInstance3D
+
+func _near_trunk() -> bool:
+	if not G.world:
+		return false
+	for k in G.world.kick_points():
+		var d: Vector3 = global_position - k.pos
+		d.y = 0
+		if d.length() - k.r < 1.3 and global_position.y < k.h + 0.5:
+			return true
+	return false
+
+func find_pad() -> Vector3:
+	if not G.world or G.world.get("cedar_pads") == null or G.cam_rig == null:
+		return Vector3.INF
+	var cf: Vector3 = -G.cam_rig.cam.global_transform.basis.z
+	cf.y = 0.0
+	cf = cf.normalized() if cf.length() > 0.01 else _forward()
+	var me := global_position
+	var best := Vector3.INF
+	var bs := -99.0
+	for q in G.world.cedar_pads:
+		var d: Vector3 = q - me
+		var hd := Vector2(d.x, d.z).length()
+		if hd < 1.8 and absf(d.y) < 1.5:
+			continue                       # та, на которой стоим
+		var dist := d.length()
+		if dist > LEAP_RANGE or dist < 2.0 or d.y < -6.0 or d.y > 11.0:
+			continue
+		var ang := Vector3(d.x, 0, d.z).normalized().dot(cf) if hd > 0.3 else 1.0
+		if ang < 0.3:
+			continue
+		var sc := ang * 2.0 + clampf(d.y, -2.0, 6.0) * 0.12 - dist * 0.06
+		if sc > bs:
+			bs = sc
+			best = q
+	return best
+
+func _start_leap() -> bool:
+	var tgt := find_pad()
+	if tgt == Vector3.INF:
+		return false
+	leap_from = global_position
+	leap_to = tgt
+	var dist := leap_from.distance_to(leap_to)
+	leap_dur = clampf(dist / 24.0, 0.3, 0.7)
+	leap_h = 1.2 + dist * 0.1 + maxf(0.0, leap_to.y - leap_from.y) * 0.15
+	leap_t = 0.0
+	leap_count += 1
+	var d := leap_to - leap_from
+	facing = atan2(d.x, d.z)
+	_set_state("leap")
+	flip_t = 0.42
+	flip_axis = 1.0
+	air_jumps = 1
+	cloth_kick(Vector3.DOWN * 5.0 - Vector3(d.x, 0, d.z).normalized() * 3.0)
+	# толчок: кольцо воздуха, листья, звук
+	G.fx.ring(global_position + Vector3.UP * 0.4, 0.4, _sc().lerp(Color.WHITE, 0.5), Color.WHITE, 0.3, 4.0, 0.14)
+	G.fx.leaves(global_position + Vector3.UP * 0.3, 6)
+	G.sfx.play("jump", -4.0, 0.9)
+	G.sfx.play("whoosh", -8.0, 1.2)
+	G.speedlines = maxf(G.speedlines, 0.6)
+	return true
+
+func _st_leap(dt: float) -> void:
+	leap_t = minf(1.0, leap_t + dt / leap_dur)
+	var k := leap_t * leap_t * (3.0 - 2.0 * leap_t) * 0.6 + leap_t * 0.4
+	var p := leap_from.lerp(leap_to, k) + Vector3.UP * sin(PI * k) * leap_h
+	velocity = (p - global_position) / maxf(dt, 0.001)
+	global_position = p
+	ghost_t -= dt
+	if ghost_t <= 0.0:
+		ghost_t = 0.05
+		G.fx.afterimage(model, _sc(), 0.2)
+		_style_trail()
+	if leap_t >= 1.0:
+		global_position = leap_to + Vector3.UP * 0.05
+		var hd := Vector3(leap_to.x - leap_from.x, 0, leap_to.z - leap_from.z).normalized()
+		velocity = hd * 2.0
+		_set_state("move")
+		land_t = 0.0
+		land_k = 0.5
+		cloth_flare(3.0)
+		G.fx.leaves(leap_to + Vector3.UP * 0.2, 10)
+		G.fx.ring(leap_to + Vector3.UP * 0.05, 0.4, Color(0.6, 0.8, 0.5), Color.WHITE, 0.3, 3.0, 0.1)
+		G.sfx.play("land", -6.0, 1.1)
+		G.add_shake(0.06)
+
+func _update_leap_marker(dt: float) -> void:
+	if leap_marker == null:
+		leap_marker = MeshInstance3D.new()
+		var tm := TorusMesh.new()
+		tm.inner_radius = 0.55
+		tm.outer_radius = 0.7
+		tm.rings = 4
+		tm.ring_segments = 4
+		leap_marker.mesh = tm
+		leap_marker.material_override = Vox.flat_mat(Color(1.0, 0.95, 0.75, 0.85), true)
+		leap_marker.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		leap_marker.top_level = true
+		add_child(leap_marker)
+	var show := not is_on_floor() and state in ["move", "wallrun"]
+	leap_target = find_pad() if show else Vector3.INF
+	leap_marker.visible = leap_target != Vector3.INF
+	if leap_marker.visible:
+		leap_marker.global_position = leap_target + Vector3.UP * 0.15
+		leap_marker.rotation.y += dt * 3.0
+		var pulse := 1.0 + sin(G.real_time * 8.0) * 0.12
+		leap_marker.scale = Vector3(pulse, 1.0, pulse)
+
 # ---------------------------------------------------------------------
 func _try_kickoff(inp: Vector3) -> bool:
 	if not G.world:
@@ -1405,6 +1534,25 @@ func _start_dash(inp: Vector3) -> void:
 	dash_from = global_position
 	sonic_boom(dash_dir)
 	G.fx.afterimage(model, _sc())
+	_dash_blast(dash_dir)
+
+# Взрывной старт рывка: трещины, кольцо пыли по земле, комья земли назад,
+# волна по траве, камера на миг расширяет обзор.
+func _dash_blast(dir: Vector3) -> void:
+	if G.cam_rig and G.cam_rig.has_method("kick_fov"):
+		G.cam_rig.kick_fov(12.0)
+	if not is_on_floor():
+		G.fx.ring(global_position + Vector3.UP * 0.9 - dir * 0.6, 0.6, Color.WHITE, _sc(), 0.3, 6.0, 0.2, dir)
+		return
+	var gp := global_position
+	G.fx.cracks(gp + Vector3.UP * 0.03, 6, 1.3)
+	G.fx.ring(gp + Vector3.UP * 0.06, 0.5, Color(0.85, 0.78, 0.62), Color(1, 1, 1), 0.45, 9.0, 0.35)
+	G.fx.debris_burst(gp + Vector3.UP * 0.2, Color(0.5, 0.4, 0.28), 7, 0.14, -dir * 6.0 + Vector3.UP * 5.0, 3.0)
+	G.fx.dust(gp, 16)
+	G.fx.burst(gp + Vector3.UP * 0.1, Color(0.9, 0.85, 0.75), 10, 9.0, 0.12, 0.35, 2.0, -dir + Vector3.UP * 0.3, 0.6, 2.5)
+	if G.world and G.world.has_method("grass_shock"):
+		G.world.grass_shock(gp)
+	G.add_shake(0.1)
 
 # Звуковой барьер: хлопок, кольцо пара поперёк движения, пыль.
 # Цвет стиля дыхания для обычных ударов, силуэтов и следов.
@@ -1864,7 +2012,7 @@ func _attack_fx() -> void:
 	var foam := Color(0.88, 0.96, 1.0)
 	match a.fx:
 		"slash":
-			G.fx.slash_arc(o, atk_dir, a.get("roll", 0.0), 1.9, 150.0, 0.55, _sc(), Color.WHITE, 0, 0.22, a.get("rev", false))
+			G.fx.slash_arc(o, atk_dir, a.get("roll", 0.0), 1.9, 150.0, 0.55, G.br().a, G.br().b, G.br().kind, 0.22, a.get("rev", false))
 		"wave":
 			G.fx.breath_arc(o, atk_dir, a.get("roll", 0.0), 2.6, 170.0, 1.0, 0.45, a.get("rev", false))
 			G.fx.breath_burst(o + atk_dir * 1.5, atk_dir, 10)
@@ -1875,7 +2023,7 @@ func _attack_fx() -> void:
 			G.fx.breath_burst(o, Vector3.UP, 16)
 			G.fx.breath_sound(-3.0, 1.1)
 		"heavy":
-			G.fx.slash_arc(o, atk_dir, 90.0, 2.0, 150.0, 0.7, _sc(), Color.WHITE, 0, 0.3)
+			G.fx.slash_arc(o, atk_dir, 90.0, 2.0, 150.0, 0.7, G.br().a, G.br().b, G.br().kind, 0.3)
 			var gp := global_position + atk_dir * 2.2 + Vector3.UP * 0.1
 			G.fx.ring(gp, 0.8, Color(0.85, 0.8, 0.65), Color.WHITE, 0.45, 4.0, 0.4)
 			G.fx.cracks(gp, 7, 1.8)
@@ -1889,8 +2037,8 @@ func _attack_fx() -> void:
 			G.sfx.play("clang", -12.0, 1.6)
 		"cross":
 			# крест двумя клинками
-			G.fx.slash_arc(o, atk_dir, 50.0, 1.9, 140.0, 0.5, _sc(), Color.WHITE, 0, 0.22, false)
-			G.fx.slash_arc(o, atk_dir, -50.0, 1.9, 140.0, 0.5, _sc(), Color.WHITE, 0, 0.22, true)
+			G.fx.slash_arc(o, atk_dir, 50.0, 1.9, 140.0, 0.5, G.br().a, G.br().b, G.br().kind, 0.22, false)
+			G.fx.slash_arc(o, atk_dir, -50.0, 1.9, 140.0, 0.5, G.br().a, G.br().b, G.br().kind, 0.22, true)
 			G.sfx.play("clang", -10.0, 1.3)
 		"chain_whirl":
 			G.sfx.play("whoosh_big", -6.0, 1.2)
@@ -1928,7 +2076,7 @@ func _attack_fx() -> void:
 		"bolt_slam":
 			G.sfx.play("whoosh_big", -3.0, 0.8)
 		"slash_long":
-			G.fx.slash_arc(o, atk_dir, a.get("roll", 0.0), 3.0, 160.0, 0.6, _sc(), Color.WHITE, 0, 0.24, a.get("rev", false))
+			G.fx.slash_arc(o, atk_dir, a.get("roll", 0.0), 3.0, 160.0, 0.6, G.br().a, G.br().b, G.br().kind, 0.24, a.get("rev", false))
 		"thrust":
 			G.fx.streak(o + atk_dir * 0.6, o + atk_dir * 4.8, _sc().lightened(0.4), 0.22, 0.18)
 			G.fx.ring(o + atk_dir * 4.4, 0.4, _sc(), Color.WHITE, 0.25, 2.5, 0.2, atk_dir)
@@ -1939,13 +2087,13 @@ func _attack_fx() -> void:
 			G.sfx.play("whoosh_big", -4.0, 0.8)
 		"lash":
 			# хлыст: длинная тонкая дуга
-			G.fx.slash_arc(o, atk_dir, a.get("roll", 0.0), 4.2, 150.0, 0.25, _sc(), Color.WHITE, 0, 0.2, a.get("rev", false))
+			G.fx.slash_arc(o, atk_dir, a.get("roll", 0.0), 4.2, 150.0, 0.25, G.br().a, G.br().b, G.br().kind, 0.2, a.get("rev", false))
 			G.sfx.play("crack", -10.0, 1.6)
 		"crack":
 			# щелчок хлыста: удар в землю далеко впереди
 			var reach: float = a.range * 1.9
 			var gp2 := global_position + atk_dir * reach * 0.85 + Vector3.UP * 0.1
-			G.fx.slash_arc(o, atk_dir, 90.0, reach * 0.6, 120.0, 0.3, _sc(), Color.WHITE, 0, 0.25)
+			G.fx.slash_arc(o, atk_dir, 90.0, reach * 0.6, 120.0, 0.3, G.br().a, G.br().b, G.br().kind, 0.25)
 			G.fx.streak(o + atk_dir * 0.5, gp2, _sc().lightened(0.3), 0.25, 0.12)
 			G.fx.ring(gp2, 0.5, Color(0.85, 0.8, 0.65), Color.WHITE, 0.35, 3.0, 0.3)
 			G.fx.dust(gp2, 10)
@@ -2405,7 +2553,15 @@ func _on_hit(e: Node, res: Dictionary, dir: Vector3) -> void:
 	if a.fx in ["wave", "wave_big", "wave_ring", "whirl"]:
 		G.fx.breath_burst(p, dir, 10)
 	G.fx.number(p + Vector3.UP * 0.4, str(int(res.get("dmg", a.dmg))), Color(1, 1, 1) if a.power < 2 else G.br().flash, a.power >= 2)
-	G.sfx.play("hit_heavy" if a.power >= 2 else "hit", -2.0)
+	G.sfx.play("hit_heavy" if a.power >= 2 else "hit", -4.0)
+	# звук по оружию: лезвие режет плоть, хлыст щёлкает, шар/топор — глухо
+	match sword_mode:
+		"whip":
+			G.sfx.play("snap", -3.0)
+		"flail":
+			G.sfx.play("hit_heavy", -2.0, 0.8)
+		_:
+			G.sfx.play("flesh", -2.0, 1.1 if a.power < 2 else 0.9)
 	if a.get("impact", false) and not hit_set.has("_imp"):
 		hit_set["_imp"] = true
 		G.impact(0.075, 0)
@@ -2522,6 +2678,7 @@ func receive_attack(dmg: float, src: Vector3, parryable: bool, attacker: Node = 
 		_counter_strike(attacker, src)
 		return "counter"
 	if state == "parry" and state_t < 0.26 and parryable:
+		last_parry_perfect = state_t < 0.1
 		_parry_success(src)
 		return "parry"
 	if invuln_t > 0.0:
@@ -2617,9 +2774,25 @@ func clear_cuts() -> void:
 	if haori_body:
 		haori_body.mend()
 
+var last_parry_perfect := false
+var perfect_parries := 0
+
 func _parry_success(src: Vector3) -> void:
-	G.slowmo(0.25, 0.55)
-	G.impact(0.07, 1)
+	if last_parry_perfect:
+		# идеальное парирование (нажато в последний миг): мир почти замирает,
+		# дыхание возвращается, демон шатается дольше
+		perfect_parries += 1
+		G.slowmo(0.12, 0.9)
+		G.impact(0.1, 0)
+		breath = minf(100.0, breath + 25.0)
+		var dp := (src - global_position).normalized()
+		G.fx.hit_star(global_position + Vector3.UP * 1.3 + dp * 0.8, Color(1, 1, 1), 10, 1.4)
+		G.fx.ring(global_position + Vector3.UP * 1.3, 0.5, _sc(), Color.WHITE, 0.4, 7.0, 0.2, dp)
+		if G.hud:
+			G.hud.notify("ИДЕАЛЬНОЕ ПАРИРОВАНИЕ! +дыхание", 1.6)
+	else:
+		G.slowmo(0.25, 0.55)
+		G.impact(0.07, 1)
 	G.add_shake(0.3)
 	G.sfx.play("clang", 0.0)
 	var dir := (src - global_position).normalized()
@@ -2628,7 +2801,8 @@ func _parry_success(src: Vector3) -> void:
 	counter_window = 0.9
 	invuln_t = 0.3
 	if G.hud:
-		G.hud.notify("Парирование! Жми ЛКМ — контрудар")
+		if not last_parry_perfect:
+			G.hud.notify("Парирование! Жми ЛКМ — контрудар")
 		G.hud.add_combo("parry", 20)
 
 func _counter_strike(attacker: Node, src: Vector3) -> void:

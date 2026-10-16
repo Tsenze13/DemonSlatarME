@@ -13,6 +13,8 @@ func _ready() -> void:
 	mode = OS.get_environment("KLINOK_SHOWCASE")
 	if mode == "move":
 		_move()
+	elif mode == "fx":
+		_fx()
 	else:
 		_shots()
 
@@ -59,7 +61,7 @@ func _shots() -> void:
 	_park_demons()
 	G.cam_rig.set_process(false)
 	var pl: Node3D = G.player
-	for t in _times():
+	for t in (_times() if OS.get_environment("KLINOK_TIME") == "" else [OS.get_environment("KLINOK_TIME")]):
 		_set_time(t)
 		await w(0.3)
 		# 1. герой крупно, 3/4
@@ -111,44 +113,98 @@ func _shots() -> void:
 	await shot("fight_2")
 	get_tree().quit()
 
-# Сценарий движения для видео: бег, рывки, прыжки, удары, форма.
+# Сценарий движения для видео: бег, взрывные рывки, прыжки по веткам кедра, бой.
+func _aim(t: Vector3) -> void:
+	var d: Vector3 = t - G.player.global_position
+	G.cam_rig.yaw = atan2(-d.x, -d.z)
+
 func _move() -> void:
 	await w(0.5)
 	G.hud.help = false
 	_park_demons()
 	var pl: Node3D = G.player
 	_set_time(OS.get_environment("KLINOK_TIME") if OS.get_environment("KLINOK_TIME") != "" else "sunset")
-	_place(Vector3(0, 0.5, 8), PI)
-	G.cam_rig.yaw = 0.0
-	await w(0.5)
-	pl.auto_move = Vector2(0, -1)
-	await w(1.2)
-	pl.press("dash")
-	await w(0.5)
-	pl.auto_sprint = true
-	pl.press("dash")
-	await w(1.0)
-	pl.press("dash")
-	await w(0.8)
-	pl.auto_sprint = false
-	pl.press("jump")
-	await w(0.25)
-	pl.press("jump")
-	await w(1.2)
-	pl.auto_move = Vector2.ZERO
+	# старт на поляне, бежим к кедрам у западного края
+	_place(Vector3(4, 0.5, 6), PI)
+	var cedar: Node3D = null
+	var bd := 999.0
+	for c in get_tree().get_nodes_in_group("cedar"):
+		var dd: float = c.global_position.distance_to(Vector3(-15.5, 0, -12))
+		if dd < bd:
+			bd = dd
+			cedar = c
+	_aim(cedar.global_position)
 	await w(0.4)
+	pl.auto_move = Vector2(0, -1)
+	await w(0.5)
+	pl.press("dash")
+	await w(0.45)
+	pl.press("dash")
+	await w(0.45)
+	pl.auto_move = Vector2.ZERO
+	# по веткам вверх
+	var pads: Array = cedar.pads.duplicate()
+	pads.sort_custom(func(a, b): return a.y < b.y)
+	var k := 0
+	for q in pads:
+		if k >= 6:
+			break
+		if q.y < pl.global_position.y + 0.8:
+			continue
+		pl.press("jump")
+		await w(0.16)
+		_aim(q)
+		pl.press("jump")
+		await w(0.75)
+		k += 1
+	await w(0.3)
+	# прыжок вниз к поляне, рывок, бой
+	_aim(Vector3(0, 0, 0))
+	pl.auto_move = Vector2(0, -1)
+	pl.press("jump")
+	await w(1.6)
+	pl.press("dash")
+	await w(0.5)
+	pl.auto_move = Vector2.ZERO
 	if G.enemies.size() > 0:
 		var d = G.enemies[0]
-		d.global_position = pl.global_position + Vector3(0, 0, -3.5).rotated(Vector3.UP, pl.facing + PI)
+		d.global_position = pl.global_position + Vector3(sin(pl.facing), 0, cos(pl.facing)) * 3.5
 		d.set_physics_process(true)
 		d.state = "idle"
-	for k in 4:
+	for i in 4:
 		pl.press("light")
 		await w(0.3)
 	await w(0.3)
 	pl.breath = 100.0
 	pl.press("form1")
 	await w(1.4)
-	pl.press("heavy")
-	await w(1.2)
+	get_tree().quit()
+
+# Эффекты ударов по стилям дыхания: кадры на середине взмаха.
+func _fx() -> void:
+	await w(0.6)
+	G.hud.help = false
+	var pl: Node3D = G.player
+	_set_time("sunset")
+	G.cam_rig.set_process(false)
+	var d = G.enemies[0]
+	for st in 3:
+		pl.set_breath(st)
+		_place(Vector3(0, 0.5, 4), PI)
+		d.global_position = Vector3(0, 0.5, 1.5)
+		d.set_physics_process(false)
+		pl.set_drawn(true)
+		await w(0.6)
+		for k in 3:
+			pl.press("light")
+			await w(0.16)
+			cam(pl.global_position + Vector3(3.2, 1.8, 1.2), pl.global_position + Vector3(0, 1.0, -1.0))
+			await shot("fx%d_%d" % [st, k])
+			await w(0.18)
+		pl.breath = 100.0
+		pl.press("form1")
+		await w(0.25)
+		cam(pl.global_position + Vector3(4.0, 2.5, 3.0), pl.global_position + Vector3(0, 1.0, -1.0))
+		await shot("fx%d_form" % st)
+		await w(1.2)
 	get_tree().quit()

@@ -19,6 +19,12 @@ var last_kind := ""
 var help := true
 var help_t := 14.0
 var px_scale := 3.0
+var serif: Font                # шрифт с засечками для титров мест (как в референсе)
+var loc_name := ""
+var loc_sub := ""
+var loc_t := 0.0
+var loc_check := 0.0
+var show_map := true
 
 const RANKS := [
 	[0.0, "D", "НЕРЯШЛИВО", Color(0.7, 0.7, 0.75)],
@@ -37,6 +43,10 @@ func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	font = ThemeDB.fallback_font
+	var sf := SystemFont.new()
+	sf.font_names = PackedStringArray(["Georgia", "Cambria", "Times New Roman", "Noto Serif", "DejaVu Serif", "Liberation Serif", "serif"])
+	sf.antialiasing = TextServer.FONT_ANTIALIASING_GRAY
+	serif = sf
 	process_mode = Node.PROCESS_MODE_ALWAYS
 
 func notify(t: String, life := 2.2) -> void:
@@ -113,7 +123,71 @@ func _process(_d: float) -> void:
 		help_t -= dt
 		if help_t <= 0.0:
 			help = false
+	# титр места: когда герой входит в новую область
+	loc_t = maxf(0.0, loc_t - dt)
+	loc_check -= dt
+	if loc_check <= 0.0 and G.world and G.player and G.world.has_method("region_at"):
+		loc_check = 0.5
+		var r: Array = G.world.region_at(G.player.global_position)
+		if r[0] != loc_name:
+			loc_name = r[0]
+			loc_sub = r[1]
+			loc_t = 4.5
 	queue_redraw()
+
+func _stxt(pos: Vector2, t: String, fsize: int, col: Color) -> void:
+	var tw := serif.get_string_size(t, HORIZONTAL_ALIGNMENT_LEFT, -1, fsize).x
+	pos.x -= tw * 0.5
+	draw_string_outline(serif, pos, t, HORIZONTAL_ALIGNMENT_LEFT, -1, fsize, 6, Color(0.02, 0.02, 0.04, col.a * 0.6))
+	draw_string(serif, pos, t, HORIZONTAL_ALIGNMENT_LEFT, -1, fsize, col)
+
+# Мини-карта (круг, север сверху) и компас.
+func _draw_map(s: Vector2, u: float) -> void:
+	var w = G.world
+	if w == null or w.get("minimap") == null or w.minimap == null:
+		return
+	var p: Node3D = G.player
+	var r := 78.0 * u
+	var c := Vector2(s.x - r - 26 * u, r + 96 * u)
+	var view := 55.0                       # радиус обзора карты, м
+	var n: float = w.minimap.get_width()
+	var pts := PackedVector2Array()
+	var uvs := PackedVector2Array()
+	for i in 40:
+		var a := TAU * i / 40.0
+		var d := Vector2(cos(a), sin(a))
+		pts.append(c + d * r)
+		var wp := Vector2(p.global_position.x, p.global_position.z) + d * view
+		uvs.append((wp + Vector2(w.HALF, w.HALF)) / w.MAP_SCALE / n)
+	draw_circle(c, r + 4 * u, Color(0.04, 0.03, 0.06, 0.85))
+	draw_colored_polygon(pts, Color(1, 1, 1, 0.92), uvs, w.minimap)
+	draw_arc(c, r + 2 * u, 0, TAU, 48, Color(0.95, 0.88, 0.7, 0.9), 2.0 * u)
+	# демоны
+	for e in G.enemies:
+		if is_instance_valid(e) and not e.is_dead():
+			var dv := Vector2(e.global_position.x - p.global_position.x, e.global_position.z - p.global_position.z) / view
+			if dv.length() < 1.0:
+				draw_circle(c + dv * r, 4 * u, Color(1, 0.25, 0.2))
+	# герой — стрелка по направлению взгляда
+	var f: float = p.facing
+	var fd := Vector2(sin(f), cos(f))
+	var sd := Vector2(-fd.y, fd.x)
+	draw_colored_polygon(PackedVector2Array([c + fd * 9 * u, c - fd * 6 * u + sd * 6 * u, c - fd * 3 * u, c - fd * 6 * u - sd * 6 * u]), Color(1, 1, 1))
+	_txt(c + Vector2(0, -r - 8 * u), "С", int(14 * u), Color(1, 0.9, 0.7), HORIZONTAL_ALIGNMENT_CENTER, 0, 6)
+	# компас: полоса под картой — куда смотрит камера
+	if G.cam_rig:
+		var yaw: float = G.cam_rig.yaw
+		var cw := r * 2.2
+		var cx := c.x
+		var cy := c.y + r + 18.0 * u
+		draw_rect(Rect2(cx - cw * 0.5, cy - 2 * u, cw, 2 * u), Color(1, 1, 1, 0.35))
+		# курс по часовой от севера (−z); камера смотрит по курсу −yaw
+		var marks := [["С", 0.0], ["В", PI * 0.5], ["Ю", PI], ["З", -PI * 0.5]]
+		for m in marks:
+			var da := wrapf(float(m[1]) + yaw, -PI, PI)
+			if absf(da) < PI * 0.5:
+				var x := cx + da / (PI * 0.5) * cw * 0.5
+				_txt(Vector2(x, cy + 18 * u), m[0], int(15 * u), Color(1, 0.92, 0.75, 1.0 - absf(da) / (PI * 0.5)), HORIZONTAL_ALIGNMENT_CENTER, 0, 6)
 
 func _txt(pos: Vector2, t: String, fsize: int, col: Color, align := HORIZONTAL_ALIGNMENT_LEFT, _w := -1.0, outline := 8) -> void:
 	if align != HORIZONTAL_ALIGNMENT_LEFT:
@@ -165,6 +239,19 @@ func _draw() -> void:
 		var ok: bool = p.breath >= cost[i] and cdv <= 0.0
 		_txt(r.position + Vector2(10 * u, 22 * u), "%d  %s" % [i + 1, _form(keys[i])[1]], int(16 * u), Color(0.9, 0.96, 1.0) if ok else Color(0.5, 0.55, 0.65))
 		_txt(r.position + Vector2(10 * u, 46 * u), "дыхание %d" % cost[i], int(12 * u), Color(0.55, 0.75, 1.0) if ok else Color(0.4, 0.45, 0.55))
+
+	if show_map and G.started:
+		_draw_map(s, u)
+	# --- титр места (шрифт с засечками, тонкие линии) ---
+	if loc_t > 0.0 and loc_name != "":
+		var la := clampf(loc_t, 0.0, 1.0) * clampf((4.5 - loc_t) * 2.0, 0.0, 1.0)
+		var ly := s.y * 0.34
+		var lw := serif.get_string_size(loc_name, HORIZONTAL_ALIGNMENT_LEFT, -1, int(44 * u)).x
+		_stxt(Vector2(s.x * 0.5, ly), loc_name, int(44 * u), Color(1, 0.97, 0.9, la))
+		draw_line(Vector2(s.x * 0.5 - lw * 0.5 - 80 * u, ly - 14 * u), Vector2(s.x * 0.5 - lw * 0.5 - 16 * u, ly - 14 * u), Color(1, 0.95, 0.85, la * 0.8), 1.5 * u)
+		draw_line(Vector2(s.x * 0.5 + lw * 0.5 + 16 * u, ly - 14 * u), Vector2(s.x * 0.5 + lw * 0.5 + 80 * u, ly - 14 * u), Color(1, 0.95, 0.85, la * 0.8), 1.5 * u)
+		if loc_sub != "":
+			_stxt(Vector2(s.x * 0.5, ly + 30 * u), loc_sub, int(18 * u), Color(0.95, 0.9, 0.82, la * 0.9))
 
 	# --- демон ---
 	var e: Node = null
@@ -247,7 +334,8 @@ func _draw() -> void:
 			"Shift — рывок   E — шаг-вспышка к цели   Tab / колесо — захват цели",
 			"ЛКМ — комбо   ПКМ — тяжёлый удар   Q — парирование",
 			"1 / 2 / 3 — формы дыхания (стиль — Esc → Снаряжение)   R (держать) — восстановить дыхание",
-			"Бег в стену в прыжке — бег по стене   N — день/ночь   − / + — громкость",
+			"Бег в стену в прыжке — бег по стене   Пробел в воздухе — прыжок к ветке кедра (метка)",
+			"N — время суток (день / закат / ночь)   − / + — громкость",
 			"Esc — пауза и настройки (клинок, графика, звук, клавиши)   F1 — подсказка",
 		]
 		var hy := s.y - 270 * u

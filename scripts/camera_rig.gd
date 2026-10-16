@@ -26,6 +26,11 @@ func _ready() -> void:
 var sens_mult := 1.0
 var invert_y := false
 var base_fov := 72.0
+var fov_kick := 0.0
+var fov_s := 72.0          # мгновенное расширение обзора (взрывной рывок)
+
+func kick_fov(v: float) -> void:
+	fov_kick = maxf(fov_kick, v)
 var auto_cam := true
 var idle_look := 9.0          # сколько секунд камеру не трогали
 var flick := 0.0              # резкий рывок мышью при захвате — смена цели
@@ -110,18 +115,23 @@ func _process(_delta: float) -> void:
 		cam.global_position = cur_pos + shake_off
 		cam.look_at(mid + Vector3.UP * 0.3, Vector3.UP)
 		cam.fov = lerpf(cam.fov, 58.0, 1.0 - exp(-6.0 * dt))
+		fov_s = cam.fov
 		return
 
 	var b := Basis(Vector3.UP, yaw) * Basis(Vector3.RIGHT, pitch)
 	var sp: float = p.last_speed
 	var d := dist + clampf(sp - 12.0, 0.0, 20.0) * 0.06
+	# в бою с захватом цели — отойти, чтобы и герой, и демон были в кадре
+	if p.lock_target and is_instance_valid(p.lock_target):
+		var ed: float = p.global_position.distance_to(p.lock_target.global_position)
+		d += clampf(ed * 0.3, 0.0, 3.0)
 	var desired := target + b * Vector3(0, 0, d)
 	# шар-проба от героя к камере: камера не залезает в стены
 	var sq := PhysicsShapeQueryParameters3D.new()
 	sq.shape = _probe
 	sq.transform = Transform3D(Basis.IDENTITY, target)
 	sq.motion = desired - target
-	sq.collision_mask = 1
+	sq.collision_mask = 1 | 16
 	var frac := get_world_3d().direct_space_state.cast_motion(sq)
 	if frac.size() > 0 and frac[0] < 1.0:
 		desired = target + (desired - target) * maxf(0.12, frac[0])
@@ -137,4 +147,6 @@ func _process(_delta: float) -> void:
 	var fov := base_fov + clampf(sp - 12.0, 0.0, 22.0) * 0.8
 	if p.state in ["dash", "flash"]:
 		fov += 8.0
-	cam.fov = lerpf(cam.fov, fov, 1.0 - exp(-8.0 * dt))
+	fov_kick = move_toward(fov_kick, 0.0, 30.0 * dt)
+	fov_s = lerpf(fov_s, fov, 1.0 - exp(-8.0 * dt))
+	cam.fov = minf(fov_s + fov_kick, 110.0)

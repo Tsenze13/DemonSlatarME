@@ -84,7 +84,7 @@ func kick_info() -> Dictionary:
 # Удар по кедру — щепки и хвоя, но ствол не рубится.
 func slash_hit(origin: Vector3, dir: Vector3, power: int) -> bool:
 	G.fx.burst(global_position + Vector3.UP * 1.3, Color(0.5, 0.35, 0.2), 6, 5.0, 0.1, 0.4, 10.0, -dir, 0.6)
-	G.sfx.play("crack", -10.0, 1.1)
+	G.sfx.play("wood", -4.0, 0.8)
 	return false
 
 func center() -> Vector3:

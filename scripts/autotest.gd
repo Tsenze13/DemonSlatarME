@@ -300,8 +300,11 @@ func _run() -> void:
 	G.cam_rig.dist = 5.2
 	G.cam_rig.pitch = -0.3
 	G.cam_rig.yaw = 0.0
-	# бег (вбок, не на демона)
-	G.cam_rig.yaw = 0.0
+	# бег (вбок, не на демона) — по длинной улице деревни, там ничего не мешает
+	p.global_position = Vector3(32, 0.5, -2)
+	p.velocity = Vector3.ZERO
+	G.cam_rig.yaw = -PI * 0.5
+	await w(0.3)
 	p.auto_move = Vector2(-1, 0)
 	await w(1.0)
 	if p.last_speed < 10.0:
@@ -324,7 +327,7 @@ func _run() -> void:
 	check(p.breath >= b_run - 0.5, "сам быстрый бег дыхание не тратит")
 	p.auto_sprint = false
 	# разгон: рывки на бегу поднимают скорость (по длинной улице деревни)
-	p.global_position = Vector3(32, 0.5, -2)
+	p.global_position = Vector3(32, 0.5, -10)
 	p.velocity = Vector3.ZERO
 	G.cam_rig.yaw = -PI * 0.5
 	p.momentum = 0
@@ -693,6 +696,56 @@ func _run() -> void:
 	await w(5.5)
 	check(demon() != null, "новый демон появился")
 	check(G.world.fireflies != null and G.world.leaves != null, "светлячки, листья")
+	# идеальное парирование и ответ демона на долгое комбо
+	var dd2 := demon()
+	if dd2:
+		p.global_position = Vector3(0, 0.5, 6)
+		p.velocity = Vector3.ZERO
+		p._set_state("move")
+		p._set_state("parry")
+		var r0: String = p.receive_attack(10.0, p.global_position + Vector3(0, 0, -2), true, dd2)
+		check(r0 == "parry" and p.last_parry_perfect, "идеальное парирование в последний миг")
+		await w(1.2)
+		dd2.global_position = p.global_position + Vector3(0, 0.3, -2.0)
+		dd2.state = "chase"
+		dd2.combo_t = 0.0
+		var ab := {"power": 1, "knock": 0.5, "stagger": 0.0}
+		for k in 7:
+			dd2.take_hit(1.0, Vector3(0, 0, -1), ab)
+		await w(0.2)
+		check(dd2.state == "air" or dd2.combo_hits == 0, "демон вырывается из долгого комбо")
+		await w(2.0)
+		p.hp = p.max_hp
+	# прыжки по ветвям кедров: в воздухе Пробел — к ветке, в которую смотрит камера
+	var cedar: Node3D = null
+	var cbd := 999.0
+	for c in get_tree().get_nodes_in_group("cedar"):
+		var cdd: float = c.global_position.distance_to(Vector3(-15.5, 0, -12))
+		if cdd < cbd:
+			cbd = cdd
+			cedar = c
+	if cedar:
+		var pad0: Vector3 = cedar.pads[0]
+		var away := Vector3(pad0.x - cedar.global_position.x, 0, pad0.z - cedar.global_position.z).normalized()
+		p.global_position = Vector3(pad0.x, 0.0, pad0.z) + away * 6.0
+		p.velocity = Vector3.ZERO
+		p._set_state("move")
+		await w(0.3)
+		G.cam_rig.yaw = atan2(away.x, away.z)
+		p.press("jump")
+		await w(0.2)
+		var lc: int = p.leap_count
+		p.press("jump")
+		await w(1.0)
+		check(p.leap_count > lc, "прыжок к ветке кедра")
+		var on_pad := false
+		for q in cedar.pads:
+			if p.global_position.distance_to(q) < 1.6:
+				on_pad = true
+		check(on_pad and p.is_on_floor(), "герой стоит на ветке (%.1f м)" % p.global_position.y)
+		p.global_position = Vector3(0, 0.5, 6)
+		p.velocity = Vector3.ZERO
+		await w(0.6)
 	# мир: рельеф, пруд, кедры с ветками, время суток
 	check(G.world.height_at(0, 0) == 0.0 and G.world.height_at(-34, -5) < 0.0 and G.world.height_at(0, -62) >= 3.0, "рельеф: поляна, пруд, холм святилища")
 	check(G.world.cedar_pads.size() > 100, "кедры с ветками для прыжков (%d)" % G.world.cedar_pads.size())

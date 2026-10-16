@@ -35,6 +35,11 @@ func _ready() -> void:
 	sounds["land"] = _make(0.3, _land)
 	sounds["fire"] = _make(0.7, _fire)
 	sounds["thunder"] = _make(0.9, _thunder)
+	# попадания по материалам
+	sounds["flesh"] = _make(0.28, _flesh)
+	sounds["wood"] = _make(0.35, _wood)
+	sounds["stone"] = _make(0.45, _stone)
+	sounds["snap"] = _make(0.18, _snap)
 
 func play(nm: String, vol_db := 0.0, pitch := 1.0, rnd := 0.08) -> void:
 	if not sounds.has(nm):
@@ -196,3 +201,29 @@ func _thunder(t: float, d: float, st: Dictionary) -> float:
 	var buzz := (1.0 if fmod(t * 120.0, 1.0) < 0.5 else -1.0) * exp(-t * 18.0) * 0.25
 	var rumble := _lp(st, "lp", randf_range(-1, 1), 0.03) * 3.0 * minf(t / 0.08, 1.0) * exp(-t * 3.0)
 	return crack + buzz + rumble
+
+# Разрез плоти: короткий высокий «шк» лезвия + влажный глухой шлепок.
+func _flesh(t: float, d: float, st: Dictionary) -> float:
+	var hiss := (randf_range(-1, 1) - _lp(st, "lp", randf_range(-1, 1), 0.5)) * exp(-t * 45.0) * 0.9
+	st["ph"] += TAU * (90.0 * exp(-t * 10.0) + 45.0) / RATE
+	var thump := sin(st["ph"]) * exp(-t * 18.0)
+	var wet := _lp(st, "lp2", randf_range(-1, 1), 0.08) * exp(-pow((t - 0.05) * 30.0, 2.0)) * 2.0
+	return hiss + thump * 0.8 + wet
+
+# Удар по дереву: полый стук (две резонансные частоты) и щелчок.
+func _wood(t: float, d: float, st: Dictionary) -> float:
+	var v := sin(TAU * 210.0 * t) * exp(-t * 18.0) + sin(TAU * 470.0 * t) * exp(-t * 26.0) * 0.6 + sin(TAU * 820.0 * t) * exp(-t * 40.0) * 0.3
+	v += randf_range(-1, 1) * exp(-t * 120.0) * 0.7
+	return v * 0.7
+
+# Удар по камню: звонкий щелчок и осыпающаяся крошка.
+func _stone(t: float, d: float, st: Dictionary) -> float:
+	var click := (sin(TAU * 1650.0 * t) + sin(TAU * 2900.0 * t) * 0.5) * exp(-t * 70.0)
+	var grit: float = randf_range(-1, 1) * (1.0 if randf() > 0.6 else 0.35) * exp(-t * 9.0) * 0.5
+	return (click * 0.6 + _lp(st, "lp", grit, 0.6)) * 0.9
+
+# Щелчок хлыста.
+func _snap(t: float, d: float, st: Dictionary) -> float:
+	var n := randf_range(-1, 1) * exp(-t * 80.0)
+	st["ph"] += TAU * 2400.0 * exp(-t * 30.0) / RATE
+	return (n + sin(st["ph"]) * exp(-t * 50.0) * 0.5) * 0.9

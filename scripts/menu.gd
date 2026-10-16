@@ -44,7 +44,7 @@ func _build_title() -> void:
 	title_screen.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(title_screen)
 	var shade := ColorRect.new()
-	shade.color = Color(0.0, 0.0, 0.04, 0.35)
+	shade.color = Color(0.0, 0.0, 0.04, 0.18)
 	shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	shade.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	title_screen.add_child(shade)
@@ -57,16 +57,20 @@ func _build_title() -> void:
 	box.anchor_bottom = 1.0
 	box.offset_left = 90
 	box.offset_right = 900
+	var serif := SystemFont.new()
+	serif.font_names = PackedStringArray(["Georgia", "Cambria", "Times New Roman", "Noto Serif", "DejaVu Serif", "serif"])
 	var t := Label.new()
-	t.text = "КЛИНОК И ДЕМОН"
-	t.add_theme_font_size_override("font_size", 72)
+	t.text = "Клинок и Демон"
+	t.add_theme_font_override("font", serif)
+	t.add_theme_font_size_override("font_size", 80)
 	t.add_theme_color_override("font_color", Color(1.0, 0.95, 0.9))
 	t.add_theme_constant_override("outline_size", 14)
 	t.add_theme_color_override("font_outline_color", Color(0.05, 0.02, 0.08))
 	box.add_child(t)
 	var sub := Label.new()
-	sub.text = "охотник на демонов · прототип " + str(ProjectSettings.get_setting("application/config/version", ""))
-	sub.add_theme_font_size_override("font_size", 22)
+	sub.text = "деревня Ивакура ждёт ночи · прототип " + str(ProjectSettings.get_setting("application/config/version", ""))
+	sub.add_theme_font_override("font", serif)
+	sub.add_theme_font_size_override("font_size", 24)
 	sub.add_theme_color_override("font_color", Color(0.6, 0.8, 1.0))
 	sub.add_theme_constant_override("outline_size", 8)
 	sub.add_theme_color_override("font_outline_color", Color(0.02, 0.02, 0.06))

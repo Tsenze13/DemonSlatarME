@@ -216,6 +216,7 @@ func _physics_process(dt: float) -> void:
 	state_t += dt
 	atk_cd -= dt
 	since_hit += dt
+	combo_t -= dt
 	_update_spears(dt)
 	_update_flash(dt)
 	var p: Node3D = G.player
@@ -292,6 +293,7 @@ func _physics_process(dt: float) -> void:
 			_face(dirp, dt, 10.0)
 			var wt := windup_time()
 			_eyes(2.5 + state_t * 12.0)
+			_telegraph(dt, wt)
 			if state_t >= wt:
 				_set_state("swing")
 				hit_this_swing = false
@@ -307,7 +309,7 @@ func _physics_process(dt: float) -> void:
 				if dist < 3.6 and _fwd().dot(dirp) > 0.3 and absf(p.global_position.y - global_position.y) < 2.2:
 					var r: String = p.receive_attack(15.0 if not rage else 18.0, global_position, true, self)
 					if r == "parry":
-						stagger(1.4)
+						stagger(2.6 if p.last_parry_perfect else 1.4)
 						return
 					elif r == "counter":
 						return
@@ -415,12 +417,49 @@ func _eyes(e: float) -> void:
 		var mat: ShaderMaterial = m.material_override
 		mat.set_shader_parameter("emission", e)
 
+# Замах читается: когти наливаются красным светом, перед самым ударом —
+# белая вспышка-«звезда» на когтях (сигнал: сейчас парировать!).
+var tele_cue := false
+var claw_glow: Array = []
+func _telegraph(dt: float, wt: float) -> void:
+	var hand: Node3D = J["hand_" + swing_arm]
+	var k := clampf(state_t / wt, 0.0, 1.0)
+	if randf() < dt * 30.0 * k:
+		G.fx.burst(hand.global_position + Vector3(randf_range(-0.15, 0.15), -0.25, randf_range(-0.15, 0.15)), Color(1.0, 0.2, 0.15), 1, 1.5, 0.06, 0.25, -2.0)
+	if not tele_cue and state_t >= wt - 0.16:
+		tele_cue = true
+		G.fx.hit_star(hand.global_position + Vector3.DOWN * 0.2, Color(1.0, 0.95, 0.8), 6, 0.7)
+		G.fx.ring(hand.global_position + Vector3.DOWN * 0.2, 0.15, Color(1.0, 0.3, 0.2), Color.WHITE, 0.2, 3.0, 0.08)
+		G.sfx.play("shing", -12.0, 1.8)
+
+# Ответ на долгое комбо: после 6 ударов подряд без паузы демон взрывается
+# кровавой волной — отбрасывает героя и отскакивает назад.
+var combo_hits := 0
+var combo_t := 0.0
+func _combo_break() -> void:
+	combo_hits = 0
+	_roar()
+	var p: Node3D = G.player
+	var d := p.global_position - global_position
+	d.y = 0
+	if d.length() < 4.5:
+		p.receive_attack(6.0, global_position, false, self)
+	G.fx.ring(global_position + Vector3.UP * 0.1, 0.8, Color(0.6, 0.02, 0.1), Color(1.0, 0.35, 0.3), 0.5, 9.0, 0.4)
+	G.fx.blood(global_position + Vector3.UP * 1.2, Vector3.UP, 20)
+	G.fx.cracks(global_position + Vector3.UP * 0.03, 8, 2.0)
+	velocity = -d.normalized() * 11.0 + Vector3.UP * 6.0
+	air_down = false
+	_set_state("air")
+	if G.hud:
+		G.hud.notify("Демон вырвался из комбо!", 1.4)
+
 func _start_swing() -> void:
 	if arms_alive.r and arms_alive.l:
 		swing_arm = "l" if swing_arm == "r" else "r"
 	else:
 		swing_arm = "r" if arms_alive.r else "l"
 	_set_state("windup")
+	tele_cue = false
 	# предупреждение: вспышка в глазах
 	G.fx.burst(J.head.global_position + _fwd() * 0.3 + Vector3.UP * 0.3, Color(1.0, 0.85, 0.3), 5, 3.0, 0.1, 0.25, 0.0)
 
@@ -504,6 +543,8 @@ func take_hit(dmg: float, dir: Vector3, atk: Dictionary) -> Dictionary:
 		return res
 	hp -= dmg
 	_add_wound(res.point, dir, atk)
+	combo_hits = combo_hits + 1 if combo_t > 0.0 else 1
+	combo_t = 1.1
 	var knock: float = atk.get("knock", 2.5)
 	velocity += dir * knock
 	velocity.y = maxf(velocity.y, 1.0 if atk.power < 2 else 3.0)
@@ -537,6 +578,8 @@ func take_hit(dmg: float, dir: Vector3, atk: Dictionary) -> Dictionary:
 	if hp <= 0.0:
 		hp = 0.0
 		_expose()
+	elif combo_hits >= 7 and state not in ["air", "down", "exposed"]:
+		call_deferred("_combo_break")
 	return res
 
 # Порез на теле: прорезь внутри текстуры ближайшего блока, по линии удара.

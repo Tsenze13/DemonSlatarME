@@ -68,6 +68,7 @@ func build() -> void:
 			baked_count += Vox.bake(n, all, 1000.0)
 		elif n.get_script() == TreeS:
 			baked_count += Vox.bake(n.top, all, 1000.0)
+	_build_minimap()
 	set_time("sunset")
 
 func _environment() -> void:
@@ -115,11 +116,11 @@ func _environment() -> void:
 const TIMES := {
 	"day": {
 		"sun_rot": Vector3(-50, 35, 0), "sun_col": Color(1.0, 0.95, 0.86), "sun_e": 1.15,
-		"top": Color(0.22, 0.45, 0.85), "hor": Color(0.7, 0.82, 0.95), "ground": Color(0.42, 0.5, 0.45),
+		"top": Color(0.16, 0.38, 0.82), "hor": Color(0.58, 0.74, 0.94), "ground": Color(0.42, 0.5, 0.45),
 		"sky_sun": Color(1.0, 0.93, 0.78), "halo": 0.35, "cl_lit": Color(1.0, 1.0, 1.0), "cl_sh": Color(0.68, 0.74, 0.86),
 		"cover": 0.42, "stars": 0.0, "moon": 0.0,
-		"amb": Color(0.58, 0.66, 0.84), "amb_e": 0.48, "fog": Color(0.6, 0.72, 0.88), "fog_d": 0.006,
-		"sat": 1.05, "con": 1.05, "bri": 0.97, "glow": 0.2, "lanterns": false,
+		"amb": Color(0.55, 0.62, 0.8), "amb_e": 0.45, "fog": Color(0.52, 0.66, 0.86), "fog_d": 0.0035,
+		"sat": 1.15, "con": 1.14, "bri": 0.92, "glow": 0.12, "lanterns": false,
 	},
 	"sunset": {
 		"sun_rot": Vector3(-13, -62, 0), "sun_col": Color(1.0, 0.66, 0.42), "sun_e": 1.2,
@@ -184,8 +185,8 @@ func set_time(t: String) -> void:
 	Vox.mat_set(Vox.cel_mat(Color(0.92, 0.88, 0.76), true, 0.0, 0.022, "paper"), "emission", pe)
 	if water_mat:
 		water_mat.set_shader_parameter("sky", c.hor)
-		water_mat.set_shader_parameter("deep", Color(0.1, 0.28, 0.42) if t != "night" else Color(0.03, 0.06, 0.14))
-		water_mat.set_shader_parameter("shallow", Color(0.25, 0.52, 0.58) if t != "night" else Color(0.06, 0.12, 0.22))
+		water_mat.set_shader_parameter("deep", Color(0.1, 0.28, 0.42) if t != "night" else Color(0.08, 0.14, 0.3))
+		water_mat.set_shader_parameter("shallow", Color(0.25, 0.52, 0.58) if t != "night" else Color(0.14, 0.24, 0.4))
 
 func next_time() -> void:
 	var order := ["day", "sunset", "night"]
@@ -197,8 +198,8 @@ func set_quality(shadows: int, grass: float) -> void:
 		sun.shadow_enabled = shadows > 0
 		sun.directional_shadow_max_distance = 45.0 if shadows == 1 else 70.0
 		RenderingServer.directional_shadow_atlas_set_size(2048 if shadows == 1 else 4096, true)
-	if grass_mm:
-		grass_mm.visible_instance_count = int(grass_mm.instance_count * clampf(grass, 0.0, 1.0))
+	for mm in grass_mms:
+		mm.visible_instance_count = int(mm.instance_count * clampf(grass, 0.0, 1.0))
 
 # Совместимость со старым переключателем день/ночь.
 func set_night(on: bool) -> void:
@@ -430,44 +431,108 @@ func _bridge() -> void:
 		for sx in [-1.0, 1.0]:
 			Vox.box(self, Vector3(0.3, 1.6 + sin(t * PI) * 1.6, 0.3), Vector3(p.x + sx * 1.1, -1.0 + (1.6 + sin(t * PI) * 1.6) * 0.5, p.z), wood.darkened(0.2), true)
 
-func _grass() -> void:
+# Трава: кустики из воксельных травинок (тонкие прямоугольники, цвет ступенями
+# от корня к кончику), плюс цветы-кубики. Раскиданы по всей карте кусками 24 м
+# (невидимое за камерой отсекается), под героем расступаются.
+var grass_mms: Array = []
+var flower_mat: ShaderMaterial
+
+func _grass_mesh() -> ArrayMesh:
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	for k in 3:
-		var a := k * PI / 3.0
-		var dx := Vector3(cos(a), 0, sin(a)) * 0.07
-		var lean := Vector3(sin(a * 2.0), 0, cos(a)) * 0.08
-		st.add_vertex(-dx)
-		st.add_vertex(dx)
-		st.add_vertex(Vector3(0, 0.5, 0) + lean)
-	var mesh := st.commit()
+	var r := RandomNumberGenerator.new()
+	r.seed = 5
+	for k in 5:
+		var a := r.randf() * TAU
+		var off := Vector3(r.randf_range(-0.12, 0.12), 0, r.randf_range(-0.12, 0.12))
+		var hgt := r.randf_range(0.28, 0.6)
+		var wd := 0.055
+		var side := Vector3(cos(a), 0, sin(a)) * wd
+		var lean := Vector3(-sin(a), 0, cos(a)) * r.randf_range(-0.06, 0.06)
+		var p0 := off - side
+		var p1 := off + side
+		var p2 := off + side * 0.6 + Vector3.UP * hgt + lean
+		var p3 := off - side * 0.6 + Vector3.UP * hgt + lean
+		for v in [p0, p1, p2, p0, p2, p3]:
+			st.set_normal(Vector3.UP)
+			st.add_vertex(v)
+	return st.commit()
+
+func _grass() -> void:
+	var mesh := _grass_mesh()
 	grass_mat = ShaderMaterial.new()
 	grass_mat.shader = load("res://shaders/grass.gdshader")
 	mesh.surface_set_material(0, grass_mat)
-	var mm := MultiMesh.new()
-	mm.transform_format = MultiMesh.TRANSFORM_3D
-	mm.mesh = mesh
-	var count := 26000
-	mm.instance_count = count
+	# цветы: стебель + головка-кубик (цвет экземпляра идёт только в головку)
+	var fst := SurfaceTool.new()
+	fst.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var stem := BoxMesh.new()
+	stem.size = Vector3(0.025, 0.32, 0.025)
+	fst.append_from(stem, 0, Transform3D(Basis.IDENTITY, Vector3(0, 0.16, 0)))
+	var head := BoxMesh.new()
+	head.size = Vector3(0.11, 0.09, 0.11)
+	fst.append_from(head, 0, Transform3D(Basis.IDENTITY, Vector3(0, 0.36, 0)))
+	var fmesh := fst.commit()
+	flower_mat = ShaderMaterial.new()
+	flower_mat.shader = grass_mat.shader
+	flower_mat.set_shader_parameter("flower", true)
+	fmesh.surface_set_material(0, flower_mat)
+	var chunk := 24.0
+	var buckets := {}
+	var fbuckets := {}
+	var count := 46000
 	var placed := 0
-	while placed < count:
-		var p := Vector3(rng.randf_range(-75, 75), 0, rng.randf_range(-75, 75))
+	var tries := 0
+	var fcols := [Color(0.95, 0.3, 0.35), Color(1.0, 0.85, 0.3), Color(0.98, 0.97, 0.95), Color(0.7, 0.5, 1.0), Color(1.0, 0.6, 0.75)]
+	while placed < count and tries < count * 4:
+		tries += 1
+		var p := Vector3(rng.randf_range(-100, 100), 0, rng.randf_range(-100, 100))
 		var hy := height_at(p.x, p.z)
-		if hy < 0.0:
+		if hy < 0.0 or POND.grow(0.4).has_point(Vector2(p.x, p.z)):
 			continue
-		# на вытоптанной земле и камне травы почти нет
-		if _ground_mat(p.x, p.z, hy) > 0.25 and rng.randf() < 0.9:
+		var gm := _ground_mat(p.x, p.z, hy)
+		if gm > 0.75:
+			continue
+		if gm > 0.25 and rng.randf() < 0.88:
 			continue
 		p.y = hy
-		var s := rng.randf_range(0.6, 1.4)
-		var t := Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(s, s * rng.randf_range(0.7, 1.3), s)), p)
-		mm.set_instance_transform(placed, t)
+		var s := rng.randf_range(0.75, 1.35)
+		var t := Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(s, s * rng.randf_range(0.8, 1.3), s)), p)
+		var key := Vector2i(floori(p.x / chunk), floori(p.z / chunk))
+		if not buckets.has(key):
+			buckets[key] = []
+		var tint := Color(1, 1, 1).lerp(Color(0.85, 0.95, 0.75), rng.randf()) * rng.randf_range(0.9, 1.08)
+		(buckets[key] as Array).append([t, tint])
 		placed += 1
-	grass_mm = mm
+		if gm < 0.25 and rng.randf() < 0.05:
+			if not fbuckets.has(key):
+				fbuckets[key] = []
+			var ft := Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3.ONE * rng.randf_range(0.8, 1.2)), p + Vector3(rng.randf_range(-0.2, 0.2), 0, rng.randf_range(-0.2, 0.2)))
+			(fbuckets[key] as Array).append([ft, fcols[rng.randi() % fcols.size()]])
+	var biggest := 0
+	for key in buckets:
+		var mm := _mm(mesh, buckets[key])
+		grass_mms.append(mm)
+		if mm.instance_count > biggest:
+			biggest = mm.instance_count
+			grass_mm = mm
+	for key in fbuckets:
+		grass_mms.append(_mm(fmesh, fbuckets[key]))
+
+func _mm(mesh: Mesh, items: Array) -> MultiMesh:
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.use_colors = true
+	mm.mesh = mesh
+	mm.instance_count = items.size()
+	for i in items.size():
+		mm.set_instance_transform(i, items[i][0])
+		mm.set_instance_color(i, items[i][1])
 	var mmi := MultiMeshInstance3D.new()
 	mmi.multimesh = mm
 	mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(mmi)
+	return mm
 
 func _tree(p: Vector3, h: float, w: float, k: String, fc := Color(0.18, 0.42, 0.2)) -> void:
 	var t = StaticBody3D.new()
@@ -806,6 +871,7 @@ func _tower(p: Vector3) -> void:
 		Vox.box(self, Vector3(0.12, 0.8, 3.6), p + Vector3(sx * 1.75, 8.5, 0), wood)
 		Vox.box(self, Vector3(3.6, 0.8, 0.12), p + Vector3(0, 8.5, sx * 1.75), wood)
 	Vox.box(self, Vector3(4.6, 0.3, 4.6), p + Vector3(0, 10.6, 0), Color(0.22, 0.2, 0.24), true, 0.0, "roof")
+	_cam_block(Vector3(4.6, 0.7, 4.6), p + Vector3(0, 10.8, 0))
 	Vox.box(self, Vector3(2.4, 0.4, 2.4), p + Vector3(0, 10.95, 0), Color(0.22, 0.2, 0.24), true, 0.0, "roof")
 	for sx in [-1.0, 1.0]:
 		for sz in [-1.0, 1.0]:
@@ -894,6 +960,7 @@ func _shrine() -> void:
 	Vox.box(self, Vector3(8.0, 0.7, 5.6), base + Vector3(0, 5.45, 0), roof, true, 0.0, "roof")
 	Vox.box(self, Vector3(5.0, 0.6, 2.8), base + Vector3(0, 6.05, 0), roof.lightened(0.05), true, 0.0, "roof")
 	Vox.box(self, Vector3(5.6, 0.25, 0.5), base + Vector3(0, 6.45, 0), Color(0.85, 0.65, 0.2), true, 0.6)
+	_cam_block(Vector3(11.5, 2.4, 9.5), base + Vector3(0, 5.3, 0))
 	for sx in [-1.0, 1.0]:
 		Vox.box(self, Vector3(0.6, 0.6, 0.4), base + Vector3(sx * 5.9, 4.6, 4.6), roof.darkened(0.1))   # загнутые углы
 		Vox.box(self, Vector3(0.6, 0.6, 0.4), base + Vector3(sx * 5.9, 4.6, -4.6), roof.darkened(0.1))
@@ -995,6 +1062,88 @@ func _props() -> void:
 	_crate(Vector3(15.5, 0, -6.5))
 	_barrel(Vector3(16.5, 0, -7.2))
 
+# Невидимое препятствие только для камеры (слой 16): крыши без коллизии,
+# чтобы камера не залезала внутрь.
+func _cam_block(size: Vector3, pos: Vector3) -> void:
+	var sb := StaticBody3D.new()
+	sb.collision_layer = 16
+	sb.collision_mask = 0
+	sb.position = pos
+	var cs := CollisionShape3D.new()
+	var sh := BoxShape3D.new()
+	sh.size = size
+	cs.shape = sh
+	sb.add_child(cs)
+	add_child(sb)
+
+# Название места (для титров при входе): [имя, подпись].
+func region_at(p: Vector3) -> Array:
+	var v := Vector2(p.x, p.z)
+	if v.length() < 16.0:
+		return ["Поляна у старой стены", "здесь демон ждёт темноты"]
+	if p.x > 14 and p.x < 64 and p.z < 2 and p.z > -72:
+		return ["Деревня Ивакура", "улица бумажных фонарей"]
+	if absf(p.x - SHRINE.x) < 18 and p.z < -44 and p.z > -78:
+		return ["Святилище Кумо", "кедры старше самой деревни"]
+	if POND.grow(6.0).has_point(v):
+		return ["Пруд Цукими", "мост-арка над тихой водой"]
+	if p.x < -18 and p.z > 10 and p.z < 42 and p.x > -50:
+		return ["Бамбуковая роща", "стволы близко — прыгай от ствола к стволу"]
+	if p.x < -44 and p.z < -20:
+		return ["Старый кедровый лес", "по веткам — до самых верхушек"]
+	if p.z > 44 and absf(p.x) < 46:
+		return ["Каменная стена", "бег по стене — разбег и прыжок"]
+	if v.length() > 78.0:
+		return ["Холмы у гор", "уступы — только прыжком"]
+	return ["Луга у деревни", ""]
+
+# Картинка мини-карты: 1 пиксель = 1,5 м, север (−z) сверху.
+var minimap: ImageTexture
+const MAP_SCALE := 1.5
+func _build_minimap() -> void:
+	var n := int(HALF * 2.0 / MAP_SCALE)
+	var img := Image.create(n, n, false, Image.FORMAT_RGBA8)
+	for j in n:
+		for i in n:
+			var x := -HALF + (i + 0.5) * MAP_SCALE
+			var z := -HALF + (j + 0.5) * MAP_SCALE
+			var h := height_at(x, z)
+			var m := _ground_mat(x, z, h)
+			var c: Color
+			if h < 0.0:
+				c = Color(0.3, 0.55, 0.75)
+			elif m > 0.75:
+				c = Color(0.62, 0.6, 0.58)
+			elif m > 0.25:
+				c = Color(0.72, 0.6, 0.42)
+			else:
+				c = Color(0.42, 0.62, 0.32).darkened(clampf(h * 0.05, 0.0, 0.4))
+			img.set_pixel(i, j, c)
+	# дома, святилище, стена
+	var rects := []
+	for z in [-12.0, -27.0, -42.0, -56.0]:
+		rects.append([Rect2(19.5, z - 4.5, 7, 9), Color(0.35, 0.3, 0.32)])
+	for z in [-10.0, -25.0, -40.0, -54.0]:
+		rects.append([Rect2(38.5, z - 4.5, 7, 9), Color(0.35, 0.3, 0.32)])
+	rects.append([Rect2(-4.5, -67.5, 9, 7), Color(0.75, 0.2, 0.15)])
+	rects.append([Rect2(-40, 47.3, 80, 1.4), Color(0.5, 0.5, 0.55)])
+	for r in rects:
+		var rr: Rect2 = r[0]
+		for z2 in range(int(rr.position.y), int(rr.end.y)):
+			for x2 in range(int(rr.position.x), int(rr.end.x)):
+				var i2 := int((x2 + HALF) / MAP_SCALE)
+				var j2 := int((z2 + HALF) / MAP_SCALE)
+				if i2 >= 0 and j2 >= 0 and i2 < n and j2 < n:
+					img.set_pixel(i2, j2, r[1])
+	for c in get_tree().get_nodes_in_group("cedar"):
+		var i3 := int((c.global_position.x + HALF) / MAP_SCALE)
+		var j3 := int((c.global_position.z + HALF) / MAP_SCALE)
+		for dj in range(-1, 2):
+			for di in range(-1, 2):
+				if i3 + di >= 0 and j3 + dj >= 0 and i3 + di < n and j3 + dj < n:
+					img.set_pixel(i3 + di, j3 + dj, Color(0.16, 0.34, 0.2))
+	minimap = ImageTexture.create_from_image(img)
+
 func _yes(_m: Node) -> bool:
 	return true
 
@@ -1015,9 +1164,22 @@ func kick_points() -> Array:
 		out.append(n.kick_info())
 	return out
 
+# Волна по траве от взрывного рывка или удара о землю.
+var shock_age := 99.0
+func grass_shock(p: Vector3) -> void:
+	shock_age = 0.0
+	for m in [grass_mat, flower_mat]:
+		if m:
+			m.set_shader_parameter("shock_pos", p)
+
 func _process(_dt: float) -> void:
+	shock_age += G.rdt
+	if grass_mat:
+		grass_mat.set_shader_parameter("shock_age", shock_age)
+		flower_mat.set_shader_parameter("shock_age", shock_age)
 	if grass_mat and G.player:
 		grass_mat.set_shader_parameter("player_pos", G.player.global_position)
+		flower_mat.set_shader_parameter("player_pos", G.player.global_position)
 	# фонари мерцают, частицы летают вокруг героя
 	var t := G.real_time
 	for i in lantern_lights.size():

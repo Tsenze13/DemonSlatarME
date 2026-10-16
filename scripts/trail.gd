@@ -3,6 +3,7 @@ extends MeshInstance3D
 
 var samples: Array = []   # [base, tip, age]
 var life := 0.16
+var extend := 0.0          # лента стихии выходит за острие (доля длины клинка)
 var emitting := false
 var im := ImmediateMesh.new()
 var mat: ShaderMaterial
@@ -20,10 +21,29 @@ func set_colors(core: Color, edge: Color) -> void:
 	mat.set_shader_parameter("col_core", core)
 	mat.set_shader_parameter("col_edge", edge)
 
+# Вид мазка по стилю дыхания: kind 1 вода, 3 пламя, 4 молния (0 — простой срез).
+func set_style(kind: int, a: Color, b: Color) -> void:
+	mat.set_shader_parameter("style", kind)
+	mat.set_shader_parameter("col_a", a)
+	mat.set_shader_parameter("col_b", b)
+	match kind:
+		1:
+			life = 0.34
+			extend = 0.7
+		3:
+			life = 0.3
+			extend = 0.6
+		4:
+			life = 0.2
+			extend = 0.35
+		_:
+			life = 0.16
+			extend = 0.0
+
 func push(base: Vector3, tip: Vector3) -> void:
 	if emitting:
-		samples.push_front([base, tip, 0.0])
-		if samples.size() > 40:
+		samples.push_front([base, tip + (tip - base) * extend, 0.0])
+		if samples.size() > 60:
 			samples.pop_back()
 
 func _catmull(p0: Vector3, p1: Vector3, p2: Vector3, p3: Vector3, t: float) -> Vector3:
