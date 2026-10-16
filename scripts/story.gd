@@ -176,6 +176,9 @@ func new_game() -> void:
 	for k in ["ryo", "mastery", "hp", "lungs", "focus", "blade", "chapter", "hunts"]:
 		G.prog[k] = 0
 	G.prog.finished2 = false
+	G.prog.formlv = {}
+	G.prog.final = {}
+	G.prog.loadout = {}
 	G.prog.trial = -1
 	G.prog.gift = -1
 	G.prog.onigiri = 2
@@ -459,19 +462,77 @@ func _talk_gensai() -> void:
 		return
 	var lines := ["Ты пришёл учиться или языком чесать? Мастерство у тебя: %d." % int(G.prog.mastery)]
 	var trial_ok := int(G.prog.get("trial", -1)) != chapter and phase in ["day", "free"]
-	_say("gensai", lines, ["Тренироваться", "Испытание: 6 чучел за 25 секунд (+2 мастерства)" if trial_ok else "Испытание уже пройдено — приходи после охоты",
+	_say("gensai", lines, ["Тренироваться", "Новые формы дыхания", "Испытание: 6 чучел за 25 секунд (+2 мастерства)" if trial_ok else "Испытание уже пройдено — приходи после охоты",
 		"Расскажи о демонах", "Ничего, наставник"], _gensai_pick)
 
 func _gensai_pick(i: int) -> void:
 	if i == 0:
 		_train_menu()
 	elif i == 1:
+		_forms_menu()
+	elif i == 2:
 		if int(G.prog.get("trial", -1)) != chapter and phase in ["day", "free"]:
 			_say("gensai", ["Чучела вокруг поляны. Шесть штук. Двадцать пять ударов сердца. Пошёл!"], [], Callable(), _start_trial)
 		else:
 			_say("gensai", ["Сегодня хватит. Тело должно запомнить, а не сломаться."])
-	elif i == 2:
+	elif i == 3:
 		_say("gensai", _gensai_lore())
+
+# Обучение формам текущего стиля: 4-я, 5-я, 6-я (3, 4, 5 мастерства) и финальная (6, с 4-й главы).
+func _forms_menu() -> void:
+	var p = G.player
+	var b: Dictionary = G.br()
+	var known: int = int((G.prog.formlv as Dictionary).get(G.breath_style, 3))
+	var fin: bool = bool((G.prog.final as Dictionary).get(G.breath_style, false))
+	var ch: Array = []
+	if known < 6:
+		ch.append("Форма %d «%s» — %d мастерства" % [known + 1, b.forms[known], known])
+	else:
+		ch.append("Все шесть форм «%s» выучены" % b.name)
+	if not fin:
+		ch.append("Финальная форма «%s» — 6 мастерства%s" % [b.final, "" if chapter >= 4 else " (рано: после 3-й главы)"])
+	else:
+		ch.append("Финальная форма «%s» выучена" % b.final)
+	ch.append("Хватит")
+	_say("gensai", ["Стиль «%s». Ты знаешь %d форм из шести. Мастерство: %d.\nКакие стоят на кнопках — выбирай в паузе, «Снаряжение»." % [b.name, known, int(G.prog.mastery)]], ch, _forms_pick)
+
+func _forms_pick(i: int) -> void:
+	var b: Dictionary = G.br()
+	var st: String = G.breath_style
+	var known: int = int((G.prog.formlv as Dictionary).get(st, 3))
+	if i == 0:
+		if known >= 6:
+			_say("gensai", ["Больше форм у этого стиля нет. Ищи свой — так рождаются новые дыхания."])
+			return
+		if int(G.prog.mastery) < known:
+			_say("gensai", ["Мастерства мало. Нужно %d. Руби демонов." % known])
+			return
+		G.prog.mastery = int(G.prog.mastery) - known
+		var d: Dictionary = G.prog.formlv
+		d[st] = known + 1
+		G.prog.formlv = d
+		G.save_prog()
+		G.sfx.play("chime", -6.0)
+		_say("gensai", ["Смотри внимательно. Один раз. …%s. Повтори. Ещё. Ещё! Вот так." % b.forms[known],
+			"Поставь её на кнопку в паузе — «Снаряжение»."], [], Callable(), _forms_menu)
+	elif i == 1:
+		if bool((G.prog.final as Dictionary).get(st, false)):
+			_say("gensai", ["Финальную форму ты уже знаешь. Помни: только на полном дыхании. Клавиша 4."])
+			return
+		if chapter < 4:
+			_say("gensai", ["Рано. Твои лёгкие не выдержат. Вернись, когда одолеешь отшельника."])
+			return
+		if int(G.prog.mastery) < 6:
+			_say("gensai", ["Нужно 6 мастерства. Финальная форма — это вся твоя жизнь в одном ударе."])
+			return
+		G.prog.mastery = int(G.prog.mastery) - 6
+		var f: Dictionary = G.prog.final
+		f[st] = true
+		G.prog.final = f
+		G.save_prog()
+		G.sfx.play("gong", -4.0)
+		_say("gensai", ["Вдохни до самого дна. Задержи. И отдай всё — разом. Это «%s»." % b.final,
+			"Клавиша 4, когда шкала дыхания полна. После — пустота в груди. Не промахнись."], [], Callable(), _forms_menu)
 
 func _train_menu() -> void:
 	_say("gensai", ["Выбирай. Каждая ступень тяжелее прошлой. (мастерство: %d)" % int(G.prog.mastery)], _upgrade_text(), _train_pick)

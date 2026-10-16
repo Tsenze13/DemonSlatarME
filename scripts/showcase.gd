@@ -31,6 +31,10 @@ func _ready() -> void:
 		_kinds()
 	elif mode == "fest":
 		_fest()
+	elif mode == "forms":
+		_forms()
+	elif mode == "finals":
+		_finals()
 	else:
 		_shots()
 
@@ -578,4 +582,72 @@ func _fest() -> void:
 	await w(0.5)
 	cam(Vector3(8, 4.5, 8), Vector3(0, 0.5, -3))
 	await shot("f3_frost")
+	get_tree().quit()
+
+# Новые формы: 4, 5, 6 и финальная у каждого стиля — кадр в разгар удара.
+func _forms() -> void:
+	await w(0.6)
+	G.hud.help = false
+	var pl: Node3D = G.player
+	_set_time("sunset")
+	var d = G.enemies[0]
+	d.max_hp = 99999.0
+	d.hp = 99999.0
+	G.mode = "free"
+	G.cam_rig.set_process(false)
+	for bi in G.BREATH_ORDER.size():
+		pl.set_breath(bi)
+		var st: String = G.breath_style
+		var keys: Array = [pl.FORMS[st][3], pl.FORMS[st][4], pl.FORMS[st][5], pl.FINAL[st]]
+		for ki in keys.size():
+			var fk: String = keys[ki]
+			_place(Vector3(0, 0.5, 4), PI)
+			d.global_position = Vector3(0, 0.5, 0.0)
+			d.velocity = Vector3.ZERO
+			d.set_physics_process(false)
+			pl.set_drawn(true)
+			pl._set_state("move")
+			await w(0.3)
+			pl._start_attack(fk)
+			var a: Dictionary = pl.ATK[fk]
+			await w(clampf(float(a.hit0) + 0.12, 0.15, 1.2))
+			cam(Vector3(7.5, 4.0, 6.5), Vector3(0, 1.2, 0.5))
+			await shot("m_%s_%d" % [st, ki])
+			await w(float(a.dur))
+	get_tree().quit()
+
+func _finals() -> void:
+	await w(0.6)
+	G.hud.help = false
+	var pl: Node3D = G.player
+	_set_time("sunset")
+	var d = G.enemies[0]
+	d.max_hp = 99999.0
+	d.hp = 99999.0
+	G.mode = "free"
+	G.cam_rig.set_process(false)
+	for bi in G.BREATH_ORDER.size():
+		pl.set_breath(bi)
+		var st: String = G.breath_style
+		_place(Vector3(0, 0.5, 4), PI)
+		d.global_position = Vector3(0, 0.5, 0.0)
+		d.set_physics_process(false)
+		pl.set_drawn(true)
+		pl._set_state("move")
+		pl.breath = pl.max_breath
+		pl.cd["f4"] = 0.0
+		await w(0.3)
+		pl.press("form4")
+		if OS.get_environment("KLINOK_DEBUG") != "":
+			for q in 30:
+				await w(0.1)
+				print(st, " ", pl.state, " ", pl.atk_name, " t=", snapped(pl.state_t, 0.01), " ts=", snapped(Engine.time_scale, 0.01), " big=", G.hud.big)
+			continue
+		var marks: Array = [0.35, 0.75, 1.2] if st != "flame" else [0.7, 1.05, 1.35]
+		for k in 3:
+			while pl.state == "attack" and pl.state_t < marks[k]:
+				await get_tree().process_frame
+			cam(Vector3(9.0, 5.0, 8.0), Vector3(0, 1.2, 1.0))
+			await shot("fin_%s_%d" % [st, k])
+		await w(1.5)
 	get_tree().quit()

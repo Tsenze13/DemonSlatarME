@@ -18,7 +18,8 @@ var cutscene := false       # титры главы / затемнение
 var mode := "free"          # "story" — сюжет, "free" — свободная охота
 
 # Прокачка (сохраняется в save.cfg, раздел [story]).
-var prog := {"ryo": 0, "mastery": 0, "hp": 0, "lungs": 0, "focus": 0, "blade": 0, "chapter": 0, "finished": false, "started": false, "trial": -1, "hunts": 0, "onigiri": 2, "gift": -1, "finished2": false}
+var prog := {"ryo": 0, "mastery": 0, "hp": 0, "lungs": 0, "focus": 0, "blade": 0, "chapter": 0, "finished": false, "started": false, "trial": -1, "hunts": 0, "onigiri": 2, "gift": -1, "finished2": false,
+	"formlv": {}, "final": {}, "loadout": {}}
 
 var difficulty := 1          # 0 — лёгкая, 1 — обычная, 2 — тяжёлая (настройки)
 func dmg_out_mult() -> float:
@@ -68,17 +69,17 @@ const BREATH_ORDER := ["water", "flame", "thunder", "dawn"]
 const BREATHS := {
 	"water": {"name": "Прилив", "kind": 1, "a": Color(0.1, 0.35, 0.85), "b": Color(0.92, 0.97, 1.0),
 		"flash": Color(0.6, 0.85, 1.0), "core": Color(0.95, 0.98, 1.0), "edge": Color(0.25, 0.6, 1.0),
-		"forms": ["Веерный срез", "Водоворот", "Тихая гладь"]},
+		"forms": ["Веерный срез", "Водоворот", "Тихая гладь", "Ливень", "Водопад", "Течение"], "final": "Бездна"},
 	"flame": {"name": "Пламя", "kind": 3, "a": Color(0.9, 0.18, 0.04), "b": Color(1.0, 0.93, 0.5),
 		"flash": Color(1.0, 0.6, 0.3), "core": Color(1.0, 0.95, 0.7), "edge": Color(1.0, 0.35, 0.05),
-		"forms": ["Восход пламени", "Огненное колесо", "Пламенный тигр"]},
+		"forms": ["Восход пламени", "Огненное колесо", "Пламенный тигр", "Кольцо горна", "Огненный выпад", "Огненный метеор"], "final": "Солнце горна"},
 	"thunder": {"name": "Гром", "kind": 4, "a": Color(1.0, 0.74, 0.1), "b": Color(1.0, 1.0, 0.9),
 		"flash": Color(1.0, 0.9, 0.45), "core": Color(1.0, 1.0, 0.9), "edge": Color(1.0, 0.78, 0.1),
-		"forms": ["Удар молнии", "Шестикратный разряд", "Раскат грома"]},
+		"forms": ["Удар молнии", "Шестикратный разряд", "Раскат грома", "Гром в облаках", "Цепная молния", "Тысяча вспышек"], "final": "Небесный суд"},
 	# Скрытое корневое дыхание — открывается после победы над Кагэцу. Эффекты — семейства пламени, золото рассвета.
 	"dawn": {"name": "Заря", "kind": 3, "a": Color(1.0, 0.5, 0.08), "b": Color(1.0, 0.97, 0.75), "fx": "flame",
 		"flash": Color(1.0, 0.82, 0.45), "core": Color(1.0, 0.98, 0.85), "edge": Color(1.0, 0.62, 0.1),
-		"forms": ["Восходящий диск", "Шесть лучей", "Солнце в зените"]},
+		"forms": ["Восходящий диск", "Шесть лучей", "Солнце в зените", "Ореол", "Луч зари", "Солнечное колесо"], "final": "Танец рассвета"},
 }
 
 func br() -> Dictionary:
@@ -230,7 +231,7 @@ func _setup_input() -> void:
 		"parry": [KEY_Q], "breathe": [KEY_R], "form1": [KEY_1],
 		"form2": [KEY_2], "form3": [KEY_3], "lock": [KEY_TAB],
 		"daynight": [KEY_N], "pause": [KEY_ESCAPE], "help": [KEY_F1],
-		"light": [KEY_J], "heavy": [KEY_K], "draw": [KEY_F], "mark": [KEY_V], "map": [KEY_M], "eat": [KEY_H],
+		"light": [KEY_J], "heavy": [KEY_K], "draw": [KEY_F], "mark": [KEY_V], "map": [KEY_M], "eat": [KEY_H], "form4": [KEY_4],
 	}
 	var mouse := {"light": MOUSE_BUTTON_LEFT, "heavy": MOUSE_BUTTON_RIGHT, "lock": MOUSE_BUTTON_MIDDLE}
 	var pad := {

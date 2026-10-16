@@ -498,7 +498,7 @@ func _run() -> void:
 			p.velocity = Vector3.ZERO
 			p.hp = p.max_hp
 			p.breath = 100.0
-			p.cd = {"f1": 0.0, "f2": 0.0, "f3": 0.0}
+			p.cd = {"f1": 0.0, "f2": 0.0, "f3": 0.0, "f4": 0.0}
 			await w(0.25)
 			var h0: int = p.hits_total
 			p.press("form%d" % (fi + 1))
@@ -809,6 +809,61 @@ func _run() -> void:
 	check(p.elem_k > 0.5, "стихия на хаори после формы (%.2f)" % p.elem_k)
 	p.set_breath(0)
 	check(G.music.ready_, "музыка и окружение готовы (%d мс)" % G.music.gen_ms)
+	# ===== Формы: по 6 на стиль + финальная =====
+	var forms_ok := true
+	var bad := ""
+	for st_name in p.FORMS:
+		var pool: Array = p.FORMS[st_name]
+		if pool.size() != 6 or not p.ATK.has(p.FINAL[st_name]) or G.BREATHS[st_name].forms.size() != 6:
+			forms_ok = false
+			bad += st_name + " "
+		for fk in pool:
+			if fk != "stance" and not p.ATK.has(fk):
+				forms_ok = false
+				bad += fk + " "
+	check(forms_ok, "у каждого стиля 6 форм и финальная %s" % bad)
+	var dmo = G.enemies[0] if G.enemies.size() > 0 else null
+	if dmo:
+		dmo.global_position = p.global_position + Vector3(0, 0, -3)
+		dmo.hp = 99999.0
+		dmo.max_hp = 99999.0
+	var ran := 0
+	for bi in G.BREATH_ORDER.size():
+		p.set_breath(bi)
+		var st_n: String = G.breath_style
+		var keys: Array = p.FORMS[st_n].duplicate()
+		keys.append(p.FINAL[st_n])
+		for fk in keys:
+			if fk == "stance":
+				continue
+			p.global_position = Vector3(0, 0.5, 4)
+			p.velocity = Vector3.ZERO
+			p._set_state("move")
+			p._start_attack(fk)
+			await w(minf(float(p.ATK[fk].dur) + 0.15, 2.4))
+			ran += 1
+	check(ran == 4 * 7 - 1, "все формы всех стилей выполняются (%d)" % ran)
+	# кнопки: на 1 — шестая форма; финальная — только на полной шкале
+	p.set_breath(0)
+	p.set_loadout(0, 5)
+	check(p.slot_key(1) == "wf6", "на кнопку 1 поставлена 6-я форма (%s)" % p.slot_key(1))
+	p.set_loadout(0, 0)
+	p._set_state("move")
+	p.cd["f4"] = 0.0
+	p.breath = 50.0
+	p.press("form4")
+	await w(0.2)
+	check(p.state != "attack" or not p.atk.get("final", false), "финальная форма не идёт без полной шкалы")
+	p._set_state("move")
+	p.breath = p.max_breath
+	p.press("form4")
+	await w(0.2)
+	check(p.state == "attack" and p.atk.get("final", false) and p.breath < 1.0, "финальная форма тратит всю шкалу")
+	await w(2.0)
+	p._set_state("move")
+	if dmo:
+		dmo.max_hp = 240.0
+		dmo.hp = 240.0
 	# ===== СЮЖЕТ: пролог, глава, жители, прокачка, виды демонов =====
 	var st = G.story
 	st.fast = true
@@ -875,6 +930,14 @@ func _run() -> void:
 	st._tetsu_pick(0)
 	await _skip_talk()
 	check(int(G.prog.blade) == 1 and G.dmg_out_mult() > 1.05, "кузнец закалил клинок")
+	# наставник учит формам
+	G.prog.mastery = 20
+	var lv0 := int((G.prog.formlv as Dictionary).get(G.breath_style, 3))
+	st._forms_pick(0)
+	await _skip_talk()
+	if G.dialog_ui.buttons.size() > 0:
+		G.dialog_ui._pick(G.dialog_ui.buttons.size() - 1)
+	check(int((G.prog.formlv as Dictionary).get(G.breath_style, 3)) == lv0 + 1, "наставник учит новой форме")
 	# разговоры со всеми жителями
 	for id in ["elder", "okiku", "taro", "tetsu", "gensai"]:
 		st.talk(id)

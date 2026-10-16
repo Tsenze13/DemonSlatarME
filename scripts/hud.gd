@@ -77,12 +77,15 @@ func big_text(t: String) -> void:
 	big_t = 2.6
 
 # Название формы по текущему стилю дыхания: [подпись, имя].
+# Имя формы по её номеру в стиле: "f1".."f6", "f7" — финальная.
 func _form(nm: String) -> Array:
 	var b: Dictionary = G.br()
-	var idx := ["f1", "f2", "f3"].find(nm)
+	var idx := ["f1", "f2", "f3", "f4", "f5", "f6", "f7"].find(nm)
 	if idx < 0:
 		return ["", ""]
-	var ord: String = ["ПЕРВАЯ", "ВТОРАЯ", "ТРЕТЬЯ"][idx]
+	if idx == 6:
+		return ["%s · ФИНАЛЬНАЯ ФОРМА" % String(b.name).to_upper(), String(b.get("final", ""))]
+	var ord: String = ["ПЕРВАЯ", "ВТОРАЯ", "ТРЕТЬЯ", "ЧЕТВЁРТАЯ", "ПЯТАЯ", "ШЕСТАЯ"][idx]
 	return ["%s · %s ФОРМА" % [String(b.name).to_upper(), ord], b.forms[idx]]
 
 func form_title(nm: String) -> void:
@@ -387,22 +390,29 @@ func _draw() -> void:
 		_txt(Vector2(x0, y0 + 112 * u), "Полная концентрация...", int(16 * u), Color(0.6, 0.85, 1.0))
 
 	# --- формы дыхания ---
-	var fw := 190.0 * u
-	var fx0 := s.x * 0.5 - fw * 1.5 - 12 * u
+	var fw := 176.0 * u
+	var has_final: bool = p.final_known()
+	var nb := 4 if has_final else 3
+	var fx0 := s.x * 0.5 - (fw * nb + 12 * u * (nb - 1)) * 0.5
 	var fy := s.y - 92 * u
-	var keys := ["f1", "f2", "f3"]
-	var cost := [int(p.form_cost(1)), int(p.form_cost(2)), int(p.form_cost(3))]
-	for i in 3:
+	var keys := ["f1", "f2", "f3", "f4"]
+	for i in nb:
 		var r := Rect2(fx0 + i * (fw + 12 * u), fy, fw, 58 * u)
-		draw_rect(r.grow(2), Color(0.02, 0.02, 0.05, 0.85))
-		draw_rect(r, Color(0.08, 0.14, 0.3, 0.85))
+		var fin := i == 3
+		var cost_i := int(p.form_cost(i + 1))
+		draw_rect(r.grow(2), Color(0.6, 0.45, 0.15, 0.9) if fin else Color(0.02, 0.02, 0.05, 0.85))
+		draw_rect(r, Color(0.25, 0.15, 0.04, 0.88) if fin else Color(0.08, 0.14, 0.3, 0.85))
 		var cdv: float = p.cd[keys[i]]
 		var maxcd: float = p.form_cd(i + 1)
 		if cdv > 0.0:
 			draw_rect(Rect2(r.position, Vector2(r.size.x * cdv / maxcd, r.size.y)), Color(0, 0, 0, 0.55))
-		var ok: bool = p.breath >= cost[i] and cdv <= 0.0
-		_txt(r.position + Vector2(10 * u, 22 * u), "%d  %s" % [i + 1, _form(keys[i])[1]], int(16 * u), Color(0.9, 0.96, 1.0) if ok else Color(0.5, 0.55, 0.65))
-		_txt(r.position + Vector2(10 * u, 46 * u), "дыхание %d" % cost[i], int(12 * u), Color(0.55, 0.75, 1.0) if ok else Color(0.4, 0.45, 0.55))
+		var ok: bool = (p.breath >= p.max_breath - 0.5 if fin else p.breath >= cost_i) and cdv <= 0.0
+		var nm: String = _form("f%d" % (p.slot_index(i + 1) + 1))[1]
+		var on_col := Color(1.0, 0.9, 0.6) if fin else Color(0.9, 0.96, 1.0)
+		if fin and ok:
+			on_col = on_col.lerp(Color.WHITE, 0.5 + 0.5 * sin(G.real_time * 6.0))
+		_txt(r.position + Vector2(10 * u, 22 * u), "%d  %s" % [i + 1, nm], int(16 * u), on_col if ok else Color(0.5, 0.55, 0.65))
+		_txt(r.position + Vector2(10 * u, 46 * u), "полная шкала" if fin else "дыхание %d" % cost_i, int(12 * u), (Color(1.0, 0.8, 0.4) if fin else Color(0.55, 0.75, 1.0)) if ok else Color(0.4, 0.45, 0.55))
 
 	if show_map and G.started:
 		_draw_map(s, u)
