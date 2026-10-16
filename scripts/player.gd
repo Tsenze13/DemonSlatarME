@@ -233,6 +233,7 @@ var breath := 100.0
 var max_breath := 100.0
 var dash_charges := 2.0
 var momentum := 0                 # ступень разгона 0..MOMENTUM_MAX
+var momentum_note_t := -99.0
 var momentum_lost_t := 0.0
 var state := "move"
 var state_t := 0.0
@@ -1267,7 +1268,7 @@ func _set_state(s: String) -> void:
 # --- Прыжки по ветвям кедров -----------------------------------------------
 # В воздухе Пробел — если впереди (по взгляду камеры) есть ветка-облако кедра,
 # герой летит к ней дугой и встаёт сверху. С ветки на ветку — без ограничений.
-const LEAP_RANGE := 17.0
+const LEAP_RANGE := 13.0
 var leap_from := Vector3.ZERO
 var leap_to := Vector3.ZERO
 var leap_t := 0.0
@@ -1287,12 +1288,15 @@ func _near_trunk() -> bool:
 			return true
 	return false
 
+# Ветка-цель: только та, на которую явно смотрит камера (узкий конус ~35°)
+# и куда не против ведёт ввод — иначе обычный двойной прыжок («не магнитит»).
 func find_pad() -> Vector3:
 	if not G.world or G.world.get("cedar_pads") == null or G.cam_rig == null:
 		return Vector3.INF
-	var cf: Vector3 = -G.cam_rig.cam.global_transform.basis.z
-	cf.y = 0.0
-	cf = cf.normalized() if cf.length() > 0.01 else _forward()
+	var cam: Camera3D = G.cam_rig.cam
+	var cf: Vector3 = -cam.global_transform.basis.z
+	var cfh := Vector3(cf.x, 0, cf.z).normalized() if Vector2(cf.x, cf.z).length() > 0.01 else _forward()
+	var inp := _input_dir()
 	var me := global_position
 	var best := Vector3.INF
 	var bs := -99.0
@@ -1302,12 +1306,15 @@ func find_pad() -> Vector3:
 		if hd < 1.8 and absf(d.y) < 1.5:
 			continue                       # та, на которой стоим
 		var dist := d.length()
-		if dist > LEAP_RANGE or dist < 2.0 or d.y < -6.0 or d.y > 11.0:
+		if dist > LEAP_RANGE or dist < 2.0 or d.y < -4.0 or d.y > 9.0:
 			continue
-		var ang := Vector3(d.x, 0, d.z).normalized().dot(cf) if hd > 0.3 else 1.0
-		if ang < 0.3:
+		var dh := Vector3(d.x, 0, d.z).normalized() if hd > 0.3 else cfh
+		var ang := dh.dot(cfh)
+		if ang < 0.82:
 			continue
-		var sc := ang * 2.0 + clampf(d.y, -2.0, 6.0) * 0.12 - dist * 0.06
+		if inp.length() > 0.3 and dh.dot(inp.normalized()) < 0.2:
+			continue                       # жмёшь в другую сторону — значит, не к ветке
+		var sc := ang * 4.0 - dist * 0.08 + clampf(d.y, -2.0, 4.0) * 0.05
 		if sc > bs:
 			bs = sc
 			best = q
@@ -1318,9 +1325,11 @@ func _start_leap() -> bool:
 	if tgt == Vector3.INF:
 		return false
 	leap_from = global_position
-	leap_to = tgt
+	# встать на ближний край облака, а не точно в центр — меньше «притягивания»
+	var toh := Vector3(tgt.x - leap_from.x, 0, tgt.z - leap_from.z)
+	leap_to = tgt - toh.normalized() * minf(0.5, toh.length() * 0.1) if toh.length() > 0.1 else tgt
 	var dist := leap_from.distance_to(leap_to)
-	leap_dur = clampf(dist / 24.0, 0.3, 0.7)
+	leap_dur = clampf(dist / 18.0, 0.38, 0.8)
 	leap_h = 1.2 + dist * 0.1 + maxf(0.0, leap_to.y - leap_from.y) * 0.15
 	leap_t = 0.0
 	leap_count += 1
@@ -1341,7 +1350,7 @@ func _start_leap() -> bool:
 
 func _st_leap(dt: float) -> void:
 	leap_t = minf(1.0, leap_t + dt / leap_dur)
-	var k := leap_t * leap_t * (3.0 - 2.0 * leap_t) * 0.6 + leap_t * 0.4
+	var k := 1.0 - pow(1.0 - leap_t, 1.6)          # быстрый толчок, мягкое приземление
 	var p := leap_from.lerp(leap_to, k) + Vector3.UP * sin(PI * k) * leap_h
 	velocity = (p - global_position) / maxf(dt, 0.001)
 	global_position = p
@@ -1604,8 +1613,10 @@ func _st_dash(dt: float, inp: Vector3) -> void:
 		# рывок на бегу — ступень разгона выше
 		if _input_dir().length() > 0.2:
 			momentum = mini(MOMENTUM_MAX, momentum + 1)
-			if G.hud and momentum >= 2:
-				G.hud.notify("Разгон ×%.1f" % (1.0 + MOMENTUM_STEP * momentum), 0.8)
+			# надпись только при полном разгоне и не чаще раза в 5 с
+			if G.hud and momentum >= MOMENTUM_MAX and G.real_time - momentum_note_t > 5.0:
+				momentum_note_t = G.real_time
+				G.hud.notify("Полный разгон ×%.1f" % (1.0 + MOMENTUM_STEP * momentum), 0.8)
 		velocity = dash_dir * maxf(RUN_SPEED * 1.6, RUN_SPEED * (1.0 + MOMENTUM_STEP * momentum))
 		_set_state("move")
 		flash_window = 0.25
@@ -1674,12 +1685,20 @@ func _start_flash() -> void:
 			var f := float(k + 1) / 3.0
 			flash_hops.append(flash_from.lerp(flash_to, f) + side * (1.6 if k % 2 == 0 else -1.6) * (0.0 if k == 2 else 1.0))
 	elif G.breath_style == "flame":
+		# старт — взрыв огня под ногами (толчок, как из пушки)
 		G.fx.breath_sound(0.0, 0.85)
-		G.fx.ring(global_position + Vector3.UP * 0.1, 1.0, Color(1.0, 0.45, 0.1), Color(1.0, 0.9, 0.5), 0.4, 3.0, 0.5)
+		G.sfx.play("fire", -2.0, 0.8)
+		G.fx.ring(global_position + Vector3.UP * 0.1, 1.0, Color(1.0, 0.45, 0.1), Color(1.0, 0.9, 0.5), 0.45, 5.0, 0.5)
+		G.fx.burst(global_position + Vector3.UP * 0.5, Color(1.0, 0.5, 0.1), 18, 7.0, 0.22, 0.45, -2.0, -dir + Vector3.UP * 0.6, 0.7, 2.0)
+		G.fx.embers(global_position + Vector3.UP * 0.4, 20, 1.2)
+		G.fx.cracks(global_position + Vector3.UP * 0.03, 6, 1.4)
+		G.add_shake(0.2)
+		if G.cam_rig and G.cam_rig.has_method("kick_fov"):
+			G.cam_rig.kick_fov(16.0)
 
 func _st_flash(dt: float) -> void:
 	var k := clampf(state_t / flash_dur, 0.0, 1.0)
-	var p := flash_from.lerp(flash_to, Vox.ease_in_out(k) if G.breath_style == "flame" else k)
+	var p := flash_from.lerp(flash_to, (1.0 - pow(1.0 - k, 2.2)) if G.breath_style == "flame" else k)
 	velocity = Vector3.ZERO
 	var prev := global_position
 	match G.breath_style:
@@ -1693,14 +1712,24 @@ func _st_flash(dt: float) -> void:
 				G.sfx.play("thunder", -10.0, 1.5)
 			p = target
 		"flame":
-			# полёт низкой дугой, огненный шлейф
-			p.y = flash_from.y + sin(k * PI) * 1.4
+			# огненный рывок: низко над землёй, корпус вперёд, клинок перед собой;
+			# за героем — сплошной огненный хвост и искры, как выстрел
+			var gy: float = G.world.height_at(p.x, p.z) if G.world and G.world.has_method("height_at") else flash_from.y
+			p.y = maxf(gy, flash_from.y - 2.0) + 0.25 + sin(k * PI) * 0.35
+			var cur := p + Vector3.UP * 0.9
+			G.fx.streak(prev + Vector3.UP * 0.9, cur, Color(1.0, 0.92, 0.6), 0.14, 0.14)
+			# языки огня вдоль пути: рвутся вверх и гаснут
+			var seg := cur - (prev + Vector3.UP * 0.9)
+			var nt := clampi(int(seg.length() / 0.6), 1, 6)
+			for i in nt:
+				var q := prev + Vector3.UP * 0.6 + seg * (float(i) / nt)
+				G.fx.burst(q, Color(1.0, 0.55, 0.12) if i % 2 == 0 else Color(1.0, 0.82, 0.3), 2, 2.5, 0.28, 0.4, -5.0, Vector3.UP, 0.25, 2.2)
 			flash_fx_t -= dt
 			if flash_fx_t <= 0.0:
-				flash_fx_t = 0.03
-				G.fx.breath_arc(prev + Vector3.UP * 0.9, (flash_to - flash_from).normalized(), randf_range(-30, 30), 1.0, 300.0, 0.7, 0.35)
-				G.fx.embers(prev + Vector3.UP * 0.8, 6, 1.2)
-				G.fx.afterimage(model, Color(1.0, 0.5, 0.15), 0.25)
+				flash_fx_t = 0.04
+				G.fx.embers(prev + Vector3.UP * 0.6, 8, 0.8)
+				G.fx.burst(prev + Vector3.UP * 0.8, Color(1.0, 0.45, 0.1), 3, 3.0, 0.2, 0.35, -3.0, Vector3.UP, 0.4, 2.0)
+				G.fx.afterimage(model, Color(1.0, 0.5, 0.15), 0.3)
 		_:
 			flash_fx_t -= dt
 			if flash_fx_t <= 0.0:
@@ -3114,11 +3143,18 @@ func _animate(dt: float) -> void:
 			lean = 15.0
 	if state == "dash" or state == "flash":
 		# рывок: низкий выпад, толчковая нога вытянута назад, руки и клинок назад
-		lean = 75.0 if (state == "flash" and G.breath_style == "flame") else 45.0
+		lean = 45.0
 		p.arm_r = Vector3(75, 0, -20)
 		p.arm_l = Vector3(75, 0, 20)
 		p.fore_r = Vector3(-10, 0, 0)
 		p.sword = Vector3(-70, 0, 0)
+		if state == "flash" and G.breath_style == "flame":
+			# огненный рывок: корпус низко вперёд, клинок двумя руками вперёд-вниз, как таран
+			lean = 50.0
+			p.arm_r = Vector3(-70, 0, -10)
+			p.arm_l = Vector3(-70, 0, 15)
+			p.fore_r = Vector3(-20, 0, 0)
+			p.sword = Vector3(-15, 0, 0)
 		p.leg_r = Vector3(-55, 0, 0)
 		p.shin_r = Vector3(80, 0, 0)
 		p.leg_l = Vector3(40, 0, 0)

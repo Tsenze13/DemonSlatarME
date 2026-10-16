@@ -15,6 +15,8 @@ func _ready() -> void:
 		_move()
 	elif mode == "fx":
 		_fx()
+	elif mode == "flame":
+		_flame()
 	else:
 		_shots()
 
@@ -207,4 +209,22 @@ func _fx() -> void:
 		cam(pl.global_position + Vector3(4.0, 2.5, 3.0), pl.global_position + Vector3(0, 1.0, -1.0))
 		await shot("fx%d_form" % st)
 		await w(1.2)
+	get_tree().quit()
+
+# Огненный рывок (E со стилем пламени) — для видео.
+func _flame() -> void:
+	await w(0.5)
+	G.hud.help = false
+	_park_demons()
+	var pl: Node3D = G.player
+	_set_time("sunset")
+	pl.set_breath(1)
+	pl.set_drawn(true)
+	_place(Vector3(0, 0.5, 14), PI)
+	G.cam_rig.yaw = 0.0
+	await w(0.8)
+	for k in 3:
+		pl.breath = 100.0
+		pl.press("flash")
+		await w(1.0)
 	get_tree().quit()

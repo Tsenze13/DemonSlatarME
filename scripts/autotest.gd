@@ -743,9 +743,38 @@ func _run() -> void:
 			if p.global_position.distance_to(q) < 1.6:
 				on_pad = true
 		check(on_pad and p.is_on_floor(), "герой стоит на ветке (%.1f м)" % p.global_position.y)
+		# камера смотрит мимо веток — обычный двойной прыжок, без «магнита»
+		p.global_position = Vector3(pad0.x, 0.0, pad0.z) + away * 6.0
+		p.velocity = Vector3.ZERO
+		p._set_state("move")
+		await w(0.4)
+		G.cam_rig.yaw = atan2(away.x, away.z) + PI
+		p.press("jump")
+		await w(0.2)
+		var lc2: int = p.leap_count
+		p.press("jump")
+		await w(0.3)
+		check(p.leap_count == lc2, "к ветке — только если смотришь на неё")
 		p.global_position = Vector3(0, 0.5, 6)
 		p.velocity = Vector3.ZERO
 		await w(0.6)
+	# титры мест не мелькают на бегу: место должно «устояться» 1,5 с
+	var hud = G.hud
+	hud.loc_t = 0.0
+	hud.loc_seen.clear()
+	hud.loc_name = ""
+	var shown := 0
+	for k in 12:
+		p.global_position = Vector3(32, 0.5, -20) if k % 2 == 0 else Vector3(-34, 0.5, -16)
+		await w(0.3)
+		if hud.loc_t > 0.0:
+			shown += 1
+	check(shown == 0, "титры мест не спамят при быстром перемещении")
+	p.global_position = Vector3(32, 0.5, -20)
+	await w(2.2)
+	check(hud.loc_name == "Деревня Ивакура", "титр места появляется, если задержаться")
+	p.global_position = Vector3(0, 0.5, 6)
+	await w(0.3)
 	# мир: рельеф, пруд, кедры с ветками, время суток
 	check(G.world.height_at(0, 0) == 0.0 and G.world.height_at(-34, -5) < 0.0 and G.world.height_at(0, -62) >= 3.0, "рельеф: поляна, пруд, холм святилища")
 	check(G.world.cedar_pads.size() > 100, "кедры с ветками для прыжков (%d)" % G.world.cedar_pads.size())

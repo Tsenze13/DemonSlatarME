@@ -24,6 +24,10 @@ var loc_name := ""
 var loc_sub := ""
 var loc_t := 0.0
 var loc_check := 0.0
+var loc_cand := ""             # место, где герой сейчас (ещё без титра)
+var loc_cand_sub := ""
+var loc_stay := 0.0
+var loc_seen := {}             # место → когда последний раз показан титр
 var show_map := true
 
 const RANKS := [
@@ -49,11 +53,16 @@ func _ready() -> void:
 	serif = sf
 	process_mode = Node.PROCESS_MODE_ALWAYS
 
+var note_last := {}             # текст → когда показан (одна и та же надпись не мигает)
+
 func notify(t: String, life := 2.2) -> void:
 	for n in notes:
 		if n[0] == t:
 			n[1] = life
 			return
+	if G.real_time - float(note_last.get(t, -99.0)) < 4.0:
+		return
+	note_last[t] = G.real_time
 	notes.append([t, life])
 	if notes.size() > 3:
 		notes.pop_front()
@@ -127,11 +136,21 @@ func _process(_d: float) -> void:
 	loc_t = maxf(0.0, loc_t - dt)
 	loc_check -= dt
 	if loc_check <= 0.0 and G.world and G.player and G.world.has_method("region_at"):
-		loc_check = 0.5
+		loc_check = 0.25
 		var r: Array = G.world.region_at(G.player.global_position)
-		if r[0] != loc_name:
-			loc_name = r[0]
-			loc_sub = r[1]
+		# титр — только когда герой задержался в новом месте (не мелькает на бегу),
+		# одно и то же место — не чаще раза в 2 минуты, «луга» без титра
+		if r[0] != loc_cand:
+			loc_cand = r[0]
+			loc_cand_sub = r[1]
+			loc_stay = 0.0
+		else:
+			loc_stay += 0.25
+		var since: float = G.real_time - float(loc_seen.get(loc_cand, -999.0))
+		if loc_stay >= 1.5 and loc_cand != loc_name and r[1] != "" and since > 120.0 and loc_t <= 0.0:
+			loc_name = loc_cand
+			loc_sub = loc_cand_sub
+			loc_seen[loc_name] = G.real_time
 			loc_t = 4.5
 	queue_redraw()
 
