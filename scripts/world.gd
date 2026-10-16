@@ -188,6 +188,29 @@ func set_time(t: String) -> void:
 		water_mat.set_shader_parameter("deep", Color(0.1, 0.28, 0.42) if t != "night" else Color(0.08, 0.14, 0.3))
 		water_mat.set_shader_parameter("shallow", Color(0.25, 0.52, 0.58) if t != "night" else Color(0.14, 0.24, 0.4))
 
+# Кровавая луна (бой с Тенью): 0 — обычная ночь, 1 — небо алеет, 2 — багровая тьма.
+var blood := 0
+func blood_moon(level: int) -> void:
+	blood = level
+	if level <= 0:
+		set_time(time_of_day)
+		return
+	var k := 0.6 if level == 1 else 1.0
+	sky_mat.set_shader_parameter("top_col", Color(0.12, 0.02, 0.05).lerp(Color(0.05, 0.0, 0.02), k - 0.6))
+	sky_mat.set_shader_parameter("hor_col", Color(0.55, 0.08, 0.1).lerp(Color(0.35, 0.02, 0.05), k - 0.6))
+	sky_mat.set_shader_parameter("sun_col", Color(1.0, 0.2, 0.15))
+	sky_mat.set_shader_parameter("moon", 1.0)
+	sky_mat.set_shader_parameter("halo", 1.4)
+	sky_mat.set_shader_parameter("cloud_lit", Color(0.6, 0.12, 0.12))
+	sky_mat.set_shader_parameter("cloud_shade", Color(0.2, 0.03, 0.05))
+	sun.light_color = Color(1.0, 0.55, 0.5)
+	env.ambient_light_color = Color(0.36, 0.2, 0.26)
+	env.fog_light_color = Color(0.3, 0.05, 0.08)
+	env.fog_density = 0.007 * k * fog_mult
+	env.adjustment_saturation = 1.0
+	if G.sfx:
+		G.sfx.play("gong", -2.0, 0.6)
+
 func next_time() -> void:
 	var order := ["day", "sunset", "night"]
 	set_time(order[(order.find(time_of_day) + 1) % 3])

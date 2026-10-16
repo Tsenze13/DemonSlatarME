@@ -104,6 +104,8 @@ func boss_intro(nm: String) -> void:
 
 func add_combo(kind: String, dmg: int) -> void:
 	combo += 1
+	if combo > int(G.stats.best_combo):
+		G.stats.best_combo = combo
 	combo_t = 3.0
 	var mult := 1.4 if kind != last_kind else 0.6
 	if kind in ["f1", "f2", "f3", "parry", "dodge", "finish", "counter"]:
@@ -419,7 +421,9 @@ func _draw() -> void:
 	var e: Node = null
 	for en in G.enemies:
 		if is_instance_valid(en) and not en.is_dead():
-			e = en
+			# на полосе — самый сильный из заметивших героя (босс важнее низших)
+			if e == null or (en.noticed and en.max_hp > e.max_hp) or (not e.noticed and en.noticed):
+				e = en
 	if e and e.noticed:
 		var bw := 520.0 * u
 		var bx := s.x * 0.5 - bw * 0.5

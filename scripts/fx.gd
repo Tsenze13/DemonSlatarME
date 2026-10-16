@@ -291,7 +291,7 @@ func breath_ring_arc(center: Vector3, basis: Basis, radius: float, a0: float, a1
 
 # Брызги стиля: вода — капли, пламя — искры, гром — разряды.
 func breath_burst(pos: Vector3, dir: Vector3, n := 10) -> void:
-	match G.breath_style:
+	match G.fx_style():
 		"flame":
 			embers(pos, n, 1.2)
 		"thunder":
@@ -303,7 +303,7 @@ func breath_burst(pos: Vector3, dir: Vector3, n := 10) -> void:
 			droplets(pos, dir, n)
 
 func breath_sound(vol := 0.0, pitch := 1.0) -> void:
-	match G.breath_style:
+	match G.fx_style():
 		"flame":
 			G.sfx.play("fire", vol, pitch)
 		"thunder":

@@ -70,6 +70,9 @@ const TYPES := {
 	"weaver": {"name": "Кровавая ткачиха", "hp": 180.0, "scale": 1.3, "skin": Color(0.84, 0.78, 0.84), "robe": Color(0.34, 0.08, 0.38),
 		"hair": Color(0.08, 0.05, 0.1), "spd": 7.0, "rspd": 8.4, "dmg": 12.0, "leap": 0.0, "ranged": true, "regen": 30.0,
 		"exposed": 3.2, "spears": 5, "horns": 3, "windup": 0.4, "armor": false, "kite": true, "intro": true, "reward": 80},
+	"shade": {"name": "Тень Кагэцу", "hp": 20.0, "scale": 1.3, "skin": Color(0.12, 0.08, 0.16), "robe": Color(0.05, 0.03, 0.08),
+		"hair": Color(0.45, 0.04, 0.08), "spd": 9.0, "rspd": 9.0, "dmg": 8.0, "leap": 0.0, "ranged": false, "regen": 0.0,
+		"exposed": 1.0, "spears": 0, "horns": 5, "windup": 0.42, "armor": false, "kite": false, "intro": false, "reward": 0, "fragile": true},
 	"boss": {"name": "Кагэцу, Третья Тень", "hp": 700.0, "scale": 1.5, "skin": Color(0.88, 0.85, 0.88), "robe": Color(0.07, 0.06, 0.11),
 		"hair": Color(0.55, 0.06, 0.1), "spd": 7.4, "rspd": 9.2, "dmg": 20.0, "leap": 0.4, "ranged": true, "regen": 45.0,
 		"exposed": 3.0, "spears": 6, "horns": 5, "windup": 0.36, "armor": false, "kite": false, "intro": true, "reward": 300},
@@ -79,6 +82,8 @@ var T: Dictionary = {}
 var lives := 0              # у Тени: сколько раз шея «срастается» после добивания
 var summoned := false
 var blink_cd := 6.0
+var pool_cd := 99.0          # кровавые лужи (Тень во 2–3 фазе)
+var pools: Array = []
 var sc := 1.35              # масштаб модели
 
 func _ready() -> void:
@@ -108,6 +113,16 @@ func _ready() -> void:
 
 func _exit_tree() -> void:
 	G.enemies.erase(self)
+	for pl in pools:
+		if is_instance_valid(pl.n):
+			pl.n.queue_free()
+	pools.clear()
+	for sp in spears:
+		if is_instance_valid(sp.n):
+			sp.n.queue_free()
+	spears.clear()
+	if kind == "boss" and G.world and G.world.get("blood") != null and G.world.blood > 0:
+		G.world.blood_moon(0)
 
 func is_dead() -> bool:
 	return state == "dead"
@@ -292,6 +307,7 @@ func _physics_process(dt: float) -> void:
 	combo_t -= dt
 	_update_spears(dt)
 	_update_flash(dt)
+	_update_pools(dt)
 	var p: Node3D = G.player
 	if state == "dead":
 		_dead_tick(dt)
@@ -685,6 +701,10 @@ func take_hit(dmg: float, dir: Vector3, atk: Dictionary) -> Dictionary:
 		if side != "":
 			_cut_arm(side, dir)
 			res.cut_limb = true
+	if hp <= 0.0 and T.get("fragile", false):
+		hp = 0.0
+		_shade_pop(dir)
+		return res
 	if hp <= 0.0:
 		hp = 0.0
 		_expose()
@@ -742,6 +762,7 @@ func _update_flash(dt: float) -> void:
 
 func _cut_arm(side: String, dir: Vector3) -> void:
 	arms_alive[side] = false
+	G.stat_add("arms")
 	arm_regrow[side] = 5.0
 	var arm: Node3D = J["fore_" + side]
 	var rb := RigidBody3D.new()
@@ -807,6 +828,7 @@ func _regrow_arm(side: String) -> void:
 # Отрубить голень: нога падает, демон оседает на колено и ковыляет,
 # через 6 с нога отрастает по вокселям (кость с когтями → мышцы → кожа).
 func _cut_leg(side: String, dir: Vector3) -> void:
+	G.stat_add("legs")
 	legs_alive[side] = false
 	leg_regrow[side] = 6.0
 	var shin: Node3D = J["shin_" + side]
@@ -983,6 +1005,10 @@ func decapitate(dir: Vector3) -> void:
 	ash_parts.shuffle()
 	ash_t = 0.0
 	G.add_kill()
+	if kind == "boss":
+		G.stat_add("bosses")
+		if G.world and G.world.has_method("blood_moon"):
+			G.world.blood_moon(0)
 	if G.story:
 		G.story.on_demon_killed(self)
 
@@ -1012,6 +1038,10 @@ func _dead_tick(dt: float) -> void:
 		for sp in spears:
 			sp.n.queue_free()
 		spears.clear()
+		for pl in pools:
+			if is_instance_valid(pl.n):
+				pl.n.queue_free()
+		pools.clear()
 		queue_free()
 
 # =====================================================================
@@ -1198,14 +1228,26 @@ func _blood_rain(p: Node3D) -> void:
 		spears.append({"n": mi, "v": v, "life": 2.0, "delay": 0.5 + i * 0.05})
 		G.fx.ring(target + Vector3.UP * 0.05, 0.5, Color(0.6, 0.02, 0.1), Color(1.0, 0.3, 0.3), 0.6, 0.0, 0.15)
 
-func _summon(n: int) -> void:
+# Тень рассыпается чёрным дымом от одного-двух ударов — без добивания.
+func _shade_pop(dir: Vector3) -> void:
+	_set_state("dead")
+	G.fx.burst(global_position + Vector3.UP * 1.2, Color(0.1, 0.05, 0.15), 30, 6.0, 0.18, 0.6, -1.0, dir + Vector3.UP, 0.8)
+	G.fx.burst(global_position + Vector3.UP * 1.2, Color(0.8, 0.1, 0.15), 10, 4.0, 0.08, 0.4, 0.0)
+	G.sfx.play("whoosh_big", -6.0, 1.6)
+	ash_parts.clear()
+	for m in meshes:
+		if is_instance_valid(m):
+			m.visible = false
+	ash_t = 3.0
+
+func _summon(n: int, what := "low") -> void:
 	_roar()
 	if G.hud:
-		G.hud.notify("Тень призывает низших демонов!", 2.0)
+		G.hud.notify("Тень призывает низших демонов!" if what == "low" else "Кагэцу раздваивается — тени рассыпаются от удара!", 2.0)
 	for i in n:
 		var d = CharacterBody3D.new()
 		d.set_script(load("res://scripts/demon.gd"))
-		d.kind = "low"
+		d.kind = what
 		get_parent().add_child(d)
 		var a := randf() * TAU
 		d.global_position = global_position + Vector3(cos(a) * 4.0, 0.5, sin(a) * 4.0)
@@ -1226,6 +1268,10 @@ func _neck_holds(dir: Vector3) -> void:
 	if p.global_position.distance_to(global_position) < 6.0:
 		p.receive_attack(10.0, global_position, false, self)
 	hp = max_hp * (0.6 if lives == 1 else 0.45)
+	# арена меняется: луна наливается кровью, по земле — кровавые лужи
+	if G.world and G.world.has_method("blood_moon"):
+		G.world.blood_moon(2 - lives)
+	pool_cd = 1.5
 	rage = true
 	regen_count += 1
 	for s in ["r", "l"]:
@@ -1237,5 +1283,61 @@ func _neck_holds(dir: Vector3) -> void:
 	atk_cd = 0.6
 	blink_cd = 1.5
 	summoned = false
+	if lives == 0:
+		call_deferred("_summon", 3, "shade")
 	if G.hud:
 		G.hud.notify("Шея Тени срослась! Ещё %d" % (lives + 1), 2.5)
+
+# Кровавые лужи под ногами героя: сначала тёмное кольцо (0,9 с), потом
+# лужа жжёт 5 с — стоять в ней нельзя.
+func _update_pools(dt: float) -> void:
+	if kind == "boss" and lives < 2 and state not in ["dead", "exposed", "locked"]:
+		pool_cd -= dt
+		if pool_cd <= 0.0:
+			pool_cd = 3.2 if lives == 1 else 2.2
+			var p: Node3D = G.player
+			var at: Vector3 = p.global_position + Vector3(p.velocity.x, 0, p.velocity.z) * 0.4
+			at.y = G.world.height_at(at.x, at.z) + 0.04 if G.world.has_method("height_at") else 0.04
+			_make_pool(at)
+	for i in range(pools.size() - 1, -1, -1):
+		var pl: Dictionary = pools[i]
+		pl.t += dt
+		var mi: MeshInstance3D = pl.n
+		var r: float = pl.r
+		if pl.t < 0.9:
+			mi.scale = Vector3(r * pl.t / 0.9, 1.0, r * pl.t / 0.9)
+			(mi.material_override as StandardMaterial3D).albedo_color = Color(0.25, 0.0, 0.03, 0.5)
+		elif pl.t < 6.0:
+			mi.scale = Vector3(r, 1.0, r) * (1.0 + sin(pl.t * 6.0) * 0.03)
+			(mi.material_override as StandardMaterial3D).albedo_color = Color(0.75, 0.04, 0.08, 0.85)
+			if randf() < dt * 8.0:
+				G.fx.burst(mi.global_position + Vector3(randf_range(-r, r) * 0.6, 0.1, randf_range(-r, r) * 0.6), Color(0.8, 0.05, 0.1), 1, 2.0, 0.08, 0.4, 6.0, Vector3.UP, 0.4)
+			var pp: Node3D = G.player
+			var d := Vector2(pp.global_position.x - mi.global_position.x, pp.global_position.z - mi.global_position.z).length()
+			pl.tick -= dt
+			if d < r and absf(pp.global_position.y - mi.global_position.y) < 0.8 and pl.tick <= 0.0:
+				pl.tick = 0.5
+				pp.receive_attack(5.0, mi.global_position, false, self)
+		else:
+			mi.queue_free()
+			pools.remove_at(i)
+
+func _make_pool(at: Vector3) -> void:
+	var mi := MeshInstance3D.new()
+	var cm := CylinderMesh.new()
+	cm.top_radius = 1.0
+	cm.bottom_radius = 1.0
+	cm.height = 0.04
+	cm.radial_segments = 16
+	mi.mesh = cm
+	var m := StandardMaterial3D.new()
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	m.albedo_color = Color(0.25, 0.0, 0.03, 0.5)
+	mi.material_override = m
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	G.fx.add_child(mi)
+	mi.global_position = at
+	mi.scale = Vector3(0.01, 1, 0.01)
+	pools.append({"n": mi, "t": 0.0, "r": 1.8, "tick": 0.0})
+	G.sfx.play("water", -10.0, 0.5)

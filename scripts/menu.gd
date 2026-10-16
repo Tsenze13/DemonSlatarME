@@ -276,7 +276,7 @@ func _tab_sword() -> void:
 	_option(v, "haori", "Хаори", hs, _set_haori)
 	var brs := []
 	for k in G.BREATH_ORDER:
-		brs.append(G.BREATHS[k].name)
+		brs.append(G.BREATHS[k].name + (" (скрытое — после финала)" if k == "dawn" else ""))
 	_option(v, "breath", "Стиль дыхания", brs, _set_breath)
 	_label(v, "Катаны держатся двумя руками и носятся за поясом.\nПарные клинки — на цепи, за спиной в бинтах; ПКМ — бросок на цепи.\nХлыст — дальние хлёсты; ПКМ — щелчок до 7 м.\nНагината — длинные махи и укол; шар на цепи — бьёт по кругу и в землю, ПКМ — бросок на 8 м.", 15).modulate = Color(0.75, 0.82, 1.0)
 
@@ -323,7 +323,17 @@ func refresh_journal() -> void:
 	t += "Кровавая ткачиха — держит дистанцию, веер копий: сокращай рывком.\n"
 	t += "Кагэцу — исчезает и выходит из-за спины, кровавый дождь, шея срастается дважды.\n"
 	t += "\n[b][color=#ffd890]МЕТКА ОХОТНИКА[/color][/b] (с 4-й главы): копи ярость в бою, на полной шкале — V. 10 с силы и скорости, здоровье тает.\n"
-	t += "[b][color=#ffd890]КАРТА[/color][/b] — клавиша M."
+	t += "[b][color=#ffd890]КАРТА[/color][/b] — клавиша M.\n"
+	var got := 0
+	for a in G.ACH:
+		if G.has_ach(a[0]):
+			got += 1
+	t += "\n[b][color=#ffd890]ДОСТИЖЕНИЯ %d/%d[/color][/b]\n" % [got, G.ACH.size()]
+	for a in G.ACH:
+		if G.has_ach(a[0]):
+			t += "[color=#7fe08a]✓ %s[/color] — %s\n" % [a[1], a[2]]
+		else:
+			t += "[color=#666a77]· %s — %s[/color]\n" % [a[1], a[2]]
 	journal.text = t
 
 func _tab_graphics() -> void:
@@ -480,6 +490,11 @@ func _set_breath(i: int) -> void:
 	settings.breath = i
 	if G.player:
 		G.player.set_breath(i)
+		# закрытая Заря — вернуть выбор на действующий стиль
+		var real: int = G.BREATH_ORDER.find(G.breath_style)
+		if real != i:
+			settings.breath = real
+			(ctrl.breath as OptionButton).select(real)
 
 func _set_haori(i: int) -> void:
 	settings.haori = i

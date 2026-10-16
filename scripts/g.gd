@@ -64,7 +64,7 @@ var show_fps := false
 var shake_mult := 1.0
 # Стиль дыхания: вид эффектов форм, цвет мазка, звук и названия форм.
 var breath_style := "water"
-const BREATH_ORDER := ["water", "flame", "thunder"]
+const BREATH_ORDER := ["water", "flame", "thunder", "dawn"]
 const BREATHS := {
 	"water": {"name": "Прилив", "kind": 1, "a": Color(0.1, 0.35, 0.85), "b": Color(0.92, 0.97, 1.0),
 		"flash": Color(0.6, 0.85, 1.0), "core": Color(0.95, 0.98, 1.0), "edge": Color(0.25, 0.6, 1.0),
@@ -75,11 +75,71 @@ const BREATHS := {
 	"thunder": {"name": "Гром", "kind": 4, "a": Color(1.0, 0.74, 0.1), "b": Color(1.0, 1.0, 0.9),
 		"flash": Color(1.0, 0.9, 0.45), "core": Color(1.0, 1.0, 0.9), "edge": Color(1.0, 0.78, 0.1),
 		"forms": ["Удар молнии", "Шестикратный разряд", "Раскат грома"]},
+	# Скрытое корневое дыхание — открывается после победы над Кагэцу. Эффекты — семейства пламени, золото рассвета.
+	"dawn": {"name": "Заря", "kind": 3, "a": Color(1.0, 0.5, 0.08), "b": Color(1.0, 0.97, 0.75), "fx": "flame",
+		"flash": Color(1.0, 0.82, 0.45), "core": Color(1.0, 0.98, 0.85), "edge": Color(1.0, 0.62, 0.1),
+		"forms": ["Восходящий диск", "Шесть лучей", "Солнце в зените"]},
 }
 
 func br() -> Dictionary:
 	return BREATHS.get(breath_style, BREATHS.water)
-var stats := {"kills_total": 0, "best_combo": 0, "play_time": 0.0}
+
+# Семейство эффектов стиля (у Зари — пламя).
+func fx_style() -> String:
+	return String(br().get("fx", breath_style))
+
+func dawn_unlocked() -> bool:
+	return bool(prog.finished) or autotest
+var stats := {"kills_total": 0, "best_combo": 0, "play_time": 0.0, "perfect": 0, "arms": 0, "legs": 0, "marks": 0, "bosses": 0, "ach": ""}
+
+# Достижения: [ключ, название, условие словами]. Проверяются раз в секунду (`_check_ach`).
+const ACH := [
+	["first", "Первая голова", "обезглавь демона"],
+	["ten", "Десять голов", "обезглавь 10 демонов"],
+	["hundred", "Сотня", "обезглавь 100 демонов"],
+	["parry", "Звон стали", "10 идеальных парирований"],
+	["arms", "Без рук", "отруби 10 рук"],
+	["legs", "Подсечка", "отруби 5 ног"],
+	["mark", "Алая метка", "пробуди Метку охотника"],
+	["combo", "Буря клинка", "серия из 25 ударов"],
+	["boss", "Закат Третьей луны", "победи Кагэцу"],
+	["hunt5", "Охотник на заказ", "5 охот на заказ"],
+	["rich", "Тугой кошель", "накопи 1000 рё"],
+	["full", "Предел тела", "все тренировки наставника до предела"],
+]
+
+func stat_add(k: String, v := 1) -> void:
+	stats[k] = int(stats.get(k, 0)) + v
+
+func has_ach(k: String) -> bool:
+	return (String(stats.ach) + ",").find(k + ",") >= 0
+
+func _ach_ok(k: String) -> bool:
+	match k:
+		"first": return int(stats.kills_total) >= 1
+		"ten": return int(stats.kills_total) >= 10
+		"hundred": return int(stats.kills_total) >= 100
+		"parry": return int(stats.perfect) >= 10
+		"arms": return int(stats.arms) >= 10
+		"legs": return int(stats.legs) >= 5
+		"mark": return int(stats.marks) >= 1
+		"combo": return int(stats.best_combo) >= 25
+		"boss": return int(stats.bosses) >= 1
+		"hunt5": return int(prog.get("hunts", 0)) >= 5
+		"rich": return int(prog.ryo) >= 1000
+		"full": return int(prog.hp) >= 5 and int(prog.lungs) >= 5 and int(prog.focus) >= 3
+	return false
+
+var ach_t := 0.0
+func _check_ach() -> void:
+	for a in ACH:
+		if not has_ach(a[0]) and _ach_ok(a[0]):
+			stats.ach = String(stats.ach) + a[0] + ","
+			if hud:
+				hud.notify("ДОСТИЖЕНИЕ: %s" % a[1], 3.5)
+			if sfx:
+				sfx.play("chime", -6.0, 1.2)
+			save_stats()
 const SAVE_PATH := "user://save.cfg"
 
 func _ready() -> void:
@@ -232,6 +292,10 @@ func _process(_delta: float) -> void:
 	shake = maxf(0.0, shake - rdt * 2.2)
 	if started and not paused:
 		stats.play_time = float(stats.play_time) + rdt
+		ach_t -= rdt
+		if ach_t <= 0.0:
+			ach_t = 1.0
+			_check_ach()
 	speedlines = maxf(0.0, speedlines - rdt * 2.5)
 	flash = maxf(0.0, flash - rdt * 5.0)
 	hurt_fx = maxf(0.0, hurt_fx - rdt * 1.5)

@@ -945,6 +945,22 @@ func _run() -> void:
 	boss.decapitate(Vector3.FORWARD)
 	await w(0.1)
 	check(not boss.is_dead() and boss.lives == 1, "у Тени шея срастается после добивания")
+	check(G.world.blood == 1, "кровавая луна во 2-й фазе Тени")
+	p.global_position = boss.global_position + Vector3(5, 0, 0)
+	boss.pool_cd = 0.0
+	await w(0.3)
+	check(boss.pools.size() >= 1, "кровавые лужи под ногами героя")
+	boss.hp = 0.0
+	boss._expose()
+	boss.decapitate(Vector3.FORWARD)
+	await w(0.3)
+	var shades: Array = []
+	for e in G.enemies:
+		if is_instance_valid(e) and e.kind == "shade" and not e.is_dead():
+			shades.append(e)
+	check(boss.lives == 0 and shades.size() == 3 and G.world.blood == 2, "3-я фаза: багровая луна и тени-двойники")
+	shades[0].take_hit(30.0, Vector3.FORWARD, {"power": 1, "stagger": 0.2})
+	check(shades[0].is_dead(), "тень рассыпается от удара")
 	boss._summon(2)
 	await w(0.1)
 	var lows := 0
@@ -952,6 +968,9 @@ func _run() -> void:
 		if is_instance_valid(e) and e.kind == "low":
 			lows += 1
 	check(lows >= 3, "Тень призывает низших")
+	G.stat_add("arms", 10)
+	G._check_ach()
+	check(G.has_ach("arms") and G.has_ach("first"), "достижения открываются")
 	st._clear_demons()
 	# финал: после Третьей Ущербной луны — слова наставника, титры, свободная охота
 	G.mode = "story"

@@ -945,6 +945,8 @@ func _end_contract() -> void:
 func _free_roam() -> void:
 	phase = "free"
 	G.mode = "free"
+	if G.hud:
+		G.hud.notify("Открыто скрытое дыхание «Заря» — Esc → Снаряжение", 5.0)
 	objective = "Свободная охота. Ворон Кагари в деревне. Ранг: %s" % rank_name()
 	target = null
 	if crow:

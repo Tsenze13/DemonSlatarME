@@ -655,6 +655,7 @@ func add_fury(v: float) -> void:
 
 func _mark_on() -> void:
 	mark_t = MARK_DUR
+	G.stat_add("marks")
 	fury = 0.0
 	if mark_face:
 		mark_face.visible = true
@@ -759,7 +760,12 @@ var haori_style := 0
 
 # Стиль дыхания: цвет мазка клинка (вид эффектов берётся из G.br()).
 func set_breath(i: int) -> void:
-	G.breath_style = G.BREATH_ORDER[clampi(i, 0, G.BREATH_ORDER.size() - 1)]
+	var nm: String = G.BREATH_ORDER[clampi(i, 0, G.BREATH_ORDER.size() - 1)]
+	if nm == "dawn" and not G.dawn_unlocked():
+		nm = "water"
+		if G.hud and G.started:
+			G.hud.notify("Заря откроется после победы над Третьей Ущербной луной", 3.0)
+	G.breath_style = nm
 	var b: Dictionary = G.br()
 	if trail:
 		trail.set_colors(b.core, b.edge)
@@ -1741,13 +1747,13 @@ func _start_flash() -> void:
 	sonic_boom(dir)
 	G.speedlines = 1.0
 	flash_hops.clear()
-	if G.breath_style == "thunder":
+	if G.fx_style() == "thunder":
 		# точки зигзага
 		var side := dir.cross(Vector3.UP).normalized()
 		for k in 3:
 			var f := float(k + 1) / 3.0
 			flash_hops.append(flash_from.lerp(flash_to, f) + side * (1.6 if k % 2 == 0 else -1.6) * (0.0 if k == 2 else 1.0))
-	elif G.breath_style == "flame":
+	elif G.fx_style() == "flame":
 		# старт — взрыв огня под ногами (толчок, как из пушки)
 		G.fx.breath_sound(0.0, 0.85)
 		G.sfx.play("fire", -2.0, 0.8)
@@ -1762,7 +1768,7 @@ func _start_flash() -> void:
 
 func _st_flash(dt: float) -> void:
 	var k := clampf(state_t / flash_dur, 0.0, 1.0)
-	var p := flash_from.lerp(flash_to, (1.0 - pow(1.0 - k, 2.2)) if G.breath_style == "flame" else k)
+	var p := flash_from.lerp(flash_to, (1.0 - pow(1.0 - k, 2.2)) if G.fx_style() == "flame" else k)
 	velocity = Vector3.ZERO
 	var prev := global_position
 	match G.breath_style:
@@ -1799,15 +1805,15 @@ func _st_flash(dt: float) -> void:
 			if flash_fx_t <= 0.0:
 				flash_fx_t = 0.03
 				G.fx.droplets(prev + Vector3.UP * 0.5, Vector3.UP, 4)
-	global_position = Vector3(p.x, p.y if G.breath_style == "flame" else global_position.y, p.z)
+	global_position = Vector3(p.x, p.y if G.fx_style() == "flame" else global_position.y, p.z)
 	if k >= 1.0:
 		var bb: Dictionary = G.br()
 		G.fx.streak(flash_from + Vector3.UP * 0.9, flash_to + Vector3.UP * 0.9, bb.edge.lightened(0.3), 0.3, 0.3)
 		G.fx.breath_burst(flash_to + Vector3.UP * 0.9, (flash_to - flash_from).normalized(), 12)
-		if G.breath_style == "flame":
+		if G.fx_style() == "flame":
 			G.fx.ring(flash_to + Vector3.UP * 0.1, 1.0, Color(1.0, 0.45, 0.1), Color(1.0, 0.9, 0.5), 0.4, 3.5, 0.5)
 			G.add_shake(0.25)
-		elif G.breath_style == "water":
+		elif G.fx_style() == "water":
 			G.fx.ring(flash_to + Vector3.UP * 0.05, 0.6, bb.a, bb.b, 0.5, 3.0, 0.15)
 		var d := (flash_to - flash_from).normalized()
 		velocity = d * RUN_SPEED * (1.0 + MOMENTUM_STEP * momentum)
@@ -1816,7 +1822,8 @@ func _st_flash(dt: float) -> void:
 
 # ---------------------------------------------------------------------
 # Формы каждого стиля дыхания (третья у Прилива — стойка-контратака).
-const FORMS := {"water": ["f1", "f2", "stance"], "flame": ["ff1", "ff2", "ff3"], "thunder": ["tf1", "tf2", "tf3"]}
+const FORMS := {"water": ["f1", "f2", "stance"], "flame": ["ff1", "ff2", "ff3"], "thunder": ["tf1", "tf2", "tf3"],
+	"dawn": ["ff1", "tf2", "ff3"]}
 
 func form_cost(i: int) -> float:
 	var k: String = FORMS.get(G.breath_style, FORMS.water)[i - 1]
@@ -2109,7 +2116,7 @@ func _attack_fx() -> void:
 	match a.fx:
 		"slash":
 			G.fx.slash_arc(o, atk_dir, a.get("roll", 0.0), 1.9, 150.0, 0.55, G.br().a, G.br().b, G.br().kind, 0.22, a.get("rev", false))
-			if G.breath_style == "flame":
+			if G.fx_style() == "flame":
 				# пламя: второй, широкий язык огня снаружи + угли и вспышка по ходу удара
 				G.fx.slash_arc(o, atk_dir, a.get("roll", 0.0), 2.35, 165.0, 0.9, G.br().a, G.br().b, 3, 0.3, a.get("rev", false))
 				G.fx.embers(o + atk_dir * 1.6, 8, 1.0)
@@ -2242,7 +2249,7 @@ func _attack_fx_tick() -> void:
 	var b := Basis(Vector3.RIGHT, deg_to_rad(randf_range(-20, 20))) * Basis(Vector3.UP, randf() * TAU)
 	G.fx.breath_ring_arc(o, b, 2.3, 0.0, PI * 1.5, 0.9, 0.32, 0.0, 0.08)
 	G.fx.breath_burst(o, Vector3.UP, 5)
-	if G.breath_style == "thunder":
+	if G.fx_style() == "thunder":
 		var d := Vector3(randf_range(-1, 1), 0, randf_range(-1, 1)).normalized()
 		G.fx.lightning(o + d * 0.6, o + d * 2.6 + Vector3.UP * randf_range(-0.5, 0.8), Color(1.0, 0.8, 0.15), 0.12, 0.3, 1, 0.06)
 	G.sfx.play("whoosh", -8.0, 1.2)
@@ -2697,9 +2704,9 @@ func _st_stance(dt: float) -> void:
 		breathe_fx_t = 0.3
 		var bb2: Dictionary = G.br()
 		G.fx.ring(global_position + Vector3.UP * 0.04, 0.5, bb2.a, bb2.b, 0.7, 3.5, 0.12)
-		if G.breath_style == "flame":
+		if G.fx_style() == "flame":
 			G.fx.embers(global_position + Vector3.UP * 0.2, 4, 0.6)
-		elif G.breath_style == "thunder" and randf() < 0.5:
+		elif G.fx_style() == "thunder" and randf() < 0.5:
 			var rp := global_position + Vector3(randf_range(-1, 1), 0, randf_range(-1, 1)).normalized() * 1.2
 			G.fx.lightning(rp + Vector3.UP * 1.5, rp, Color(1.0, 0.85, 0.2), 0.12, 0.25, 0, 0.05)
 	if state_t > 1.0:
@@ -2871,9 +2878,9 @@ func haori_element(k: float) -> void:
 func _update_haori_element(dt: float) -> void:
 	if state == "flash" or (state == "attack" and atk.get("form", false)):
 		elem_k = minf(1.0, elem_k + dt * 3.0)
-	elem_k = maxf(0.0, elem_k - dt * (0.12 if G.breath_style == "water" else 0.25))
-	var e := {"water": 1, "flame": 2, "thunder": 3}.get(G.breath_style, 0) as int
-	var col: Color = {"water": Color(0.85, 0.95, 1.0), "flame": Color(1.0, 0.55, 0.12), "thunder": Color(1.0, 0.9, 0.35)}.get(G.breath_style, Color.WHITE)
+	elem_k = maxf(0.0, elem_k - dt * (0.12 if G.fx_style() == "water" else 0.25))
+	var e := {"water": 1, "flame": 2, "thunder": 3}.get(G.fx_style(), 0) as int
+	var col: Color = {"water": Color(0.85, 0.95, 1.0), "flame": Color(1.0, 0.55, 0.12), "thunder": Color(1.0, 0.9, 0.35), "dawn": Color(1.0, 0.8, 0.35)}.get(G.breath_style, Color.WHITE)
 	for m in haori_cloth_mats:
 		m.set_shader_parameter("elem", e)
 		m.set_shader_parameter("elem_k", elem_k)
@@ -2921,6 +2928,7 @@ func _parry_success(src: Vector3) -> void:
 		# идеальное парирование (нажато в последний миг): мир почти замирает,
 		# дыхание возвращается, демон шатается дольше
 		perfect_parries += 1
+		G.stat_add("perfect")
 		G.slowmo(0.12, 0.9)
 		G.impact(0.1, 0)
 		breath = minf(100.0, breath + 25.0)
@@ -3007,7 +3015,7 @@ func _st_finisher(dt: float) -> void:
 		var fb: Dictionary = G.br()
 		G.fx.streak(from + Vector3.UP * 1.5, to + Vector3.UP * 1.5, fb.b, 0.6, 0.22)
 		G.fx.afterimage(model, fb.flash, 0.6)
-		if G.breath_style == "thunder":
+		if G.fx_style() == "thunder":
 			G.fx.lightning(from + Vector3.UP * 1.2, to + Vector3.UP * 1.2, fb.a, 0.6, 0.4, 3, 0.12)
 		global_position = to
 		G.impact(0.1, 0)
@@ -3258,7 +3266,7 @@ func _animate(dt: float) -> void:
 		p.arm_l = Vector3(75, 0, 20)
 		p.fore_r = Vector3(-10, 0, 0)
 		p.sword = Vector3(-70, 0, 0)
-		if state == "flash" and G.breath_style == "flame":
+		if state == "flash" and G.fx_style() == "flame":
 			# огненный рывок: корпус низко вперёд, клинок двумя руками вперёд-вниз, как таран
 			lean = 50.0
 			p.arm_r = Vector3(-70, 0, -10)

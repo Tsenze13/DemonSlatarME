@@ -25,6 +25,8 @@ func _ready() -> void:
 		_play()
 	elif mode == "v39":
 		_v39()
+	elif mode == "boss":
+		_boss()
 	else:
 		_shots()
 
@@ -479,4 +481,39 @@ func _v39() -> void:
 	await w(0.5)
 	await shot("v5_journal")
 	get_parent().menus.close_menu()
+	get_tree().quit()
+
+# Бой с Тенью: фазы кровавой луны и лужи.
+func _boss() -> void:
+	await w(0.6)
+	G.hud.help = false
+	var st = G.story
+	var pl: Node3D = G.player
+	st._clear_demons()
+	_set_time("night")
+	var b = CharacterBody3D.new()
+	b.set_script(load("res://scripts/demon.gd"))
+	b.kind = "boss"
+	G.world.add_child(b)
+	b.global_position = Vector3(0, 3.6, -60)
+	_place(Vector3(0, 3.6, -54), PI)
+	pl.set_drawn(true)
+	await w(1.5)
+	G.cam_rig.set_process(false)
+	cam(Vector3(5, 5.5, -48), Vector3(0, 4.5, -59))
+	await shot("b1_phase1")
+	b.hp = 0.0
+	b._expose()
+	b.decapitate(Vector3.FORWARD)
+	b.pool_cd = 0.0
+	await w(1.6)
+	cam(Vector3(6, 6.5, -46), Vector3(0, 4.0, -58))
+	await shot("b2_phase2")
+	b.hp = 0.0
+	b._expose()
+	b.decapitate(Vector3.FORWARD)
+	b.pool_cd = 0.0
+	await w(1.8)
+	cam(Vector3(-6, 6.0, -47), Vector3(0, 4.0, -58))
+	await shot("b3_phase3")
 	get_tree().quit()

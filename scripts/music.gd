@@ -14,6 +14,8 @@ var calm: AudioStreamPlayer
 var battle: AudioStreamPlayer
 var amb_night: AudioStreamPlayer
 var amb_day: AudioStreamPlayer
+var boss: AudioStreamPlayer
+var boss_k := 0.0
 var combat := 0.0
 var ready_ := false
 var _thread: Thread
@@ -22,7 +24,7 @@ var buf := PackedFloat32Array()     # текущая дорожка (пишем 
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
-	for nm in ["calm", "battle", "amb_night", "amb_day"]:
+	for nm in ["calm", "battle", "amb_night", "amb_day", "boss"]:
 		var p := AudioStreamPlayer.new()
 		p.bus = "Music"
 		p.volume_db = -80.0
@@ -46,25 +48,30 @@ func _generate() -> void:
 	var t0 := Time.get_ticks_msec()
 	var r := RandomNumberGenerator.new()
 	r.seed = 1234
-	_streams["calm"] = _to_stream(_calm(r))
-	_streams["battle"] = _to_stream(_battle(r))
-	_streams["amb_night"] = _to_stream(_amb(r, true))
-	_streams["amb_day"] = _to_stream(_amb(r, false))
+	# в потоке — только данные (байты), ресурсы звука создаются в главном потоке
+	_streams["calm"] = _to_bytes(_calm(r))
+	_streams["battle"] = _to_bytes(_battle(r))
+	_streams["amb_night"] = _to_bytes(_amb(r, true))
+	_streams["amb_day"] = _to_bytes(_amb(r, false))
+	_streams["boss"] = _to_bytes(_boss(r))
 	gen_ms = Time.get_ticks_msec() - t0
 	call_deferred("_on_ready")
 
 func _on_ready() -> void:
 	for nm in _streams:
 		var p: AudioStreamPlayer = get(nm)
-		p.stream = _streams[nm]
+		p.stream = _to_stream(_streams[nm])
 		p.play()
 	ready_ = true
 
-func _to_stream(buf: PackedFloat32Array) -> AudioStreamWAV:
+func _to_bytes(b: PackedFloat32Array) -> PackedByteArray:
 	var data := PackedByteArray()
-	data.resize(buf.size() * 2)
-	for i in buf.size():
-		data.encode_s16(i * 2, int(clampf(buf[i], -1.0, 1.0) * 30000.0))
+	data.resize(b.size() * 2)
+	for i in b.size():
+		data.encode_s16(i * 2, int(clampf(b[i], -1.0, 1.0) * 30000.0))
+	return data
+
+func _to_stream(data: PackedByteArray) -> AudioStreamWAV:
 	var w := AudioStreamWAV.new()
 	w.format = AudioStreamWAV.FORMAT_16_BITS
 	w.mix_rate = RATE
@@ -72,7 +79,7 @@ func _to_stream(buf: PackedFloat32Array) -> AudioStreamWAV:
 	w.data = data
 	w.loop_mode = AudioStreamWAV.LOOP_FORWARD
 	w.loop_begin = 0
-	w.loop_end = buf.size()
+	w.loop_end = data.size() / 2
 	return w
 
 func _new_buf() -> void:
@@ -175,6 +182,34 @@ func _battle(r: RandomNumberGenerator) -> PackedFloat32Array:
 		buf[i] += sin(TAU * BASE_HZ * 0.5 * t) * 0.06
 	return _take(0.7)
 
+# Тема Ущербной луны: быстрые тайко, сямисэн с режущими секундами,
+# низкий «хор» на дрожащих синусах и удары гонга на каждые 4 такта.
+func _boss(r: RandomNumberGenerator) -> PackedFloat32Array:
+	_new_buf()
+	var beat := 0.4                     # 150 ударов в минуту
+	var bars := int(LEN / (beat * 4))
+	for bar in bars:
+		var t0 := bar * beat * 4
+		for hit in [[0.0, 0.6, 52.0], [0.5, 0.3, 64.0], [1.0, 0.45, 52.0], [2.0, 0.6, 50.0], [2.75, 0.3, 64.0], [3.0, 0.4, 58.0], [3.5, 0.35, 64.0]]:
+			_taiko(r, t0 + hit[0] * beat, hit[1], hit[2])
+		for s2 in 8:
+			_taiko(r, t0 + s2 * beat * 0.5, 0.06, 210.0)
+		var fig := [0, 1, 0, 3, 1, 0, -1, 0] if bar % 2 == 0 else [3, 4, 3, 1, 0, 1, 3, 4]
+		for e in 8:
+			_pluck(t0 + e * beat * 0.5, _note_hz(fig[e] + 5), 0.14 if e % 2 == 0 else 0.1, 8.0, 1.0)
+			if e % 4 == 0:
+				_pluck(t0 + e * beat * 0.5, _note_hz(fig[e] + 6), 0.07, 6.0, 0.9)   # режущая секунда
+	var n := buf.size()
+	for i in n:
+		var t := float(i) / RATE
+		var vib := sin(TAU * 5.0 * t) * 0.004
+		var ch := sin(TAU * BASE_HZ * 0.5 * t * (1.0 + vib)) + 0.6 * sin(TAU * BASE_HZ * 0.5 * 1.0595 * t * (1.0 - vib)) + 0.4 * sin(TAU * BASE_HZ * 0.75 * t)
+		buf[i] += ch * 0.05 * (0.7 + 0.3 * sin(TAU * t / LEN * 2.0))
+		# гонг раз в 4 такта
+		var gt := fmod(t, beat * 16.0)
+		buf[i] += sin(TAU * 90.0 * gt + sin(TAU * 247.0 * gt) * 2.0) * exp(-gt * 1.2) * 0.12
+	return _take(0.75)
+
 func _amb(r: RandomNumberGenerator, night: bool) -> PackedFloat32Array:
 	_new_buf()
 	var n := buf.size()
@@ -222,13 +257,18 @@ func _process(_dt: float) -> void:
 		return
 	var dt: float = G.rdt
 	var want := 0.0
+	var want_boss := 0.0
 	if G.started and G.player:
 		for e in G.enemies:
 			if is_instance_valid(e) and not e.is_dead() and e.noticed and e.global_position.distance_to(G.player.global_position) < 35.0:
 				want = 1.0
+				if e.get("kind") == "boss":
+					want_boss = 1.0
 	combat = move_toward(combat, want, dt * (0.6 if want > combat else 0.25))
+	boss_k = move_toward(boss_k, want_boss, dt * 0.5)
 	calm.volume_db = linear_to_db(maxf(0.0001, (1.0 - combat) * 0.7))
-	battle.volume_db = linear_to_db(maxf(0.0001, combat * 0.8))
+	battle.volume_db = linear_to_db(maxf(0.0001, combat * 0.8 * (1.0 - boss_k)))
+	boss.volume_db = linear_to_db(maxf(0.0001, combat * 0.85 * boss_k))
 	var night: bool = G.world.night if G.world else true
 	amb_night.volume_db = linear_to_db(0.5 if night else 0.0001)
 	amb_day.volume_db = linear_to_db(0.0001 if night else 0.5)
