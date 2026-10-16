@@ -765,6 +765,8 @@ func _first_demon() -> void:
 func _day() -> void:
 	phase = "day"
 	_villagers(true)
+	if G.world.has_method("festival"):
+		G.world.festival(chapter >= 8)
 	G.cutscene = false
 	_set_time("day")
 	_clear_demons()
@@ -1063,6 +1065,8 @@ func _free_roam() -> void:
 	phase = "free"
 	G.mode = "free"
 	_villagers(true)
+	if G.world.has_method("festival") and bool(G.prog.get("finished2", false)):
+		G.world.festival(true)
 	if G.hud:
 		G.hud.notify("Открыто скрытое дыхание «Заря» — Esc → Снаряжение", 5.0)
 	objective = "Свободная охота. Ворон Кагари в деревне. Ранг: %s" % rank_name()

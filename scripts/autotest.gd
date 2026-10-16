@@ -1005,6 +1005,12 @@ func _run() -> void:
 	b2.global_position = Vector3(4, 0.5, -6)
 	await w(0.1)
 	check(b2.lives == 2 and b2.max_hp > 800.0, "Сэйрэн, Вторая луна: две жизни шеи")
+	p.global_position = b2.global_position + Vector3(4, 0, 0)
+	b2._frost_ring()
+	await w(0.6)
+	check(b2.frost_spikes.size() > 10, "Сэйрэн: ледяное кольцо шипов")
+	G.world.festival(true)
+	check(G.world.fest != null and G.world.fest.visible, "праздник фонарей: гирлянды на улице")
 	st._clear_demons()
 	# финал части второй: слова наставника, титры, свободная охота
 	st.chapter = st.CH.size() - 1

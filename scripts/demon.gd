@@ -89,6 +89,9 @@ var lives := 0              # у Тени: сколько раз шея «сра
 var summoned := false
 var blink_cd := 6.0
 var pool_cd := 99.0          # кровавые лужи (Тень во 2–3 фазе)
+var frost_cd := 5.0          # ледяное кольцо Сэйрэн
+var frost: Dictionary = {}
+var frost_spikes: Array = []
 var pools: Array = []
 var sc := 1.35              # масштаб модели
 
@@ -123,6 +126,10 @@ func _exit_tree() -> void:
 		if is_instance_valid(pl.n):
 			pl.n.queue_free()
 	pools.clear()
+	for fs in frost_spikes:
+		if is_instance_valid(fs.n):
+			fs.n.queue_free()
+	frost_spikes.clear()
 	for sp in spears:
 		if is_instance_valid(sp.n):
 			sp.n.queue_free()
@@ -348,6 +355,7 @@ func _physics_process(dt: float) -> void:
 	_update_spears(dt)
 	_update_flash(dt)
 	_update_pools(dt)
+	_update_frost(dt)
 	var p: Node3D = G.player
 	if state == "dead":
 		_dead_tick(dt)
@@ -407,6 +415,13 @@ func _physics_process(dt: float) -> void:
 			var want := dirp * spd
 			if T.kite and dist < 6.0:
 				want = -dirp * spd * 0.8          # ткачиха держит дистанцию
+			if kind == "boss2":
+				frost_cd -= dt
+				if frost_cd <= 0.0 and dist < 12.0:
+					frost_cd = randf_range(6.0, 9.0) * (0.7 if lives < 2 else 1.0)
+					_set_state("frost_wind")
+					G.sfx.play("roar", -8.0, 1.3)
+					return
 			if T.get("boss", false):
 				blink_cd -= dt
 				if blink_cd <= 0.0 and dist > 6.0:
@@ -538,6 +553,15 @@ func _physics_process(dt: float) -> void:
 			neck_glow.visible = int(G.real_time * 8.0) % 2 == 0
 			if state_t > exposed_time:
 				_regenerate()
+		"frost_wind":
+			# Сэйрэн приседает, по земле ползёт иней — сейчас ударит кольцо
+			_gravity(dt)
+			_brake(dt)
+			if randf() < dt * 30.0:
+				G.fx.burst(global_position + Vector3(randf_range(-1.5, 1.5), 0.1, randf_range(-1.5, 1.5)), Color(0.8, 0.92, 1.0), 1, 1.0, 0.07, 0.5, -1.0)
+			if state_t > 0.75:
+				_frost_ring()
+				_set_state("recover")
 		"blink_in":
 			# Тень выходит из тумана за спиной героя
 			velocity = Vector3.ZERO
@@ -1362,6 +1386,58 @@ func _neck_holds(dir: Vector3) -> void:
 
 # Кровавые лужи под ногами героя: сначала тёмное кольцо (0,9 с), потом
 # лужа жжёт 5 с — стоять в ней нельзя.
+# Ледяное кольцо: волна ледяных шипов расходится от Сэйрэн на 15 м —
+# перепрыгни, когда она под ногами (на земле — удар и отброс).
+func _frost_ring() -> void:
+	frost = {"c": global_position, "r": 0.8, "t": 0.0, "hit": false, "emit": 0.0}
+	G.add_shake(0.4)
+	G.sfx.play("crack", 0.0, 0.6)
+	G.fx.ring(global_position + Vector3.UP * 0.1, 1.0, Color(0.6, 0.85, 1.0), Color.WHITE, 0.5, 6.0, 0.4)
+
+func _update_frost(dt: float) -> void:
+	for i in range(frost_spikes.size() - 1, -1, -1):
+		var fs: Dictionary = frost_spikes[i]
+		fs.t -= dt
+		var mi: MeshInstance3D = fs.n
+		mi.scale.y = clampf(fs.t / 0.6, 0.0, 1.0) * fs.h
+		if fs.t <= 0.0:
+			mi.queue_free()
+			frost_spikes.remove_at(i)
+	if frost.is_empty():
+		return
+	frost.t += dt
+	frost.r += 9.0 * dt
+	frost.emit -= dt
+	var c: Vector3 = frost.c
+	if frost.emit <= 0.0:
+		frost.emit = 0.07
+		var n := int(clampf(frost.r * 3.0, 10.0, 40.0))
+		var a0 := randf() * TAU
+		for k in n:
+			var a := a0 + TAU * k / n
+			var at: Vector3 = c + Vector3(cos(a), 0, sin(a)) * float(frost.r)
+			at.y = (G.world.height_at(at.x, at.z) if G.world.has_method("height_at") else c.y)
+			var mi := MeshInstance3D.new()
+			var bm := BoxMesh.new()
+			bm.size = Vector3(0.22, 1.0, 0.22)
+			mi.mesh = bm
+			mi.material_override = Vox.cel_mat(Color(0.75, 0.9, 1.0), true, 0.7)
+			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			G.fx.add_child(mi)
+			mi.global_position = at + Vector3.UP * 0.25
+			mi.rotation = Vector3(randf_range(-0.4, 0.4), randf() * TAU, randf_range(-0.4, 0.4))
+			var h := randf_range(0.5, 1.1)
+			frost_spikes.append({"n": mi, "t": 0.6, "h": h})
+	var p: Node3D = G.player
+	var d := Vector2(p.global_position.x - c.x, p.global_position.z - c.z).length()
+	if not frost.hit and absf(d - frost.r) < 0.8 and p.global_position.y - (G.world.height_at(p.global_position.x, p.global_position.z) if G.world.has_method("height_at") else 0.0) < 0.6:
+		frost.hit = true
+		p.receive_attack(14.0, c, false, self)
+		if p.has_method("webbed"):
+			p.web_t = maxf(p.web_t, 0.8)      # лёд сковывает ноги
+	if frost.r > 15.0:
+		frost = {}
+
 func _update_pools(dt: float) -> void:
 	if T.get("boss", false) and lives < 2 and state not in ["dead", "exposed", "locked"]:
 		pool_cd -= dt

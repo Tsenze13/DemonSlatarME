@@ -211,6 +211,49 @@ func blood_moon(level: int) -> void:
 	if G.sfx:
 		G.sfx.play("gong", -2.0, 0.6)
 
+# Праздник фонарей (часть вторая): гирлянды красных и белых бумажных фонарей
+# поперёк улицы, ленты-флажки, тёплый свет. Строится один раз, дальше — вкл/выкл.
+var fest: Node3D = null
+func festival(on: bool) -> void:
+	if fest == null:
+		if not on:
+			return
+		fest = Node3D.new()
+		add_child(fest)
+		var z := -10.0
+		var k := 0
+		while z > -60.0:
+			var a := Vector3(27.6, 4.3, z)
+			var b := Vector3(36.6, 4.3, z - 2.0)
+			var d := b - a
+			var rope := Vox.box(fest, Vector3(0.03, 0.03, d.length()), (a + b) * 0.5 + Vector3.DOWN * 0.25, Color(0.3, 0.22, 0.16), false)
+			rope.look_at_from_position((a + b) * 0.5 + Vector3.DOWN * 0.25, b + Vector3.DOWN * 0.25, Vector3.UP)
+			var n := 7
+			for i in n:
+				var t := (i + 0.5) / n
+				var p := a.lerp(b, t) + Vector3.DOWN * (0.3 + sin(t * PI) * 0.45)
+				var red := (i + k) % 2 == 0
+				var col := Color(0.95, 0.2, 0.15) if red else Color(0.98, 0.92, 0.78)
+				Vox.box(fest, Vector3(0.34, 0.42, 0.34), p, col, true, 1.6 if red else 1.2, "paper")
+				Vox.box(fest, Vector3(0.26, 0.05, 0.26), p + Vector3(0, 0.24, 0), Color(0.12, 0.08, 0.08))
+				Vox.box(fest, Vector3(0.26, 0.05, 0.26), p + Vector3(0, -0.24, 0), Color(0.12, 0.08, 0.08))
+				Vox.box(fest, Vector3(0.04, 0.16, 0.04), p + Vector3(0, -0.36, 0), Color(0.95, 0.75, 0.2), false)
+			if k % 2 == 0:
+				var l := OmniLight3D.new()
+				l.light_color = Color(1.0, 0.45, 0.3)
+				l.light_energy = 1.4
+				l.omni_range = 8.0
+				l.position = (a + b) * 0.5 + Vector3.DOWN * 0.8
+				fest.add_child(l)
+			z -= 8.0
+			k += 1
+		# ленты-флажки над входом в деревню
+		for i in 12:
+			var fx := 27.8 + i * 0.75
+			var fl := Vox.box(fest, Vector3(0.35, 0.45, 0.03), Vector3(fx, 4.6 - absf(i - 5.5) * 0.04, -4.0), [Color(0.95, 0.2, 0.15), Color(0.98, 0.95, 0.85), Color(0.95, 0.75, 0.2)][i % 3], true, 0.0, "cloth")
+			fl.rotation_degrees.z = 45.0
+	fest.visible = on
+
 func next_time() -> void:
 	var order := ["day", "sunset", "night"]
 	set_time(order[(order.find(time_of_day) + 1) % 3])

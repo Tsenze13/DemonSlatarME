@@ -29,6 +29,8 @@ func _ready() -> void:
 		_boss()
 	elif mode == "kinds":
 		_kinds()
+	elif mode == "fest":
+		_fest()
 	else:
 		_shots()
 
@@ -545,4 +547,35 @@ func _kinds() -> void:
 	await shot("k1_lineup")
 	cam(sp_d.global_position + Vector3(2.4, 1.6, 2.6), sp_d.global_position + Vector3(0, 0.8, 0))
 	await shot("k2_spider")
+	get_tree().quit()
+
+func _fest() -> void:
+	await w(0.6)
+	G.hud.help = false
+	var st = G.story
+	var pl: Node3D = G.player
+	st._clear_demons()
+	G.world.festival(true)
+	_set_time("night")
+	_place(Vector3(32, 0.5, -20), PI)
+	await w(0.6)
+	G.cam_rig.set_process(false)
+	cam(Vector3(32, 2.2, -4), Vector3(32, 3.0, -30))
+	await shot("f1_fest_night")
+	_set_time("sunset")
+	await w(0.3)
+	await shot("f2_fest_sunset")
+	# ледяное кольцо Сэйрэн
+	_set_time("night")
+	var b = CharacterBody3D.new()
+	b.set_script(load("res://scripts/demon.gd"))
+	b.kind = "boss2"
+	G.world.add_child(b)
+	b.global_position = Vector3(0, 0.5, -4)
+	_place(Vector3(0, 0.5, 10), PI)
+	await w(0.8)
+	b._frost_ring()
+	await w(0.5)
+	cam(Vector3(8, 4.5, 8), Vector3(0, 0.5, -3))
+	await shot("f3_frost")
 	get_tree().quit()
