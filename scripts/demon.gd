@@ -53,15 +53,51 @@ var hit_react := 0.0            # вздрагивание от удара (1 �
 var air_down := false           # после полёта — упасть на землю
 var lean_s := 15.0
 
+# Виды демонов: один скелет, разные размеры, цвета, скорость и повадки.
+#  low — низший (мало сил, ходит толпой), hermit — отшельник (когти, прыжок, копья),
+#  brute — громила (огромный, не вздрагивает от лёгких ударов, бьёт тяжело),
+#  weaver — кровавая ткачиха (держит дистанцию, веер копий), boss — Кагэцу, Третья Тень.
+const TYPES := {
+	"low": {"name": "Низший демон", "hp": 70.0, "scale": 1.1, "skin": Color(0.46, 0.5, 0.4), "robe": Color(0.32, 0.24, 0.16),
+		"hair": Color(0.12, 0.1, 0.1), "spd": 6.6, "rspd": 7.6, "dmg": 9.0, "leap": 0.35, "ranged": false, "regen": 14.0,
+		"exposed": 4.5, "spears": 0, "horns": 1, "windup": 0.5, "armor": false, "kite": false, "intro": false, "reward": 15},
+	"hermit": {"name": "Демон-отшельник", "hp": 240.0, "scale": 1.35, "skin": Color(0.5, 0.42, 0.52), "robe": Color(0.42, 0.08, 0.1),
+		"hair": Color(0.88, 0.88, 0.92), "spd": 6.2, "rspd": 8.0, "dmg": 15.0, "leap": 0.5, "ranged": true, "regen": 35.0,
+		"exposed": 3.5, "spears": 3, "horns": 2, "windup": 0.45, "armor": false, "kite": false, "intro": true, "reward": 60},
+	"brute": {"name": "Громила с болот", "hp": 420.0, "scale": 1.85, "skin": Color(0.56, 0.27, 0.2), "robe": Color(0.18, 0.16, 0.14),
+		"hair": Color(0.1, 0.08, 0.08), "spd": 4.6, "rspd": 5.8, "dmg": 24.0, "leap": 0.85, "ranged": false, "regen": 30.0,
+		"exposed": 3.0, "spears": 0, "horns": 4, "windup": 0.62, "armor": true, "kite": false, "intro": true, "reward": 90},
+	"weaver": {"name": "Кровавая ткачиха", "hp": 180.0, "scale": 1.3, "skin": Color(0.84, 0.78, 0.84), "robe": Color(0.34, 0.08, 0.38),
+		"hair": Color(0.08, 0.05, 0.1), "spd": 7.0, "rspd": 8.4, "dmg": 12.0, "leap": 0.0, "ranged": true, "regen": 30.0,
+		"exposed": 3.2, "spears": 5, "horns": 3, "windup": 0.4, "armor": false, "kite": true, "intro": true, "reward": 80},
+	"boss": {"name": "Кагэцу, Третья Тень", "hp": 700.0, "scale": 1.5, "skin": Color(0.88, 0.85, 0.88), "robe": Color(0.07, 0.06, 0.11),
+		"hair": Color(0.55, 0.06, 0.1), "spd": 7.4, "rspd": 9.2, "dmg": 20.0, "leap": 0.4, "ranged": true, "regen": 45.0,
+		"exposed": 3.0, "spears": 6, "horns": 5, "windup": 0.36, "armor": false, "kite": false, "intro": true, "reward": 300},
+}
+var kind := "hermit"
+var T: Dictionary = {}
+var lives := 0              # у Тени: сколько раз шея «срастается» после добивания
+var summoned := false
+var blink_cd := 6.0
+var sc := 1.35              # масштаб модели
+
 func _ready() -> void:
+	T = TYPES.get(kind, TYPES.hermit)
+	sc = T.scale
+	max_hp = T.hp
+	hp = max_hp
+	name_ru = T.name
+	exposed_time = T.exposed
+	lives = 2 if kind == "boss" else 0
 	collision_layer = 4
 	collision_mask = 1
 	var cs := CollisionShape3D.new()
 	var cap := CapsuleShape3D.new()
-	cap.radius = 0.6
-	cap.height = 2.4
+	var k := sc / 1.35
+	cap.radius = 0.6 * k
+	cap.height = 2.4 * k
 	cs.shape = cap
-	cs.position = Vector3(0, 1.2, 0)
+	cs.position = Vector3(0, 1.2 * k, 0)
 	add_child(cs)
 	overlay_mat = StandardMaterial3D.new()
 	overlay_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
@@ -80,7 +116,7 @@ func is_exposed() -> bool:
 	return state == "exposed"
 
 func windup_time() -> float:
-	return 0.32 if rage else 0.45
+	return float(T.windup) * (0.72 if rage else 1.0)
 
 func neck_pos() -> Vector3:
 	return J.head.global_position
@@ -89,13 +125,13 @@ func neck_pos() -> Vector3:
 func _build_model() -> void:
 	model = Node3D.new()
 	add_child(model)
-	model.scale = Vector3.ONE * 1.35
-	var skin := Color(0.5, 0.42, 0.52)
-	var skin_d := Color(0.36, 0.28, 0.4)
-	var robe := Color(0.42, 0.08, 0.1)
-	var robe_d := Color(0.25, 0.05, 0.08)
+	model.scale = Vector3.ONE * sc
+	var skin: Color = T.skin
+	var skin_d: Color = skin.darkened(0.28)
+	var robe: Color = T.robe
+	var robe_d: Color = robe.darkened(0.4)
 	var bone := Color(0.92, 0.88, 0.78)
-	var hair := Color(0.88, 0.88, 0.92)
+	var hair: Color = T.hair
 	var hips := Vox.pivot(model, Vector3(0, 0.95, 0), "hips")
 	Vox.box(hips, Vector3(0.42, 0.26, 0.28), Vector3.ZERO, robe_d)
 	var torso := Vox.pivot(hips, Vector3(0, 0.1, 0), "torso")
@@ -141,14 +177,7 @@ func _build_model() -> void:
 	var e3 := Vox.box(head, Vector3(0.05, 0.08, 0.02), Vector3(0, 0.34, 0.165), Color(1.0, 0.3, 0.2), false, 2.5)
 	e3.material_override = e3.material_override.duplicate()
 	eye_mats.append(e3)
-	# рога: целый и обломанный
-	var horn := Vox.pivot(head, Vector3(-0.1, 0.38, 0.02))
-	horn.rotation_degrees = Vector3(-20, 0, 25)
-	Vox.box(horn, Vector3(0.07, 0.3, 0.07), Vector3(0, 0.15, 0), bone)
-	Vox.box(horn, Vector3(0.05, 0.15, 0.05), Vector3(0.03, 0.32, -0.03), bone)
-	var horn2 := Vox.pivot(head, Vector3(0.1, 0.38, 0.02))
-	horn2.rotation_degrees = Vector3(-20, 0, -25)
-	Vox.box(horn2, Vector3(0.07, 0.13, 0.07), Vector3(0, 0.06, 0), bone)
+	_horns(head, bone, torso)
 	Vox.box(head, Vector3(0.36, 0.12, 0.36), Vector3(0, 0.38, -0.02), hair)
 	Vox.box(head, Vector3(0.36, 0.3, 0.1), Vector3(0, 0.25, -0.16), hair)
 	var hair_anchor := Vox.pivot(head, Vector3(0, 0.3, -0.2), "hair")
@@ -201,6 +230,48 @@ func _build_model() -> void:
 		model.add_child(c)
 		c.setup()
 
+# Рога и украшения головы по виду демона.
+func _horns(head: Node3D, bone: Color, torso: Node3D) -> void:
+	match int(T.horns):
+		1:   # низший: один кривой рожок
+			var h := Vox.pivot(head, Vector3(0.06, 0.38, 0.04))
+			h.rotation_degrees = Vector3(-10, 0, -15)
+			Vox.box(h, Vector3(0.06, 0.14, 0.06), Vector3(0, 0.07, 0), bone.darkened(0.2))
+		2:   # отшельник: целый и обломанный
+			var horn := Vox.pivot(head, Vector3(-0.1, 0.38, 0.02))
+			horn.rotation_degrees = Vector3(-20, 0, 25)
+			Vox.box(horn, Vector3(0.07, 0.3, 0.07), Vector3(0, 0.15, 0), bone)
+			Vox.box(horn, Vector3(0.05, 0.15, 0.05), Vector3(0.03, 0.32, -0.03), bone)
+			var horn2 := Vox.pivot(head, Vector3(0.1, 0.38, 0.02))
+			horn2.rotation_degrees = Vector3(-20, 0, -25)
+			Vox.box(horn2, Vector3(0.07, 0.13, 0.07), Vector3(0, 0.06, 0), bone)
+		3:   # ткачиха: тонкие рожки и красные нити-заколки
+			for sx in [-1.0, 1.0]:
+				var h2 := Vox.pivot(head, Vector3(0.09 * sx, 0.4, 0.0))
+				h2.rotation_degrees = Vector3(-35, 0, -10 * sx)
+				Vox.box(h2, Vector3(0.04, 0.24, 0.04), Vector3(0, 0.12, 0), Color(0.3, 0.05, 0.1))
+				Vox.box(head, Vector3(0.02, 0.02, 0.3), Vector3(0.14 * sx, 0.42, -0.1), Color(0.9, 0.1, 0.15), false, 1.2)
+		4:   # громила: бычьи рога в стороны
+			for sx in [-1.0, 1.0]:
+				var h3 := Vox.pivot(head, Vector3(0.15 * sx, 0.33, 0.02))
+				h3.rotation_degrees = Vector3(0, 0, -70 * sx)
+				Vox.box(h3, Vector3(0.1, 0.22, 0.1), Vector3(0, 0.1, 0), bone)
+				var tip := Vox.box(h3, Vector3(0.07, 0.16, 0.07), Vector3(0.04 * sx, 0.26, 0.02), bone.darkened(0.15))
+				tip.rotation_degrees = Vector3(0, 0, 50 * sx)
+		5:   # Тень: корона из шести рогов-игл и полумесяц на лбу
+			for i in 6:
+				var a := -0.6 + i * 0.24
+				var h4 := Vox.pivot(head, Vector3(sin(a) * 0.15, 0.4, -0.02 + cos(a) * 0.02))
+				h4.rotation_degrees = Vector3(-12, 0, -rad_to_deg(a) * 0.8)
+				var hl := 0.18 + (0.08 if i in [2, 3] else 0.0)
+				Vox.box(h4, Vector3(0.035, hl, 0.035), Vector3(0, hl * 0.5, 0), Color(0.12, 0.1, 0.14))
+			Vox.box(head, Vector3(0.12, 0.03, 0.012), Vector3(0, 0.36, 0.163), Color(1.0, 0.95, 0.7), false, 2.0)
+			Vox.box(head, Vector3(0.03, 0.05, 0.012), Vector3(-0.055, 0.345, 0.163), Color(1.0, 0.95, 0.7), false, 2.0)
+			Vox.box(head, Vector3(0.03, 0.05, 0.012), Vector3(0.055, 0.345, 0.163), Color(1.0, 0.95, 0.7), false, 2.0)
+	if kind == "boss":
+		# красный пояс-оби и белые узоры-луны на кимоно
+		Vox.box(torso, Vector3(0.53, 0.12, 0.33), Vector3(0, 0.08, 0), Color(0.7, 0.05, 0.08))
+
 func _collect_meshes(n: Node) -> void:
 	for c in n.get_children():
 		if c is MeshInstance3D:
@@ -248,7 +319,7 @@ func _physics_process(dt: float) -> void:
 				_regrow_leg(s)
 	# регенерация: пока бьют — нет, после паузы ~2 с разгоняется до 35 ед/с
 	if since_hit > 2.0 and state != "exposed" and hp < max_hp:
-		var rate := lerpf(8.0, 35.0, clampf((since_hit - 2.0) / 2.0, 0.0, 1.0))
+		var rate := lerpf(8.0, float(T.regen), clampf((since_hit - 2.0) / 2.0, 0.0, 1.0))
 		hp = minf(max_hp, hp + rate * dt)
 		if randf() < dt * 6.0:
 			G.fx.burst(global_position + Vector3(randf_range(-0.4, 0.4), randf_range(0.8, 2.6), randf_range(-0.4, 0.4)), Color(0.75, 0.1, 0.2), 1, 1.0, 0.07, 0.5, -1.0)
@@ -274,11 +345,22 @@ func _physics_process(dt: float) -> void:
 				_set_state("chase")
 		"chase":
 			_gravity(dt)
-			var spd := 8.0 if rage else 6.2
+			var spd: float = T.rspd if rage else T.spd
 			if not (legs_alive.r and legs_alive.l):
 				spd *= 0.45          # на одной ноге — ковыляет
-			if dist > 2.6:
-				var hv := Vector3(velocity.x, 0, velocity.z).move_toward(dirp * spd, 30.0 * dt)
+			var want := dirp * spd
+			if T.kite and dist < 6.0:
+				want = -dirp * spd * 0.8          # ткачиха держит дистанцию
+			if kind == "boss":
+				blink_cd -= dt
+				if blink_cd <= 0.0 and dist > 6.0:
+					_blink(p)
+					return
+				if not summoned and hp < max_hp * 0.5:
+					summoned = true
+					_summon(2)
+			if dist > 2.6 or T.kite:
+				var hv := Vector3(velocity.x, 0, velocity.z).move_toward(want, 30.0 * dt)
 				velocity.x = hv.x
 				velocity.z = hv.z
 			else:
@@ -287,13 +369,13 @@ func _physics_process(dt: float) -> void:
 			if atk_cd <= 0.0 and dist < 3.4 and (arms_alive.r or arms_alive.l):
 				swings_left = 3 if rage else 2
 				_start_swing()
-			elif atk_cd <= 0.0 and dist > 7.0 and dist < 18.0:
-				if randf() < 0.5 and legs_alive.r and legs_alive.l:
+			elif atk_cd <= 0.0 and dist > (4.0 if T.kite else 7.0) and dist < 18.0 and (T.ranged or T.leap > 0.0):
+				if (randf() < T.leap or not T.ranged) and T.leap > 0.0 and legs_alive.r and legs_alive.l:
 					_set_state("leap_wind")
 					G.sfx.play("roar", -10.0, 1.4)
 				else:
 					_set_state("spikes")
-				atk_cd = 2.5
+				atk_cd = 1.6 if T.kite else 2.5
 			elif dist < 3.4 and not (arms_alive.r or arms_alive.l) and atk_cd <= 0.0 and legs_alive.r and legs_alive.l:
 				_set_state("leap_wind")
 				atk_cd = 2.5
@@ -317,7 +399,7 @@ func _physics_process(dt: float) -> void:
 				hit_this_swing = true
 				_eyes(2.5)
 				if dist < 3.6 and _fwd().dot(dirp) > 0.3 and absf(p.global_position.y - global_position.y) < 2.2:
-					var r: String = p.receive_attack(15.0 if not rage else 18.0, global_position, true, self)
+					var r: String = p.receive_attack(float(T.dmg) * (1.2 if rage else 1.0), global_position, true, self)
 					if r == "parry":
 						stagger(2.6 if p.last_parry_perfect else 1.4)
 						return
@@ -400,6 +482,13 @@ func _physics_process(dt: float) -> void:
 			neck_glow.visible = int(G.real_time * 8.0) % 2 == 0
 			if state_t > exposed_time:
 				_regenerate()
+		"blink_in":
+			# Тень выходит из тумана за спиной героя
+			velocity = Vector3.ZERO
+			_face(dirp, dt, 20.0)
+			if state_t > 0.25:
+				swings_left = 2
+				_start_swing()
 		"locked":
 			velocity = Vector3.ZERO
 	move_and_slide()
@@ -477,7 +566,7 @@ func _roar() -> void:
 	G.sfx.play("roar", 0.0)
 	G.add_shake(0.35)
 	G.fx.ring(global_position + Vector3.UP * 1.8, 0.8, Color(0.6, 0.05, 0.12), Color(1.0, 0.4, 0.3), 0.6, 6.0, 0.3, _fwd())
-	if G.hud:
+	if G.hud and T.intro:
 		G.hud.boss_intro(name_ru)
 
 func _land_shock() -> void:
@@ -495,7 +584,10 @@ func _land_shock() -> void:
 func _throw_spears(p: Node3D) -> void:
 	G.sfx.play("whoosh_big", -2.0, 0.6)
 	var origin: Vector3 = J.hand_r.global_position if arms_alive.r else J.head.global_position
-	for i in 3:
+	if kind == "boss" and randf() < 0.5:
+		_blood_rain(p)
+		return
+	for i in int(T.spears):
 		var target: Vector3 = p.global_position + Vector3.UP * 1.0 + Vector3(randf_range(-1.5, 1.5), 0, randf_range(-1.5, 1.5)) * (0.0 if i == 1 else 1.0)
 		var mi := MeshInstance3D.new()
 		var bm := BoxMesh.new()
@@ -551,14 +643,14 @@ func take_hit(dmg: float, dir: Vector3, atk: Dictionary) -> Dictionary:
 		res.dmg = 0
 		G.fx.sparks(res.point, dir, Color(1, 0.4, 0.3), 6)
 		return res
-	hp -= dmg
+	hp -= dmg * G.dmg_out_mult()
 	_add_wound(res.point, dir, atk)
 	combo_hits = combo_hits + 1 if combo_t > 0.0 else 1
 	combo_t = 1.1
 	var knock: float = atk.get("knock", 2.5)
 	velocity += dir * knock
 	velocity.y = maxf(velocity.y, 1.0 if atk.power < 2 else 3.0)
-	var armored: bool = state in ["swing", "leap", "spikes"] or (state == "windup" and atk.power < 2)
+	var armored: bool = state in ["swing", "leap", "spikes"] or (state == "windup" and atk.power < 2) or (T.armor and atk.power < 2)
 	hit_dir = dir
 	hit_react = 1.0 if not armored else 0.5
 	if state in ["air", "down"]:
@@ -664,7 +756,7 @@ func _cut_arm(side: String, dir: Vector3) -> void:
 	var copy := Node3D.new()
 	rb.add_child(copy)
 	copy.transform = Transform3D.IDENTITY
-	copy.scale = Vector3.ONE * 1.35
+	copy.scale = Vector3.ONE * sc
 	for c in arm.get_children():
 		if c is MeshInstance3D:
 			var mi := MeshInstance3D.new()
@@ -729,7 +821,7 @@ func _cut_leg(side: String, dir: Vector3) -> void:
 	rb.global_transform = shin.global_transform
 	var copy := Node3D.new()
 	rb.add_child(copy)
-	copy.scale = Vector3.ONE * 1.35
+	copy.scale = Vector3.ONE * sc
 	for c in shin.get_children():
 		if c is MeshInstance3D:
 			var mi := MeshInstance3D.new()
@@ -763,7 +855,7 @@ func _start_leg_grow(side: String) -> void:
 	var g = VoxGrow.new()
 	g.dur = GROW_T
 	shin.add_child(g)
-	g.build(0.42, 0.14, 0.42, Color(0.5, 0.42, 0.52), Color(0.92, 0.88, 0.78))
+	g.build(0.42, 0.14, 0.42, T.skin, Color(0.92, 0.88, 0.78))
 	growers["leg_" + side] = g
 	G.sfx.play("crack", -10.0, 0.5)
 
@@ -817,7 +909,7 @@ func _start_grow(side: String) -> void:
 	var g = VoxGrow.new()
 	g.dur = GROW_T
 	fore.add_child(g)
-	g.build(0.44, 0.13, 0.44, Color(0.5, 0.42, 0.52), Color(0.92, 0.88, 0.78))
+	g.build(0.44, 0.13, 0.44, T.skin, Color(0.92, 0.88, 0.78))
 	growers[side] = g
 	G.sfx.play("crack", -10.0, 0.5)
 
@@ -856,6 +948,9 @@ func finisher_lock() -> void:
 	neck_glow.visible = true
 
 func decapitate(dir: Vector3) -> void:
+	if lives > 0:
+		_neck_holds(dir)
+		return
 	_set_state("dead")
 	neck_glow.visible = false
 	_eyes(0.0)
@@ -886,6 +981,8 @@ func decapitate(dir: Vector3) -> void:
 	ash_parts.shuffle()
 	ash_t = 0.0
 	G.add_kill()
+	if G.story:
+		G.story.on_demon_killed(self)
 
 func _dead_tick(dt: float) -> void:
 	# тело оседает на колени и рассыпается пеплом
@@ -1063,3 +1160,80 @@ func _animate(dt: float) -> void:
 			f.scale = f.scale.lerp(Vector3.ONE, 1.0 - exp(-3.0 * dt))
 	lean_s = lerpf(lean_s, lean + 12.0 * hf * hr, 1.0 - exp(-(22.0 if state in ["air", "down", "getup"] else 12.0) * dt))
 	model.rotation = Vector3(deg_to_rad(lean_s), facing, 0)
+
+# =====================================================================
+# Приёмы Тени (босс)
+func _blink(p: Node3D) -> void:
+	blink_cd = randf_range(5.0, 8.0)
+	G.fx.burst(global_position + Vector3.UP * 1.2, Color(0.1, 0.05, 0.15), 24, 4.0, 0.2, 0.5, -1.0)
+	G.fx.afterimage(model, Color(0.6, 0.05, 0.15), 0.4)
+	var back := -Vector3(sin(p.facing), 0, cos(p.facing))
+	var to: Vector3 = p.global_position + back * 2.6
+	to.y = p.global_position.y + 0.3
+	global_position = to
+	facing = atan2(p.global_position.x - to.x, p.global_position.z - to.z)
+	G.fx.burst(global_position + Vector3.UP * 1.2, Color(0.55, 0.05, 0.12), 20, 5.0, 0.15, 0.4, -1.0)
+	G.sfx.play("whoosh_big", -2.0, 0.5)
+	_set_state("blink_in")
+
+# Кровавый дождь: копья падают сверху кольцом вокруг героя — беги из круга.
+func _blood_rain(p: Node3D) -> void:
+	G.sfx.play("roar", -4.0, 0.6)
+	var c: Vector3 = p.global_position
+	for i in 10:
+		var a := TAU * i / 10.0
+		var r := 1.2 + (i % 2) * 1.6
+		var target := c + Vector3(cos(a) * r, 0.0, sin(a) * r)
+		var mi := MeshInstance3D.new()
+		var bm := BoxMesh.new()
+		bm.size = Vector3(0.14, 0.14, 1.5)
+		mi.mesh = bm
+		mi.material_override = Vox.cel_mat(Color(0.6, 0.02, 0.1), true, 1.2)
+		G.fx.add_child(mi)
+		mi.global_position = target + Vector3(randf_range(-1, 1), 11.0, randf_range(-1, 1))
+		var v := (target - mi.global_position).normalized() * 19.0
+		mi.look_at(mi.global_position + v, Vector3.UP)
+		spears.append({"n": mi, "v": v, "life": 2.0, "delay": 0.5 + i * 0.05})
+		G.fx.ring(target + Vector3.UP * 0.05, 0.5, Color(0.6, 0.02, 0.1), Color(1.0, 0.3, 0.3), 0.6, 0.0, 0.15)
+
+func _summon(n: int) -> void:
+	_roar()
+	if G.hud:
+		G.hud.notify("Тень призывает низших демонов!", 2.0)
+	for i in n:
+		var d = CharacterBody3D.new()
+		d.set_script(load("res://scripts/demon.gd"))
+		d.kind = "low"
+		get_parent().add_child(d)
+		var a := randf() * TAU
+		d.global_position = global_position + Vector3(cos(a) * 4.0, 0.5, sin(a) * 4.0)
+		d.noticed = true
+		d.state = "chase"
+		G.fx.burst(d.global_position + Vector3.UP, Color(0.4, 0.02, 0.08), 20, 5.0, 0.2, 0.5, -1.0)
+
+# Добивание по шее Тени: шея срастается (пока есть «жизни») — отбрасывает героя.
+func _neck_holds(dir: Vector3) -> void:
+	lives -= 1
+	neck_glow.visible = false
+	G.fx.sparks(J.head.global_position, -dir, Color(1.0, 0.3, 0.3), 30)
+	G.fx.ring(global_position + Vector3.UP * 0.1, 1.0, Color(0.5, 0.02, 0.1), Color(1.0, 0.4, 0.3), 0.6, 10.0, 0.5)
+	G.add_shake(0.6)
+	G.impact(0.1, 2)
+	G.sfx.play("clang", 0.0, 0.6)
+	var p: Node3D = G.player
+	if p.global_position.distance_to(global_position) < 6.0:
+		p.receive_attack(10.0, global_position, false, self)
+	hp = max_hp * (0.6 if lives == 1 else 0.45)
+	rage = true
+	regen_count += 1
+	for s in ["r", "l"]:
+		if not arms_alive[s]:
+			_regrow_arm(s)
+		if not legs_alive[s]:
+			_regrow_leg(s)
+	_set_state("chase")
+	atk_cd = 0.6
+	blink_cd = 1.5
+	summoned = false
+	if G.hud:
+		G.hud.notify("Шея Тени срослась! Ещё %d" % (lives + 1), 2.5)

@@ -40,6 +40,10 @@ func _ready() -> void:
 	sounds["wood"] = _make(0.35, _wood)
 	sounds["stone"] = _make(0.45, _stone)
 	sounds["snap"] = _make(0.18, _snap)
+	sounds["tick"] = _make(0.05, _tick)
+	sounds["chime"] = _make(1.4, _chime)
+	sounds["gong"] = _make(2.2, _gong)
+	sounds["caw"] = _make(0.45, _caw)
 
 func play(nm: String, vol_db := 0.0, pitch := 1.0, rnd := 0.08) -> void:
 	if not sounds.has(nm):
@@ -227,3 +231,29 @@ func _snap(t: float, d: float, st: Dictionary) -> float:
 	var n := randf_range(-1, 1) * exp(-t * 80.0)
 	st["ph"] += TAU * 2400.0 * exp(-t * 30.0) / RATE
 	return (n + sin(st["ph"]) * exp(-t * 50.0) * 0.5) * 0.9
+
+# Щелчок интерфейса (буквы в диалоге, выбор).
+func _tick(t: float, d: float, st: Dictionary) -> float:
+	st["ph"] += TAU * 1800.0 / RATE
+	return sin(st["ph"]) * exp(-t * 120.0) * 0.4
+
+# Колокольчик: глава пройдена, награда.
+func _chime(t: float, d: float, st: Dictionary) -> float:
+	var v := 0.0
+	for k in [1.0, 2.0, 3.01, 4.2]:
+		v += sin(TAU * 880.0 * k * t) * exp(-t * (2.5 + k)) / k
+	return v * 0.35 * minf(1.0, t * 200.0)
+
+# Храмовый гонг: титры главы.
+func _gong(t: float, d: float, st: Dictionary) -> float:
+	var f := 110.0 * (1.0 + 0.02 * exp(-t * 3.0))
+	var v := sin(TAU * f * t) + 0.6 * sin(TAU * f * 2.76 * t) * exp(-t * 2.0) + 0.3 * sin(TAU * f * 5.4 * t) * exp(-t * 4.0)
+	return v * exp(-t * 1.4) * 0.45 * minf(1.0, t * 100.0)
+
+# Карканье ворона.
+func _caw(t: float, d: float, st: Dictionary) -> float:
+	var f := 520.0 - t * 500.0
+	st["ph"] += TAU * f / RATE
+	var saw := fmod(st["ph"] / TAU, 1.0) * 2.0 - 1.0
+	var env := sin(PI * clampf(t / 0.4, 0.0, 1.0))
+	return (saw * 0.6 + randf_range(-1, 1) * 0.35) * env * 0.5

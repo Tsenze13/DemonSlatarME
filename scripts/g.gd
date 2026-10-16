@@ -11,6 +11,36 @@ var sfx: Node = null
 var music: Node = null
 var post_mat: ShaderMaterial = null
 var enemies: Array = []
+var story = null            # story.gd: сюжет, задания, жители, прокачка
+var dialog_ui = null        # dialog.gd: окно разговора
+var dialog := false         # идёт разговор — герой не слушается управления
+var cutscene := false       # титры главы / затемнение
+var mode := "free"          # "story" — сюжет, "free" — свободная охота
+
+# Прокачка (сохраняется в save.cfg, раздел [story]).
+var prog := {"ryo": 0, "mastery": 0, "hp": 0, "lungs": 0, "focus": 0, "blade": 0, "chapter": 0, "finished": false, "started": false, "trial": -1, "hunts": 0}
+
+var difficulty := 1          # 0 — лёгкая, 1 — обычная, 2 — тяжёлая (настройки)
+func dmg_out_mult() -> float:
+	return (1.0 + 0.1 * float(prog.blade)) * [1.3, 1.0, 0.85][clampi(difficulty, 0, 2)]
+
+func dmg_in_mult() -> float:
+	return [0.55, 1.0, 1.4][clampi(difficulty, 0, 2)]
+
+func load_prog() -> void:
+	var cf := ConfigFile.new()
+	if cf.load("user://save.cfg") == OK:
+		for k in prog:
+			prog[k] = cf.get_value("story", k, prog[k])
+
+func save_prog() -> void:
+	if autotest:
+		return
+	var cf := ConfigFile.new()
+	cf.load("user://save.cfg")
+	for k in prog:
+		cf.set_value("story", k, prog[k])
+	cf.save("user://save.cfg")
 
 var real_time := 0.0      # реальные секунды (не замедляются)
 var rdt := 0.016          # реальная длительность кадра
@@ -56,6 +86,8 @@ func _ready() -> void:
 	autotest = OS.get_cmdline_user_args().has("--autotest") or OS.get_environment("KLINOK_AUTOTEST") != ""
 	_setup_input()
 	load_stats()
+	if not autotest:
+		load_prog()
 
 # --- сохранение прогресса (пока — статистика) ---
 func load_stats() -> void:
@@ -68,6 +100,7 @@ func save_stats() -> void:
 	if autotest:
 		return
 	var cf := ConfigFile.new()
+	cf.load(SAVE_PATH)            # не затирать раздел [story]
 	for k in stats:
 		cf.set_value("stats", k, stats[k])
 	cf.save(SAVE_PATH)

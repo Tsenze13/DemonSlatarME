@@ -51,6 +51,19 @@ func handle_input(e: InputEvent) -> void:
 		if e.relative.length() > 2.0:
 			idle_look = 0.0
 
+# Короткий «кадр из аниме» на большой форме: камера уходит низко сбоку
+# и облетает героя, потом плавно возвращается за спину.
+var form_t := 0.0
+var form_max := 1.0
+var form_side := 1.0
+var cine_forms := true
+func form_cine(dur: float) -> void:
+	if not cine_forms:
+		return
+	form_t = dur
+	form_max = dur
+	form_side = 1.0 if randf() < 0.5 else -1.0
+
 func cinematic(target: Node, dur: float) -> void:
 	cine_target = target
 	cine_t = dur
@@ -118,6 +131,23 @@ func _process(_delta: float) -> void:
 		fov_s = cam.fov
 		return
 
+	if form_t > 0.0:
+		form_t -= dt
+		var fk := 1.0 - form_t / form_max
+		var fwd := Vector3(sin(p.facing), 0, cos(p.facing))
+		var right := fwd.cross(Vector3.UP) * form_side
+		# от бока-спереди — облёт на 80° вокруг героя, камера низко, смотрит чуть вверх
+		var dirc := (right * 0.8 + fwd * 0.6).normalized().rotated(Vector3.UP, -fk * 1.4 * form_side)
+		var fp := p.global_position + dirc * (3.4 + fk * 1.2) + Vector3.UP * (0.7 + fk * 0.6)
+		cur_pos = cur_pos.lerp(fp, 1.0 - exp(-14.0 * dt))
+		cam.global_position = cur_pos + shake_off
+		cam.look_at(p.global_position + Vector3.UP * 1.3 + fwd * 1.5, Vector3.UP)
+		cam.fov = lerpf(cam.fov, 64.0, 1.0 - exp(-8.0 * dt))
+		fov_s = cam.fov
+		if form_t <= 0.0:
+			# вернуть управление: камера за спиной по направлению удара
+			yaw = p.facing + PI
+		return
 	var b := Basis(Vector3.UP, yaw) * Basis(Vector3.RIGHT, pitch)
 	var sp: float = p.last_speed
 	var d := dist + clampf(sp - 12.0, 0.0, 20.0) * 0.06

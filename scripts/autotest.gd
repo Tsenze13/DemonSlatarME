@@ -809,8 +809,175 @@ func _run() -> void:
 	check(p.elem_k > 0.5, "стихия на хаори после формы (%.2f)" % p.elem_k)
 	p.set_breath(0)
 	check(G.music.ready_, "музыка и окружение готовы (%d мс)" % G.music.gen_ms)
+	# ===== СЮЖЕТ: пролог, глава, жители, прокачка, виды демонов =====
+	var st = G.story
+	st.fast = true
+	st.new_game()
+	await w(0.8)
+	check(st.npcs.size() == 6 and st.npcs.has("gensai") and st.npcs.has("crow"), "жители и ворон в деревне (%d)" % st.npcs.size())
+	await _skip_talk()
+	check(st.phase == "tutorial", "пролог: обучение у наставника (%s)" % st.phase)
+	p.set_drawn(false)
+	await w(0.1)
+	p.set_drawn(true)
+	await w(0.2)
+	await _skip_talk()
+	p.press("dash")
+	await w(0.3)
+	await _skip_talk()
+	for k in 3:
+		p.press("light")
+		await w(0.3)
+	await w(0.3)
+	await _skip_talk()
+	p.breath = 100.0
+	p.press("form1")
+	await w(0.4)
+	await _skip_talk()
+	await w(1.0)
+	p.press("parry")
+	await w(0.3)
+	await _skip_talk()
+	await w(0.3)
+	check(st.phase == "fight" and st.alive.size() == 1, "после обучения ночью приходит первый демон (%s)" % st.phase)
+	await _kill_story_wave()
+	await w(0.8)
+	await _skip_talk()
+	await w(0.6)
+	check(st.chapter == 1 and st.phase == "day", "пролог пройден — день, глава 1 (%d, %s)" % [st.chapter, st.phase])
+	check(st.crow.has_news and st.target != null, "ворон ждёт с заданием, метка на карте")
+	st.talk("crow")
+	await _skip_talk()
+	check(G.dialog_ui.buttons.size() == 2, "в конце разговора — выбор")
+	G.dialog_ui._pick(0)
+	await w(0.3)
+	check(st.phase == "go" and G.world.time_of_day == "night", "задание принято — ночь, идём к месту (%s, %s)" % [st.phase, G.world.time_of_day])
+	p.global_position = st.target + Vector3.UP * 4.0
+	await w(0.5)
+	check(st.phase == "fight" and st.alive.size() == 2, "у места — волна демонов (%d)" % st.alive.size())
+	for k in 3:
+		if st.phase == "fight":
+			await _kill_story_wave()
+			await w(0.6)
+	check(st.phase == "done" or st.phase == "day", "все волны Отбора пройдены (%s)" % st.phase)
+	await w(0.5)
+	await _skip_talk()
+	await w(0.6)
+	check(st.chapter == 2 and int(G.prog.ryo) >= 60 and st.rank_name() == "Десятая ступень", "награда и ранг (%d рё, %s)" % [int(G.prog.ryo), st.rank_name()])
+	# прокачка у наставника и кузнеца
+	G.prog.mastery = 5
+	var st_hp0: float = p.max_hp
+	st._train_pick(0)
+	await _skip_talk()
+	check(p.max_hp == st_hp0 + 20.0 and int(G.prog.hp) == 1, "тренировка: +20 здоровья")
+	G.prog.ryo = 500
+	st._tetsu_pick(0)
+	await _skip_talk()
+	check(int(G.prog.blade) == 1 and G.dmg_out_mult() > 1.05, "кузнец закалил клинок")
+	# разговоры со всеми жителями
+	for id in ["elder", "okiku", "taro", "tetsu", "gensai"]:
+		st.talk(id)
+		check(G.dialog, "разговор: %s" % id)
+		await _skip_talk()
+		if G.dialog_ui.buttons.size() > 0:
+			G.dialog_ui._pick(G.dialog_ui.buttons.size() - 1)
+		await w(0.05)
+	await shot("30_village_day")
+	# испытание наставника: чучела на время
+	var m0 := int(G.prog.mastery)
+	st._start_trial()
+	await w(0.2)
+	check(st.phase == "trial" and st.trial_dummies.size() == 6, "испытание: 6 чучел на поляне")
+	for dmy in st.trial_dummies:
+		if is_instance_valid(dmy):
+			dmy.slash_hit(dmy.global_position - Vector3.FORWARD, Vector3.FORWARD, 1)
+	await w(0.3)
+	await _skip_talk()
+	check(st.phase == "day" and int(G.prog.mastery) == m0 + 2, "испытание пройдено: +2 мастерства")
+	# виды демонов
+	st._clear_demons()
+	await w(0.2)
+	var kinds_ok := true
+	for kd in ["low", "hermit", "brute", "weaver", "boss"]:
+		var dm = CharacterBody3D.new()
+		dm.set_script(load("res://scripts/demon.gd"))
+		dm.kind = kd
+		G.world.add_child(dm)
+		dm.global_position = Vector3(randf_range(-6, 6), 0.5, randf_range(-8, -4))
+		if dm.name_ru != dm.TYPES[kd].name or dm.max_hp != dm.TYPES[kd].hp:
+			kinds_ok = false
+	check(kinds_ok, "пять видов демонов: низший, отшельник, громила, ткачиха, Тень")
+	p.global_position = Vector3(0, 0.5, 4)
+	await w(1.5)
+	await shot("31_demon_kinds")
+	var boss = null
+	for e in G.enemies:
+		if is_instance_valid(e) and e.kind == "boss":
+			boss = e
+	boss.hp = 0.0
+	boss._expose()
+	boss.decapitate(Vector3.FORWARD)
+	await w(0.1)
+	check(not boss.is_dead() and boss.lives == 1, "у Тени шея срастается после добивания")
+	boss._summon(2)
+	await w(0.1)
+	var lows := 0
+	for e in G.enemies:
+		if is_instance_valid(e) and e.kind == "low":
+			lows += 1
+	check(lows >= 3, "Тень призывает низших")
+	st._clear_demons()
+	# финал: после Третьей Ущербной луны — слова наставника, титры, свободная охота
+	G.mode = "story"
+	st.chapter = st.CH.size() - 1
+	st.phase = "done"
+	st.done_t = 0.0
+	await w(0.3)
+	await _skip_talk()
+	await w(1.5)
+	check(st.phase == "free" and bool(G.prog.finished), "финал: титры и свободная охота (%s)" % st.phase)
+	# охота на заказ у ворона (после сюжета)
+	st.talk("crow")
+	await _skip_talk()
+	G.dialog_ui._pick(0)
+	await w(0.3)
+	check(st.phase == "go" and not st.cur.is_empty(), "заказ взят — идём к месту")
+	p.global_position = st.target + Vector3.UP * 4.0
+	await w(0.4)
+	for k in 4:
+		if st.phase == "fight":
+			await _kill_story_wave()
+			await w(0.5)
+	await w(0.4)
+	await _skip_talk()
+	await w(0.6)
+	check(st.phase == "free" and int(G.prog.hunts) == 1 and st.cur.is_empty(), "заказ выполнен — снова свободная охота (%s)" % st.phase)
+	st.fast = false
+	G.mode = "free"
+	st.phase = "free"
+	await w(0.3)
 	print("\n=== АВТОТЕСТ ===")
 	for l in log_lines:
 		print(l)
 	print("ИТОГ: %s" % ("всё в порядке" if fails.is_empty() else "ошибки: %d" % fails.size()))
 	get_tree().quit(0 if fails.is_empty() else 1)
+
+# Пролистать разговор до конца (или до выбора).
+func _skip_talk() -> void:
+	for i in 40:
+		if not G.dialog or G.dialog_ui.buttons.size() > 0:
+			return
+		G.dialog_ui.shown = 9999.0
+		G.dialog_ui.advance()
+		await w(0.05)
+
+# Добить всех демонов текущей волны сюжета.
+func _kill_story_wave() -> void:
+	var st = G.story
+	for d in st.alive.duplicate():
+		if is_instance_valid(d) and not d.is_dead():
+			d.lives = 0
+			d.hp = 0.0
+			d._expose()
+			d.decapitate(Vector3.FORWARD)
+	await w(0.5)

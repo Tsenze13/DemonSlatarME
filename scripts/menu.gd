@@ -10,7 +10,7 @@ var settings := {
 	"volume": 0.4, "sfx": 1.0, "music": 0.6, "sens": 1.0, "invert_y": false, "fov": 72.0, "cam_dist": 5.2,
 	"shake": 1.0, "auto_cam": true, "pixel": false, "sword": 0, "saya": 0, "tint": 0, "haori": 0, "breath": 0,
 	"window": 0, "vsync": true, "fps_limit": 0, "shadows": 2, "render_scale": 1.0, "grass": 1.0, "show_fps": false,
-	"preset": 2, "msaa": 2, "glow": true, "view_dist": 1.0,
+	"cine": true, "difficulty": 1, "preset": 2, "msaa": 2, "glow": true, "view_dist": 1.0,
 	"keys": {},
 }
 # Готовые наборы графики: [тени, чёткость 3D, трава, сглаживание, свечение, дальность]
@@ -75,7 +75,7 @@ func _build_title() -> void:
 	t.add_theme_color_override("font_outline_color", Color(0.05, 0.02, 0.08))
 	box.add_child(t)
 	var sub := Label.new()
-	sub.text = "деревня Ивакура ждёт ночи · прототип " + str(ProjectSettings.get_setting("application/config/version", ""))
+	sub.text = "деревня Ивакура ждёт ночи · версия " + str(ProjectSettings.get_setting("application/config/version", ""))
 	sub.add_theme_font_override("font", serif)
 	sub.add_theme_font_size_override("font_size", 24)
 	sub.add_theme_color_override("font_color", Color(0.6, 0.8, 1.0))
@@ -85,7 +85,9 @@ func _build_title() -> void:
 	var gap := Control.new()
 	gap.custom_minimum_size = Vector2(0, 40)
 	box.add_child(gap)
-	_title_button(box, "Играть", _start_game)
+	cont_btn = _title_button(box, "Продолжить", func(): _start_game("continue"))
+	_title_button(box, "Новая игра", func(): _start_game("new"))
+	_title_button(box, "Свободная охота", func(): _start_game("free"))
 	_title_button(box, "Настройки", func(): _open_settings(true))
 	_title_button(box, "Выйти", func(): save(); get_tree().quit())
 
@@ -113,19 +115,30 @@ func _sb(bg: Color, border: Color) -> StyleBoxFlat:
 	s.content_margin_left = 22
 	return s
 
+var cont_btn: Button
 func show_title() -> void:
 	G.started = false
 	title_screen.visible = true
+	if cont_btn:
+		cont_btn.visible = G.story != null and G.story.has_save()
 	pause_panel.visible = false
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 
-func _start_game() -> void:
+func _start_game(how := "free") -> void:
 	title_screen.visible = false
 	G.started = true
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	if G.story:
+		match how:
+			"new":
+				G.story.new_game()
+			"continue":
+				G.story.continue_game()
+			_:
+				G.story.free_hunt()
 	if G.hud:
-		G.hud.help = true
-		G.hud.help_t = 14.0
+		G.hud.help = how == "free"
+		G.hud.help_t = 14.0 if how == "free" else 0.0
 
 # ---------------------------------------------------------------------
 # ПАУЗА И НАСТРОЙКИ
@@ -293,12 +306,14 @@ func _tab_sound() -> void:
 
 func _tab_controls() -> void:
 	var v := _page("Управление")
+	_option(v, "difficulty", "Сложность", ["Лёгкая — демоны бьют слабее", "Обычная", "Тяжёлая — демоны злее, клинок слабее"], func(i): settings.difficulty = i; G.difficulty = i)
 	_slider(v, "sens", "Чувствительность мыши", 0.2, 3.0, 0.05, func(x): settings.sens = x; _apply_camera())
 	_check(v, "invert_y", "Инвертировать мышь по вертикали", func(on): settings.invert_y = on; _apply_camera())
 	_slider(v, "fov", "Угол обзора", 60.0, 95.0, 1.0, func(x): settings.fov = x; _apply_camera())
 	_slider(v, "cam_dist", "Дальность камеры", 3.5, 8.0, 0.1, func(x): settings.cam_dist = x; _apply_camera())
 	_slider(v, "shake", "Тряска камеры", 0.0, 1.5, 0.1, func(x): settings.shake = x; _apply_camera())
 	_check(v, "auto_cam", "Камера сама заходит за спину на бегу", func(on): settings.auto_cam = on; _apply_camera())
+	_check(v, "cine", "Кинокадр на третьей форме", func(on): settings.cine = on; _apply_camera())
 	_label(v, "Клавиши (нажми на кнопку, затем новую клавишу или кнопку мыши; Esc — отмена)", 15).modulate = Color(0.75, 0.82, 1.0)
 	var grid := GridContainer.new()
 	grid.columns = 2
@@ -434,6 +449,7 @@ func _apply_camera() -> void:
 		r.base_fov = settings.fov
 		r.dist = settings.cam_dist
 		r.auto_cam = settings.auto_cam and not G.autotest
+		r.cine_forms = bool(settings.cine)
 	G.shake_mult = settings.shake
 
 func _apply_window() -> void:
@@ -501,7 +517,7 @@ func apply_all() -> void:
 	# элементы меню — по текущим значениям
 	for k in ["volume", "sfx", "music", "sens", "fov", "cam_dist", "shake", "render_scale", "grass"]:
 		(ctrl[k] as HSlider).set_value_no_signal(float(settings[k]))
-	for k in ["invert_y", "auto_cam", "vsync", "pixel", "show_fps"]:
+	for k in ["invert_y", "auto_cam", "vsync", "pixel", "show_fps", "cine"]:
 		(ctrl[k] as CheckBox).set_pressed_no_signal(bool(settings[k]))
 	(ctrl.sword as OptionButton).select(clampi(settings.sword if settings.sword >= 0 else 8, 0, 10))
 	(ctrl.saya as OptionButton).select(clampi(settings.saya, 0, SwordLib.SAYA.size() - 1))
@@ -509,6 +525,8 @@ func apply_all() -> void:
 	(ctrl.haori as OptionButton).select(clampi(settings.haori, 0, SwordLib.HAORI.size() - 1))
 	(ctrl.breath as OptionButton).select(clampi(settings.breath, 0, G.BREATH_ORDER.size() - 1))
 	(ctrl.window as OptionButton).select(clampi(settings.window, 0, 2))
+	(ctrl.difficulty as OptionButton).select(clampi(settings.difficulty, 0, 2))
+	G.difficulty = 1 if G.autotest else int(settings.difficulty)
 	(ctrl.fps_limit as OptionButton).select(clampi(settings.fps_limit, 0, FPS_LIMITS.size() - 1))
 	_sync_graphics_ctrl()
 	_refresh_binds()

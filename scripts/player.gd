@@ -792,6 +792,8 @@ func _input_dir() -> Vector3:
 	var jy := Input.get_joy_axis(0, JOY_AXIS_LEFT_Y)
 	if Vector2(jx, jy).length() > 0.2:
 		v += Vector2(jx, jy)
+	if G.dialog or G.cutscene:
+		v = Vector2.ZERO          # в разговоре и сценке герой стоит
 	if auto_move != Vector2.ZERO:
 		v = auto_move
 	if v.length() > 1.0:
@@ -846,7 +848,7 @@ func _physics_process(dt: float) -> void:
 	for k in cd:
 		cd[k] = maxf(0.0, cd[k] - dt)
 	if state != "breathe" and state != "dead":
-		breath = minf(max_breath, breath + dt * 5.0)
+		breath = minf(max_breath, breath + dt * 5.0 * (1.0 + 0.35 * float(G.prog.focus)))
 	if lock_target and (not is_instance_valid(lock_target) or lock_target.is_dead()):
 		lock_target = null
 	if pressed("lock", 0.3):
@@ -1840,6 +1842,9 @@ func _start_attack(nm: String) -> void:
 	sweep_prev = []
 	atk_name = nm
 	_set_state("attack")
+	# третья форма — короткий кинокадр сбоку (кроме стойки-контратаки)
+	if int(atk.get("fi", 0)) == 3 and nm != "f3" and G.cam_rig and G.cam_rig.has_method("form_cine"):
+		G.cam_rig.form_cine(minf(float(atk.dur) + 0.25, 1.3))
 	hit_set.clear()
 	multi_t = 0.0
 	combo_queued = ""
@@ -2644,7 +2649,7 @@ func _st_breathe(dt: float, inp: Vector3) -> void:
 	velocity.x = move_toward(velocity.x, 0, 50 * dt)
 	velocity.z = move_toward(velocity.z, 0, 50 * dt)
 	_gravity(dt)
-	breath = minf(max_breath, breath + 42.0 * dt)
+	breath = minf(max_breath, breath + 42.0 * dt * (1.0 + 0.2 * float(G.prog.focus)))
 	hp = minf(max_hp, hp + 2.5 * dt)
 	breathe_fx_t -= dt
 	if breathe_fx_t <= 0.0:
@@ -2706,6 +2711,8 @@ func _st_dead(dt: float) -> void:
 		_set_state("move")
 		if G.hud:
 			G.hud.notify("Снова в бой")
+		if G.story:
+			G.story.on_player_respawn()
 
 # Удар демона по герою. Возвращает: "parry", "counter", "dodge", "hit", "none".
 func receive_attack(dmg: float, src: Vector3, parryable: bool, attacker: Node = null) -> String:
@@ -2728,7 +2735,7 @@ func receive_attack(dmg: float, src: Vector3, parryable: bool, attacker: Node = 
 				G.hud.notify("Идеальное уклонение")
 				G.hud.add_combo("dodge", 15)
 		return "dodge"
-	hp -= dmg
+	hp -= dmg * G.dmg_in_mult()
 	_add_cut(src)
 	G.hurt_fx = 1.0
 	G.add_shake(0.35)

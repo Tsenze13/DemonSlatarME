@@ -193,6 +193,21 @@ func _draw_map(s: Vector2, u: float) -> void:
 			var dv := Vector2(e.global_position.x - p.global_position.x, e.global_position.z - p.global_position.z) / view
 			if dv.length() < 1.0:
 				draw_circle(c + dv * r, 4 * u, Color(1, 0.25, 0.2))
+	# цель задания
+	if G.story and G.story.target != null:
+		var tv := Vector2(G.story.target.x - p.global_position.x, G.story.target.z - p.global_position.z) / view
+		if tv.length() > 0.95:
+			tv = tv.normalized() * 0.95
+		var tc := c + tv * r
+		draw_colored_polygon(PackedVector2Array([tc + Vector2(0, -7 * u), tc + Vector2(5 * u, 0), tc + Vector2(0, 7 * u), tc + Vector2(-5 * u, 0)]), Color(1.0, 0.82, 0.4))
+	# жители с новостями
+	if G.story:
+		for id in G.story.npcs:
+			var npc_n = G.story.npcs[id]
+			if npc_n.has_news:
+				var nv := Vector2(npc_n.global_position.x - p.global_position.x, npc_n.global_position.z - p.global_position.z) / view
+				if nv.length() < 1.0:
+					draw_circle(c + nv * r, 4 * u, Color(1.0, 0.9, 0.3))
 	# герой — стрелка по направлению взгляда
 	var f: float = p.facing
 	var fd := Vector2(sin(f), cos(f))
@@ -213,6 +228,80 @@ func _draw_map(s: Vector2, u: float) -> void:
 			if absf(da) < PI * 0.5:
 				var x := cx + da / (PI * 0.5) * cw * 0.5
 				_txt(Vector2(x, cy + 18 * u), m[0], int(15 * u), Color(1, 0.92, 0.75, 1.0 - absf(da) / (PI * 0.5)), HORIZONTAL_ALIGNMENT_CENTER, 0, 6)
+
+# Сюжет: задание, метка цели, «E — поговорить», рё, затемнение и титры глав.
+func _draw_story(s: Vector2, u: float) -> void:
+	var st = G.story
+	if st == null:
+		return
+	var p: Node3D = G.player
+	# задание — под шкалами, с засечками
+	if st.objective != "" and not G.dialog and G.started:
+		var oy := 150.0 * u
+		var head: String = "ЗАДАНИЕ"
+		if not st.cur.is_empty():
+			head = "ОХОТА НА ЗАКАЗ · %d" % (int(G.prog.get("hunts", 0)) + 1)
+		elif G.mode == "story" and st.chapter < st.CH.size():
+			head = "ГЛАВА %d · %s" % [st.chapter, String(st.CH[st.chapter].name).to_upper()] if st.chapter > 0 else "ПРОЛОГ · УЧЕНИК"
+		var ow := maxf(font.get_string_size(st.objective, HORIZONTAL_ALIGNMENT_LEFT, -1, int(17 * u)).x, 200 * u) + 40 * u
+		draw_rect(Rect2(14 * u, oy - 22 * u, ow, 58 * u), Color(0.02, 0.03, 0.08, 0.55))
+		draw_rect(Rect2(14 * u, oy - 22 * u, 3 * u, 58 * u), Color(1.0, 0.82, 0.45, 0.9))
+		_txt(Vector2(28 * u, oy - 4 * u), head, int(12 * u), Color(1.0, 0.82, 0.5))
+		_txt(Vector2(28 * u, oy + 22 * u), st.objective, int(17 * u), Color(1, 1, 1))
+	if G.mode == "story" or int(G.prog.ryo) > 0:
+		_txt(Vector2(28 * u, s.y - 118 * u), "%d рё   ·   мастерство %d   ·   %s" % [int(G.prog.ryo), int(G.prog.mastery), st.rank_name()], int(14 * u), Color(1.0, 0.9, 0.65))
+	# метка цели: ромб над местом, у края экрана — стрелка
+	if st.target != null and G.cam_rig and not G.dialog:
+		var cam: Camera3D = G.cam_rig.cam
+		var tp: Vector3 = st.target + Vector3.UP * 2.5
+		var dist: float = Vector2(p.global_position.x - tp.x, p.global_position.z - tp.z).length()
+		var sp: Vector2
+		var behind := cam.is_position_behind(tp)
+		sp = cam.unproject_position(tp) * px_scale
+		var m := 60.0 * u
+		var onscreen := not behind and sp.x > m and sp.x < s.x - m and sp.y > m and sp.y < s.y - m
+		var col := Color(1.0, 0.82, 0.4)
+		if onscreen:
+			var k := 12 * u * (1.0 + sin(G.real_time * 4.0) * 0.1)
+			draw_colored_polygon(PackedVector2Array([sp + Vector2(0, -k), sp + Vector2(k * 0.7, 0), sp + Vector2(0, k), sp + Vector2(-k * 0.7, 0)]), col)
+			draw_polyline(PackedVector2Array([sp + Vector2(0, -k - 3), sp + Vector2(k * 0.7 + 3, 0), sp + Vector2(0, k + 3), sp + Vector2(-k * 0.7 - 3, 0), sp + Vector2(0, -k - 3)]), Color(0.1, 0.05, 0.0, 0.8), 2.0)
+			_txt(sp + Vector2(0, 30 * u), "%d м" % int(dist), int(15 * u), col, HORIZONTAL_ALIGNMENT_CENTER, 0)
+		else:
+			var c := s * 0.5
+			var d := sp - c
+			if behind:
+				d = -d
+			if d.length() < 1.0:
+				d = Vector2(0, -1)
+			d = d.normalized()
+			var ep := c + d * minf(s.x, s.y) * 0.42
+			var nrm := Vector2(-d.y, d.x)
+			draw_colored_polygon(PackedVector2Array([ep + d * 16 * u, ep - d * 8 * u + nrm * 11 * u, ep - d * 8 * u - nrm * 11 * u]), col)
+			_txt(ep - d * 26 * u + Vector2(0, 6 * u), "%d м" % int(dist), int(14 * u), col, HORIZONTAL_ALIGNMENT_CENTER, 0)
+	# E — поговорить
+	if st.near and not G.dialog and G.cam_rig:
+		var cam2: Camera3D = G.cam_rig.cam
+		var np: Vector3 = st.near.talk_pos() + Vector3.UP * 0.6
+		if not cam2.is_position_behind(np):
+			var sp2 := cam2.unproject_position(np) * px_scale
+			var label := "E — поговорить: %s" % st.near.title
+			var tw := font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, int(16 * u)).x
+			draw_rect(Rect2(sp2.x - tw * 0.5 - 12 * u, sp2.y - 22 * u, tw + 24 * u, 30 * u), Color(0.02, 0.03, 0.08, 0.75))
+			draw_rect(Rect2(sp2.x - tw * 0.5 - 12 * u, sp2.y + 6 * u, tw + 24 * u, 2 * u), Color(1.0, 0.82, 0.45))
+			_txt(Vector2(sp2.x, sp2.y), label, int(16 * u), Color(1, 0.95, 0.85), HORIZONTAL_ALIGNMENT_CENTER, 0, 6)
+	# затемнение и титры
+	if st.fade > 0.0:
+		draw_rect(Rect2(Vector2.ZERO, s), Color(0, 0, 0, st.fade))
+	if st.card_t > 0.0:
+		var a := clampf(st.card_t, 0.0, 1.0) * clampf((3.6 - st.card_t) * 1.5, 0.0, 1.0)
+		var cy := s.y * 0.42
+		if st.fade < 0.5:
+			draw_rect(Rect2(0, cy - 70 * u, s.x, 120 * u), Color(0, 0, 0, 0.45 * a))
+		_stxt(Vector2(s.x * 0.5, cy), st.card, int(54 * u), Color(1, 0.96, 0.88, a))
+		var lw := serif.get_string_size(st.card, HORIZONTAL_ALIGNMENT_LEFT, -1, int(54 * u)).x
+		draw_line(Vector2(s.x * 0.5 - lw * 0.5 - 90 * u, cy - 18 * u), Vector2(s.x * 0.5 - lw * 0.5 - 20 * u, cy - 18 * u), Color(1, 0.9, 0.7, a * 0.8), 1.5 * u)
+		draw_line(Vector2(s.x * 0.5 + lw * 0.5 + 20 * u, cy - 18 * u), Vector2(s.x * 0.5 + lw * 0.5 + 90 * u, cy - 18 * u), Color(1, 0.9, 0.7, a * 0.8), 1.5 * u)
+		_stxt(Vector2(s.x * 0.5, cy + 38 * u), st.card_sub, int(22 * u), Color(0.95, 0.85, 0.7, a * 0.9))
 
 func _txt(pos: Vector2, t: String, fsize: int, col: Color, align := HORIZONTAL_ALIGNMENT_LEFT, _w := -1.0, outline := 8) -> void:
 	if align != HORIZONTAL_ALIGNMENT_LEFT:
@@ -297,8 +386,9 @@ func _draw() -> void:
 			_bar(Rect2(s.x * 0.5 - 120 * u, 100 * u, 240 * u, 6 * u), left / e.exposed_time, Color(1, 0.4, 0.3))
 		elif not e.arms_alive.r or not e.arms_alive.l:
 			_txt(Vector2(bx, 82 * u), "конечность отрастает...", int(13 * u), Color(0.9, 0.6, 0.6))
-	_txt(Vector2(s.x - 28 * u, 34 * u), "Обезглавлено: %d" % G.kills, int(15 * u), Color(0.9, 0.9, 0.95), HORIZONTAL_ALIGNMENT_RIGHT, 0)
-	_txt(Vector2(s.x - 28 * u, 54 * u), "всего за все игры: %d" % int(G.stats.kills_total), int(12 * u), Color(0.7, 0.75, 0.85), HORIZONTAL_ALIGNMENT_RIGHT, 0)
+	if G.mode == "free":
+		_txt(Vector2(s.x - 28 * u, 34 * u), "Обезглавлено: %d" % G.kills, int(15 * u), Color(0.9, 0.9, 0.95), HORIZONTAL_ALIGNMENT_RIGHT, 0)
+		_txt(Vector2(s.x - 28 * u, 54 * u), "всего за все игры: %d" % int(G.stats.kills_total), int(12 * u), Color(0.7, 0.75, 0.85), HORIZONTAL_ALIGNMENT_RIGHT, 0)
 	if G.show_fps:
 		_txt(Vector2(s.x - 28 * u, 76 * u), "%d кадров/с" % Engine.get_frames_per_second(), int(14 * u), Color(0.6, 1.0, 0.6), HORIZONTAL_ALIGNMENT_RIGHT, 0)
 
@@ -351,8 +441,9 @@ func _draw() -> void:
 		_txt(Vector2(s.x * 0.5, ny), n[0], int(20 * u), Color(1, 1, 1, a4), HORIZONTAL_ALIGNMENT_CENTER, 0)
 		ny += 28 * u
 
+	_draw_story(s, u)
 	# --- управление ---
-	if help or G.paused:
+	if (help or G.paused) and not G.dialog:
 		var lines := [
 			"WASD — бег   Мышь — камера   Пробел — прыжок / от дерева и стены",
 			"F — достать / убрать клинок   ЛКМ из ножен — рывок-выхват   Shift держать — быстрый бег",
@@ -379,4 +470,4 @@ func _draw() -> void:
 		if p.state_t > 1.5:
 			hint += "   Пробел или ЛКМ — сразу"
 		_txt(Vector2(s.x * 0.5, s.y * 0.42 + 54 * u), hint, int(20 * u), Color(0.95, 0.9, 0.9, a5), HORIZONTAL_ALIGNMENT_CENTER, 0)
-	_txt(Vector2(s.x - 16 * u, s.y - 14 * u), "Клинок и Демон · прототип " + str(ProjectSettings.get_setting("application/config/version", "")), int(12 * u), Color(0.7, 0.75, 0.85, 0.6), HORIZONTAL_ALIGNMENT_RIGHT, 0)
+	_txt(Vector2(s.x - 16 * u, s.y - 14 * u), "Клинок и Демон · версия " + str(ProjectSettings.get_setting("application/config/version", "")), int(12 * u), Color(0.7, 0.75, 0.85, 0.6), HORIZONTAL_ALIGNMENT_RIGHT, 0)

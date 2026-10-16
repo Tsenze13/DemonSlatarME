@@ -19,6 +19,10 @@ func _ready() -> void:
 		_flame()
 	elif mode == "new":
 		_new()
+	elif mode == "story":
+		_story()
+	elif mode == "play":
+		_play()
 	else:
 		_shots()
 
@@ -284,4 +288,143 @@ func _new() -> void:
 	await w(0.8)
 	cam(Vector3(5.0, 2.4, 5.0), d.global_position + Vector3(0, 1.0, 0))
 	await shot("n4_demon_leg")
+	get_tree().quit()
+
+# Сюжет: жители, разговор, задание с меткой, виды демонов.
+func _story() -> void:
+	await w(0.6)
+	G.hud.help = false
+	var st = G.story
+	_park_demons()
+	st._clear_demons()
+	G.mode = "story"
+	st._spawn_npcs()
+	st.chapter = 2
+	G.prog.chapter = 2
+	G.prog.ryo = 140
+	G.prog.mastery = 3
+	st._day()
+	await w(1.0)
+	G.cam_rig.set_process(false)
+	var pl: Node3D = G.player
+	# наставник крупно
+	var gn: Node3D = st.npcs.gensai
+	cam(gn.global_position + Vector3(-1.2, 1.5, -2.2), gn.global_position + Vector3(0, 1.2, 0))
+	await w(0.2)
+	await shot("s1_gensai")
+	# улица: староста, Окику, Таро
+	_place(Vector3(32, 0.5, -24), PI)
+	await w(0.3)
+	cam(Vector3(33.5, 2.2, -10), Vector3(31, 1.0, -30))
+	await shot("s2_street")
+	var tt: Node3D = st.npcs.tetsu
+	cam(tt.global_position + Vector3(-2.4, 1.4, 0.8), tt.global_position + Vector3(0, 1.1, 0))
+	await shot("s3_smith")
+	# ворон и подсказка «E — поговорить», задание
+	G.cam_rig.set_process(true)
+	_place(st.crow.global_position + Vector3(0, 0.5, 2.0), PI)
+	await w(0.8)
+	await shot("s4_crow")
+	# разговор
+	st.talk("crow")
+	await w(1.6)
+	await shot("s5_dialog")
+	G.dialog_ui.shown = 9999.0
+	for i in 3:
+		G.dialog_ui.advance()
+		await w(0.1)
+	G.dialog_ui.shown = 9999.0
+	await w(0.5)
+	await shot("s6_choice")
+	G.dialog_ui._pick(0)
+	await w(1.6)
+	await shot("s7_go")
+	# виды демонов в ряд
+	st.phase = "free"
+	st.target = null
+	G.cam_rig.set_process(false)
+	_set_time("sunset")
+	var x := -8.0
+	for kd in ["low", "weaver", "hermit", "brute", "boss"]:
+		var dm = CharacterBody3D.new()
+		dm.set_script(load("res://scripts/demon.gd"))
+		dm.kind = kd
+		G.world.add_child(dm)
+		dm.global_position = Vector3(x, 0.5, -2)
+		dm.facing = 0.0
+		dm.set_physics_process(false)
+		x += 4.0
+	_place(Vector3(0, 0.5, 30), PI)
+	await w(0.8)
+	cam(Vector3(0, 2.4, 9), Vector3(0, 1.6, -2))
+	await shot("s8_demons")
+	cam(Vector3(8.8, 2.6, 2.2), Vector3(8, 2.0, -2))
+	await shot("s9_boss")
+	# титры главы
+	st._card("Глава 3", "Отшельник старого леса", 3.0)
+	cam(Vector3(-14, 9, 22), Vector3(4, 2, -10))
+	await w(0.8)
+	await shot("s10_card")
+	get_tree().quit()
+
+# Настоящее начало игры для видео: титры, обучение, первый демон (бот жмёт клавиши).
+func _talk_auto() -> void:
+	while G.dialog:
+		await w(1.3)
+		G.dialog_ui.shown = 9999.0
+		await w(0.5)
+		if G.dialog_ui.buttons.size() > 0:
+			G.dialog_ui._pick(0)
+		else:
+			G.dialog_ui.advance()
+
+func _play() -> void:
+	await w(0.5)
+	G.hud.help = false
+	var st = G.story
+	var pl: Node3D = G.player
+	st.new_game()
+	await w(12.0)
+	await _talk_auto()
+	await w(0.8)
+	pl.set_drawn(true)
+	await w(1.0)
+	await _talk_auto()
+	pl.press("dash")
+	await w(0.8)
+	await _talk_auto()
+	for k in 3:
+		pl.press("light")
+		await w(0.32)
+	await w(0.8)
+	await _talk_auto()
+	pl.breath = 100.0
+	pl.press("form1")
+	await w(1.5)
+	await _talk_auto()
+	pl.press("parry")
+	await w(0.8)
+	await _talk_auto()
+	await w(0.5)
+	await _talk_auto()
+	# бой с первым демоном
+	var t := 0.0
+	while st.phase == "fight" and t < 25.0:
+		var d = null
+		for e in st.alive:
+			if is_instance_valid(e) and not e.is_dead():
+				d = e
+		if d == null:
+			break
+		var to: Vector3 = d.global_position - pl.global_position
+		_aim(d.global_position)
+		pl.auto_move = Vector2(0, -1) if Vector2(to.x, to.z).length() > 2.4 else Vector2.ZERO
+		if Vector2(to.x, to.z).length() < 3.0:
+			pl.press("light")
+		await w(0.25)
+		t += 0.25
+	pl.auto_move = Vector2.ZERO
+	await w(4.0)
+	await _talk_auto()
+	await w(3.0)
 	get_tree().quit()

@@ -96,6 +96,18 @@ func _ready() -> void:
 	layer.add_child(hud)
 	G.hud = hud
 
+	# сюжет и окно разговора
+	var story := Node.new()
+	story.set_script(load("res://scripts/story.gd"))
+	add_child(story)
+	var dl := CanvasLayer.new()
+	dl.layer = 5
+	add_child(dl)
+	var dlg := Control.new()
+	dlg.set_script(load("res://scripts/dialog.gd"))
+	dl.add_child(dlg)
+	G.dialog_ui = dlg
+
 	var ml := CanvasLayer.new()
 	ml.layer = 10
 	add_child(ml)
@@ -136,9 +148,10 @@ func apply_view(st: Dictionary) -> void:
 	if hud:
 		hud.px_scale = float(shrink)
 
-func _spawn_demon(p: Vector3) -> void:
+func _spawn_demon(p: Vector3, kind := "hermit") -> void:
 	var d := CharacterBody3D.new()
 	d.set_script(Demon)
+	d.kind = kind
 	world.add_child(d)
 	d.global_position = p
 	d.facing = randf() * TAU
@@ -155,7 +168,8 @@ func _process(_dt: float) -> void:
 	for e in G.enemies:
 		if is_instance_valid(e) and not e.is_dead():
 			alive += 1
-	if alive == 0:
+	# в сюжете демонов выпускает story.gd; здесь — только свободная охота
+	if alive == 0 and G.mode == "free" and (G.story == null or G.story.phase in ["idle", "free"]):
 		if respawn_t < 0.0:
 			respawn_t = 5.0
 		respawn_t -= G.rdt
@@ -168,15 +182,32 @@ func _process(_dt: float) -> void:
 				if d > bd:
 					bd = d
 					best = sp
-			_spawn_demon(best)
+			# свободная охота: разные демоны, иногда стайка низших
+			var r := randf()
+			if G.autotest:
+				_spawn_demon(best)
+			elif r < 0.3:
+				for i in 3:
+					_spawn_demon(best + Vector3(randf_range(-3, 3), 0, randf_range(-3, 3)), "low")
+			elif r < 0.55:
+				_spawn_demon(best, "hermit")
+			elif r < 0.75:
+				_spawn_demon(best, "brute")
+			elif r < 0.93:
+				_spawn_demon(best, "weaver")
+			else:
+				_spawn_demon(best, "boss")
 
 # Мышь и клавиатуру передаём герою и камере отсюда: SubViewport с миром
 # сам событий мыши не получает.
 func _input(e: InputEvent) -> void:
-	if G.paused or not G.started:
+	if G.paused or not G.started or G.dialog or G.cutscene:
 		return
 	if e is InputEventMouseButton and Input.mouse_mode != Input.MOUSE_MODE_CAPTURED and not G.autotest:
 		return   # этот клик только захватывает мышь, а не бьёт
+	# E рядом с жителем — разговор вместо шага-вспышки
+	if e.is_action_pressed("flash") and G.story and G.story.try_talk():
+		return
 	if G.player:
 		G.player.handle_input(e)
 	if G.cam_rig:
@@ -208,7 +239,7 @@ func _unhandled_input(e: InputEvent) -> void:
 	elif e is InputEventKey and e.pressed and e.physical_keycode == KEY_F11:
 		settings.window = 0 if settings.window != 0 else 1
 		menus.apply_all()
-	elif e is InputEventMouseButton and e.pressed and not G.paused and Input.mouse_mode != Input.MOUSE_MODE_CAPTURED and not G.autotest:
+	elif e is InputEventMouseButton and e.pressed and not G.paused and not G.dialog and Input.mouse_mode != Input.MOUSE_MODE_CAPTURED and not G.autotest:
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
 func _toggle_pause() -> void:
