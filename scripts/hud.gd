@@ -459,6 +459,15 @@ func _draw() -> void:
 		if e.rage:
 			_txt(Vector2(bx + bw, 38 * u), "ЯРОСТЬ", int(16 * u), Color(1, 0.3, 0.25), HORIZONTAL_ALIGNMENT_RIGHT, 0)
 		_bar(Rect2(bx, 48 * u, bw, 14 * u), e.hp / e.max_hp, Color(0.6, 0.05, 0.15))
+		if e.T.get("boss", false):
+			# сколько раз ещё надо срубить голову Луне: ромбы под полосой
+			_txt(Vector2(bx + bw - 96 * u, 80 * u), "голов:", int(13 * u), Color(1, 0.8, 0.75), HORIZONTAL_ALIGNMENT_RIGHT, 0)
+			for i in 3:
+				var cpos := Vector2(bx + bw - 80 * u + i * 26 * u, 75 * u)
+				var dk := 8.0 * u
+				var full: bool = i <= int(e.lives)
+				var dpts := PackedVector2Array([cpos + Vector2(0, -dk), cpos + Vector2(dk, 0), cpos + Vector2(0, dk), cpos + Vector2(-dk, 0)])
+				draw_colored_polygon(dpts, Color(0.85, 0.1, 0.15) if full else Color(0.2, 0.15, 0.16, 0.8))
 		if e.is_exposed():
 			var blink := int(G.real_time * 6.0) % 2 == 0
 			_txt(Vector2(s.x * 0.5, 90 * u), "ШЕЯ ОТКРЫТА — ЛКМ, ДОБЕЙ!", int(24 * u), Color(1, 0.3, 0.25) if blink else Color(1, 0.9, 0.85), HORIZONTAL_ALIGNMENT_CENTER, 0)

@@ -195,10 +195,9 @@ func _process(_dt: float) -> void:
 				_spawn_demon(best, "brute")
 			elif r < 0.82:
 				_spawn_demon(best, "weaver")
-			elif r < 0.93:
-				_spawn_demon(best, "spider")
 			else:
-				_spawn_demon(best, "boss")
+				_spawn_demon(best, "spider")
+			# Луны (боссы) — только в сюжете и заказах: в свободной охоте убитый босс не «воскресает»
 
 # Мышь и клавиатуру передаём герою и камере отсюда: SubViewport с миром
 # сам событий мыши не получает.

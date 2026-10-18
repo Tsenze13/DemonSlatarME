@@ -1142,6 +1142,12 @@ func _run() -> void:
 	boss.decapitate(Vector3.FORWARD)
 	await w(0.1)
 	check(not boss.is_dead() and boss.lives == 1, "у Тени шея срастается после добивания")
+	check(boss.neck_t >= 0.0 and boss.tendrils.size() == 5 and boss.take_hit(50.0, Vector3.FORWARD, {"power": 1}).dmg == 0, "голова отлетает, кровавые нити тянут её назад (неуязвим)")
+	for i in 40:
+		if boss.neck_t < 0.0:
+			break
+		await w(0.1)
+	check(boss.neck_t < 0.0 and boss.state != "locked" and boss.tendrils.is_empty(), "шея срослась — бой продолжается (%.2f, %s, %d)" % [boss.neck_t, boss.state, boss.tendrils.size()])
 	check(G.world.blood == 1, "кровавая луна во 2-й фазе Тени")
 	p.global_position = boss.global_position + Vector3(5, 0, 0)
 	boss.pool_cd = 0.0
@@ -1150,14 +1156,19 @@ func _run() -> void:
 	boss.hp = 0.0
 	boss._expose()
 	boss.decapitate(Vector3.FORWARD)
-	await w(0.3)
+	for i in 40:
+		if boss.neck_t < 0.0:
+			break
+		await w(0.1)
+	await w(0.2)
 	var shades: Array = []
 	for e in G.enemies:
 		if is_instance_valid(e) and e.kind == "shade" and not e.is_dead():
 			shades.append(e)
-	check(boss.lives == 0 and shades.size() == 3 and G.world.blood == 2, "3-я фаза: багровая луна и тени-двойники")
-	shades[0].take_hit(30.0, Vector3.FORWARD, {"power": 1, "stagger": 0.2})
-	check(shades[0].is_dead(), "тень рассыпается от удара")
+	check(boss.lives == 0 and shades.size() == 3 and G.world.blood == 2, "3-я фаза: багровая луна и тени-двойники (жизни %d, теней %d, луна %d, %s, neck %.2f, ts %.2f, proc %s)" % [boss.lives, shades.size(), G.world.blood, boss.state, boss.neck_t, Engine.time_scale, boss.is_physics_processing()])
+	if shades.size() > 0:
+		shades[0].take_hit(30.0, Vector3.FORWARD, {"power": 1, "stagger": 0.2})
+	check(shades.size() > 0 and shades[0].is_dead(), "тень рассыпается от удара")
 	boss._summon(2)
 	await w(0.1)
 	var lows := 0

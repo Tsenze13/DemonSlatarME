@@ -42,6 +42,11 @@ var overlay_mat: StandardMaterial3D
 var ash_t := 0.0
 var ash_parts: Array = []
 var head_body: RigidBody3D = null
+# Срастание шеи у Луны: голова срублена, кровавые нити тянут её обратно (1,6 с, неуязвим).
+const NECK_T := 1.6
+var neck_t := -1.0
+var neck_rest := Vector3.ZERO
+var tendrils: Array = []
 var name_ru := "Демон-отшельник"
 var hit_this_swing := false
 var run_phase := 0.0
@@ -1310,6 +1315,8 @@ func _animate(dt: float) -> void:
 			f.scale = f.scale.lerp(Vector3.ONE, 1.0 - exp(-3.0 * dt))
 	lean_s = lerpf(lean_s, lean + 12.0 * hf * hr, 1.0 - exp(-(22.0 if state in ["air", "down", "getup"] else 12.0) * dt))
 	model.rotation = Vector3(deg_to_rad(lean_s), facing, 0)
+	if neck_t >= 0.0:
+		_neck_tick(dt)
 
 # =====================================================================
 # Приёмы Тени (босс)
@@ -1377,6 +1384,18 @@ func _summon(n: int, what := "low") -> void:
 func _neck_holds(dir: Vector3) -> void:
 	lives -= 1
 	neck_glow.visible = false
+	# голова слетает — и кровавые нити тянут её обратно (видно, что это не конец, а новая фаза)
+	neck_t = 0.0
+	neck_rest = J.head.position
+	_set_state("locked")
+	G.fx.blood(J.head.global_position, dir, 30)
+	G.fx.blood(J.head.global_position, Vector3.UP, 20)
+	for i in 5:
+		var tm := Vox.box(J.torso, Vector3(0.05, 0.05, 1.0), Vector3.ZERO, Color(0.55, 0.02, 0.08), false, 0.8)
+		tendrils.append([tm, Vector3(randf_range(-0.12, 0.12), 0, randf_range(-0.1, 0.1))])
+	G.slowmo(0.35, 0.9)
+	if G.hud:
+		G.hud.big_text("ШЕЯ СРАСТАЕТСЯ!")
 	G.fx.sparks(J.head.global_position, -dir, Color(1.0, 0.3, 0.3), 30)
 	G.fx.ring(global_position + Vector3.UP * 0.1, 1.0, Color(0.5, 0.02, 0.1), Color(1.0, 0.4, 0.3), 0.6, 10.0, 0.5)
 	G.add_shake(0.6)
@@ -1397,14 +1416,49 @@ func _neck_holds(dir: Vector3) -> void:
 			_regrow_arm(s)
 		if not legs_alive[s]:
 			_regrow_leg(s)
-	_set_state("chase")
 	atk_cd = 0.6
 	blink_cd = 1.5
 	summoned = false
+	if G.hud:
+		G.hud.notify("Голову придётся срубить ещё %d раз" % (lives + 1), 3.0)
+
+# Конец срастания: голова на месте, рёв, волна, новая фаза боя.
+func _neck_done() -> void:
+	neck_t = -1.0
+	J.head.position = neck_rest
+	for td in tendrils:
+		if is_instance_valid(td[0]):
+			td[0].queue_free()
+	tendrils.clear()
+	_roar()
+	G.fx.ring(global_position + Vector3.UP * 0.1, 1.0, Color(0.5, 0.02, 0.1), Color(1.0, 0.4, 0.3), 0.6, 10.0, 0.5)
+	G.add_shake(0.5)
+	var p: Node3D = G.player
+	if p.global_position.distance_to(global_position) < 5.0:
+		p.receive_attack(10.0, global_position, false, self)
+	_set_state("chase")
 	if lives == 0:
 		call_deferred("_summon", 3, "shade")
-	if G.hud:
-		G.hud.notify("Шея Тени срослась! Ещё %d" % (lives + 1), 2.5)
+
+func _neck_tick(dt: float) -> void:
+	neck_t += dt / maxf(Engine.time_scale, 0.05)     # в реальном времени: замедление не тянет сцену
+	var k := clampf(neck_t / NECK_T, 0.0, 1.0)
+	# 0–0,2: голова отлетает вверх; 0,35–1: нити тянут её обратно
+	var up := Vox.ease_out(clampf(k / 0.2, 0.0, 1.0)) * (1.0 - Vox.ease_in_out(clampf((k - 0.35) / 0.65, 0.0, 1.0)))
+	J.head.position = neck_rest + Vector3(0.2, 0.8, -0.1) * up
+	J.head.rotation_degrees += Vector3(-50.0, 20.0, 40.0) * up
+	var a: Vector3 = J.torso.global_transform * (neck_rest + Vector3(0, -0.05, 0))
+	for td in tendrils:
+		var tm: MeshInstance3D = td[0]
+		var b: Vector3 = J.head.global_transform * (Vector3(0, 0.02, 0) + td[1])
+		var aa: Vector3 = a + J.torso.global_transform.basis * td[1]
+		var L := aa.distance_to(b)
+		tm.visible = L > 0.05
+		if tm.visible:
+			tm.global_transform = Transform3D(Basis.looking_at((b - aa).normalized(), Vector3.UP if absf((b - aa).normalized().y) < 0.98 else Vector3.RIGHT), (aa + b) * 0.5)
+			tm.scale = Vector3(1.0 + sin(neck_t * 20.0 + td[1].x * 30.0) * 0.4, 1.0, L)
+	if k >= 1.0:
+		_neck_done()
 
 # Кровавые лужи под ногами героя: сначала тёмное кольцо (0,9 с), потом
 # лужа жжёт 5 с — стоять в ней нельзя.

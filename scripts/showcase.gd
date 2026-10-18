@@ -43,6 +43,8 @@ func _ready() -> void:
 		_train()
 	elif mode == "npc":
 		_npc()
+	elif mode == "neck":
+		_neck()
 	else:
 		_shots()
 
@@ -840,4 +842,35 @@ func _npc() -> void:
 	await w(0.6)
 	cam(tr.global_position + Vector3(-3.5, 2.2, 3.5), tr.global_position + Vector3(-1.2, 0.8, 0))
 	await shot("n6_wave")
+	get_tree().quit()
+
+# Срастание шеи Луны: голова слетает, кровавые нити тянут её обратно.
+func _neck() -> void:
+	await w(0.6)
+	G.hud.help = false
+	_set_time("night")
+	for e in G.enemies:
+		if is_instance_valid(e):
+			e.queue_free()
+	get_parent()._spawn_demon(Vector3(0, 0.5, 0), "boss")
+	await w(0.8)
+	var b = null
+	for e in G.enemies:
+		if is_instance_valid(e) and e.kind == "boss":
+			b = e
+	_place(Vector3(0, 0.5, 4), PI)
+	b.noticed = true
+	b.facing = 0.0
+	G.cam_rig.set_process(false)
+	b.hp = 0.0
+	b._expose()
+	await w(0.3)
+	b.decapitate(Vector3(0, 0, -1))
+	for tt in [0.12, 0.35, 0.3, 0.4]:
+		await w(tt)
+		cam(Vector3(3.2, 2.6, 3.6), Vector3(0, 1.6, 0))
+		await shot("k_%d" % int(b.neck_t * 100))
+	await w(1.2)
+	cam(Vector3(3.2, 2.6, 3.6), Vector3(0, 1.6, 0))
+	await shot("k_z_after")
 	get_tree().quit()
